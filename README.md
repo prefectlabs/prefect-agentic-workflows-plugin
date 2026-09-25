@@ -95,6 +95,8 @@ the `execution-plans` feature.
 
 `uvx` caches the version it installed. To get the latest commit on `main`, run
 the install command once with `--refresh` after `uvx`, then restart your agent.
+The command starts the server and waits for input, so stop it with Ctrl-C once
+it has started.
 
 ## Install the skill
 

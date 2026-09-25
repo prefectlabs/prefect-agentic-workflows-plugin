@@ -28,6 +28,6 @@ One plan input feeds three agent nodes that review the same change for different
 
 - Its `reviews` input has shape `source_map` with `key_by` set to `edge`, so it receives an object keyed by edge ID. Name the edges for what they carry, so the objective can refer to each review by its edge ID.
 - `evaluate_when` is `all_reachable_terminal`, so the join waits until every review has finished.
-- `on_upstream` allows failed, crashed, cancelled, and timed-out reviews, so one failed review doesn't block the join. The join receives only the reviews that produced a value, and its objective says what to do when one is missing.
+- `on_upstream` allows failed, crashed, cancelled, and timed-out reviews, so one failed review doesn't block the join. The join receives only the reviews that produced a value, and its objective says what to do when one is missing. The run still ends as `blocked` when a review fails, even after the join completes. That outcome comes from the failed review, not the join.
 
 To fan out only to the branches that apply, give one agent node an output per branch and set its `output_selection` to `one_or_more`. The branches it doesn't select don't run, and the join doesn't wait for them.
