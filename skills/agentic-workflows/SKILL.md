@@ -9,9 +9,9 @@ An execution plan is a JSON graph of agent, human-input, and deployment nodes at
 
 ## Pick the entry path
 
+- **The user hands you an existing skill to convert**, as a `SKILL.md` path, a directory, an installed skill's name, or pasted text. Follow [references/conversion.md](references/conversion.md): read the whole skill, write the conversion report, and stop until the user decides every row. Then continue with the pipeline.
 - **The user describes the workflow.** Map the description onto the checklist below. Fill every item the description answers, and fill the rest with the recommended default when it is safe. Then ask only about the gaps: items with no answer and no safe default. Name the defaults you chose in the summary. Continue with the pipeline.
 - **The user gives you nothing to work from.** Run the interview: ask the checklist in one message, with the recommended default beside each item, so the user can answer "defaults are fine" to most of it. Ask a second round only about answers that left gaps. When the workflow has more than one branch, more than one approval, or touches more than two systems, offer the deeper interview in [references/interview.md](references/interview.md). Continue with the pipeline.
-- **The user hands you an existing skill to convert.** The conversion path is not in this version of the skill yet. Tell the user, then treat the skill's text as a description and take the first path.
 
 | Checklist item | Recommended default |
 |---|---|

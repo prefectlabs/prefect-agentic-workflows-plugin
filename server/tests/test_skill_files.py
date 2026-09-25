@@ -55,3 +55,29 @@ def test_platform_limits_say_when_they_were_last_verified():
     text = (SKILL_DIR / "references" / "platform-limits.md").read_text()
 
     assert re.search(r"^Last verified: \d{4}-\d{2}-\d{2}", text, re.MULTILINE)
+
+
+def test_skill_routes_conversions_to_the_conversion_guide():
+    text = (SKILL_DIR / "SKILL.md").read_text()
+
+    assert "(references/conversion.md)" in text
+
+
+def test_conversion_guide_proposes_a_substitute_for_each_unsupported_part():
+    text = (SKILL_DIR / "references" / "conversion.md").read_text()
+
+    missing = [
+        phrase
+        for phrase in [
+            "remote MCP server",
+            "a Deployment node passes on only the child run's ID and state",
+            "Streamable-HTTP MCP server",
+            "A fixed number of steps",
+            "human checkpoint",
+            "not yet supported",
+            "60 seconds",
+        ]
+        if phrase not in text
+    ]
+
+    assert not missing
