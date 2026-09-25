@@ -130,3 +130,19 @@ async def test_schema_tools_are_read_only(mcp_client: Client[Any]):
         assert annotations.readOnlyHint is True
         assert annotations.destructiveHint is False
         assert "alpha" in (tools[name].description or "")
+
+
+async def test_a_response_that_is_not_json_is_reported_as_a_tool_error(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    cloud_api.post("/execution-plans/validate").respond(
+        200, text="<html>proxy login</html>"
+    )
+
+    result = await mcp_client.call_tool(
+        "validate_plan", {"plan": {"schema_version": "0.1"}}, raise_on_error=False
+    )
+
+    message = error_text(result)
+    assert "not JSON" in message
+    assert "POST /execution-plans/validate" in message

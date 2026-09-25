@@ -133,3 +133,16 @@ async def test_a_failing_preflight_runs_again_on_the_next_call(
     result = await mcp_client.call_tool("validate_plan", {"plan": PLAN})
 
     assert result.structured_content == VALID
+
+
+async def test_a_forbidden_request_says_the_key_may_lack_permission(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    cloud_api.routes["schema"].respond(403, json={"detail": "Forbidden"})
+
+    result = await mcp_client.call_tool("get_schema", {}, raise_on_error=False)
+
+    message = error_text(result)
+    assert "HTTP 403" in message
+    assert "permission" in message
+    assert "prefect cloud login" in message

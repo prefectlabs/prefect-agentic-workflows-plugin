@@ -41,8 +41,8 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         Returns `valid` and a list of `errors`. Each error has a `code`, a
         `phase` (`document_shape` or `semantic`), a `path` into the plan, and
         a `message`. Fix every error and validate again before publishing.
-        A plan that passes can still fail on publish, because publishing also
-        checks that MCP server hostnames resolve and that you can see every
-        referenced Secret block.
+        A plan that passes can still fail on publish. Publishing also checks
+        that you can see every referenced Secret block, and it checks MCP
+        server hostnames again, so a DNS change between the two calls can fail.
         """
         return await api.call("POST", "/execution-plans/validate", json={"plan": plan})

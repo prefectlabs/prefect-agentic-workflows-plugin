@@ -39,8 +39,14 @@ NO_API_KEY_MESSAGE = (
 )
 UNAUTHORIZED_MESSAGE = (
     "Prefect Cloud rejected the API key in the active Prefect profile "
-    "(HTTP {status_code}). Run `prefect cloud login` to refresh it, then call "
-    "this tool again."
+    "(HTTP 401). Run `prefect cloud login` to refresh it, then call this tool "
+    "again."
+)
+FORBIDDEN_MESSAGE = (
+    "Prefect Cloud refused the request to the execution-plan API (HTTP 403). "
+    "The API key in the active Prefect profile may lack permission for this "
+    "workspace. Check the key's role in the workspace, or run "
+    "`prefect cloud login` with a different key, then call this tool again."
 )
 FEATURE_NOT_ENABLED_MESSAGE = (
     "Execution plans are not enabled for this workspace's account. Prefect "
@@ -52,6 +58,11 @@ UNREACHABLE_MESSAGE = "Could not reach Prefect Cloud at {api_url}: {error}"
 PREFLIGHT_FAILED_MESSAGE = (
     "Prefect Cloud returned HTTP {status_code} while checking that execution "
     "plans are available: {detail}"
+)
+NOT_JSON_MESSAGE = (
+    "Prefect Cloud returned a response that is not JSON for {method} {path} "
+    "(HTTP {status_code}). A proxy between you and Prefect Cloud may have "
+    "answered instead."
 )
 REQUEST_FAILED_MESSAGE = (
     "Prefect Cloud returned HTTP {status_code} for {method} {path}: {detail}"
@@ -147,7 +158,14 @@ class WorkspaceApi:
             )
         if not response.content:
             return None
-        return response.json()
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise ToolError(
+                NOT_JSON_MESSAGE.format(
+                    method=method, path=path, status_code=response.status_code
+                )
+            ) from exc
 
     def _read_profile(self) -> tuple[str, str]:
         settings = get_current_settings()
@@ -173,10 +191,10 @@ class WorkspaceApi:
 
         if response.status_code == 404:
             raise ToolError(FEATURE_NOT_ENABLED_MESSAGE)
-        if response.status_code in (401, 403):
-            raise ToolError(
-                UNAUTHORIZED_MESSAGE.format(status_code=response.status_code)
-            )
+        if response.status_code == 401:
+            raise ToolError(UNAUTHORIZED_MESSAGE)
+        if response.status_code == 403:
+            raise ToolError(FORBIDDEN_MESSAGE)
         if response.is_error:
             raise ToolError(
                 PREFLIGHT_FAILED_MESSAGE.format(
