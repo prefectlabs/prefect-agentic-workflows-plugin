@@ -1,0 +1,194 @@
+{
+  "kind": "ExecutionPlan",
+  "schema_version": "0.2",
+  "inputs": {
+    "change": {
+      "schema": {
+        "type": "string",
+        "description": "The description and diff summary of a proposed change."
+      },
+      "required": true
+    }
+  },
+  "nodes": {
+    "review_security": {
+      "kind": "AgentNode",
+      "label": "Security review",
+      "objective": "Review the change in the `change` input for security risks only: secrets, input validation, authentication, and permissions. Select the `review` output with `verdict` set to `ok` when you find no risk and `concerns` otherwise, and `notes` with one sentence per finding.",
+      "inputs": {
+        "change": {
+          "schema": {"type": "string"},
+          "expects": {"cardinality": "exactly_one", "shape": "value"}
+        }
+      },
+      "outputs": {
+        "review": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "verdict": {"type": "string", "enum": ["ok", "concerns"]},
+              "notes": {"type": "string"}
+            },
+            "required": ["verdict", "notes"]
+          }
+        }
+      },
+      "orchestration": {
+        "output_selection": "exactly_one",
+        "evaluate_when": "all_required_inputs_produced"
+      }
+    },
+    "review_docs": {
+      "kind": "AgentNode",
+      "label": "Docs review",
+      "objective": "Review the change in the `change` input for documentation gaps only: new options, changed behavior, or removed features that users need to read about. Select the `review` output with `verdict` set to `ok` when you find no gap and `concerns` otherwise, and `notes` with one sentence per finding.",
+      "inputs": {
+        "change": {
+          "schema": {"type": "string"},
+          "expects": {"cardinality": "exactly_one", "shape": "value"}
+        }
+      },
+      "outputs": {
+        "review": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "verdict": {"type": "string", "enum": ["ok", "concerns"]},
+              "notes": {"type": "string"}
+            },
+            "required": ["verdict", "notes"]
+          }
+        }
+      },
+      "orchestration": {
+        "output_selection": "exactly_one",
+        "evaluate_when": "all_required_inputs_produced"
+      }
+    },
+    "review_tests": {
+      "kind": "AgentNode",
+      "label": "Test review",
+      "objective": "Review the change in the `change` input for test coverage only: new behavior without a test, and changed behavior whose tests were not updated. Select the `review` output with `verdict` set to `ok` when you find no gap and `concerns` otherwise, and `notes` with one sentence per finding.",
+      "inputs": {
+        "change": {
+          "schema": {"type": "string"},
+          "expects": {"cardinality": "exactly_one", "shape": "value"}
+        }
+      },
+      "outputs": {
+        "review": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "verdict": {"type": "string", "enum": ["ok", "concerns"]},
+              "notes": {"type": "string"}
+            },
+            "required": ["verdict", "notes"]
+          }
+        }
+      },
+      "orchestration": {
+        "output_selection": "exactly_one",
+        "evaluate_when": "all_required_inputs_produced"
+      }
+    },
+    "combine_reviews": {
+      "kind": "AgentNode",
+      "label": "Combine the reviews",
+      "objective": "The `reviews` input maps each review edge ID (`security-review`, `docs-review`, `test-review`) to that review's `verdict` and `notes`. A review that failed has no entry. Select the `report` output with `verdict` set to `ready` when every review present is `ok` and all three are present, and `needs_work` otherwise. Set `summary` to a short list of the concerns, and name any review that is missing.",
+      "inputs": {
+        "reviews": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "verdict": {"type": "string", "enum": ["ok", "concerns"]},
+              "notes": {"type": "string"}
+            },
+            "required": ["verdict", "notes"]
+          },
+          "expects": {
+            "cardinality": "one_or_more",
+            "shape": "source_map",
+            "key_by": "edge"
+          }
+        }
+      },
+      "outputs": {
+        "report": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "verdict": {"type": "string", "enum": ["ready", "needs_work"]},
+              "summary": {"type": "string"}
+            },
+            "required": ["verdict", "summary"]
+          }
+        }
+      },
+      "orchestration": {
+        "output_selection": "exactly_one",
+        "evaluate_when": "all_reachable_terminal",
+        "on_upstream": {
+          "failed": "allow",
+          "crashed": "allow",
+          "cancelled": "allow",
+          "timed_out": "allow"
+        }
+      }
+    }
+  },
+  "edges": [
+    {
+      "id": "change-to-review_security",
+      "from": {"type": "plan_input", "input": "change"},
+      "to": {"node": "review_security", "input": "change"}
+    },
+    {
+      "id": "change-to-review_docs",
+      "from": {"type": "plan_input", "input": "change"},
+      "to": {"node": "review_docs", "input": "change"}
+    },
+    {
+      "id": "change-to-review_tests",
+      "from": {"type": "plan_input", "input": "change"},
+      "to": {"node": "review_tests", "input": "change"}
+    },
+    {
+      "id": "security-review",
+      "from": {"type": "node_output", "node": "review_security", "output": "review"},
+      "to": {"node": "combine_reviews", "input": "reviews"}
+    },
+    {
+      "id": "docs-review",
+      "from": {"type": "node_output", "node": "review_docs", "output": "review"},
+      "to": {"node": "combine_reviews", "input": "reviews"}
+    },
+    {
+      "id": "test-review",
+      "from": {"type": "node_output", "node": "review_tests", "output": "review"},
+      "to": {"node": "combine_reviews", "input": "reviews"}
+    }
+  ],
+  "outputs": {
+    "review_report": {
+      "fields": {
+        "report": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "verdict": {"type": "string", "enum": ["ready", "needs_work"]},
+              "summary": {"type": "string"}
+            },
+            "required": ["verdict", "summary"]
+          },
+          "source": {
+            "type": "node_output",
+            "node": "combine_reviews",
+            "output": "report"
+          }
+        }
+      },
+      "required": ["report"]
+    }
+  }
+}
