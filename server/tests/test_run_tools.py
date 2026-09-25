@@ -338,9 +338,7 @@ async def test_get_run_reports_retry_after_when_cloud_is_busy(
     cloud_api.get(RUN_PATH).respond(
         503,
         headers={"Retry-After": "2"},
-        json={
-            "detail": "Execution plan snapshot loading is temporarily unavailable."
-        },
+        json={"detail": "Execution plan snapshot loading is temporarily unavailable."},
     )
 
     result = await mcp_client.call_tool(
@@ -374,6 +372,7 @@ async def test_get_run_output_reads_a_plan_output(
         "reason": None,
         "detail": None,
         "retry_after_seconds": None,
+        "final": True,
     }
 
 
@@ -427,6 +426,7 @@ async def test_get_run_output_reports_a_pending_activation_output(
         "reason": "activation_incomplete",
         "detail": "The declared node output is not available yet.",
         "retry_after_seconds": 2.0,
+        "final": False,
     }
 
 
@@ -456,7 +456,50 @@ async def test_get_run_output_reports_an_unavailable_plan_output(
         "reason": "output_not_available",
         "detail": "The declared execution plan output is not available.",
         "retry_after_seconds": None,
+        "final": True,
     }
+
+
+@pytest.mark.parametrize("output_status", ["waiting", "pending"])
+async def test_get_run_output_reports_a_plan_output_the_run_has_not_produced_yet(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter, output_status: str
+):
+    cloud_api.get(PLAN_OUTPUT_PATH).respond(
+        409,
+        headers={"Content-Type": "application/problem+json"},
+        json={
+            "title": "Execution plan output unavailable",
+            "status": 409,
+            "detail": "The declared execution plan output is not available.",
+            "output_status": output_status,
+            "reason": "output_not_available",
+        },
+    )
+
+    result = await mcp_client.call_tool(
+        "get_run_output", {"flow_run_id": FLOW_RUN_ID, "output_name": "summary"}
+    )
+
+    assert result.structured_content == {
+        "available": False,
+        "value": None,
+        "output_status": output_status,
+        "reason": "output_not_available",
+        "detail": "The declared execution plan output is not available.",
+        "retry_after_seconds": None,
+        "final": False,
+    }
+
+
+async def test_get_run_output_description_says_waiting_outputs_can_still_arrive(
+    mcp_client: Client[Any],
+):
+    tools = {tool.name: tool for tool in await mcp_client.list_tools()}
+    description = tools["get_run_output"].description or ""
+
+    assert "`waiting`" in description
+    assert "`pending`" in description
+    assert "won't become available by waiting" not in description
 
 
 @pytest.mark.parametrize("status_code", [409, 503])
@@ -480,6 +523,7 @@ async def test_get_run_output_passes_on_retry_after(
         "reason": None,
         "detail": "Execution plan snapshot loading is temporarily unavailable.",
         "retry_after_seconds": 5.0,
+        "final": False,
     }
 
 

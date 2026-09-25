@@ -38,6 +38,7 @@ FlowRunId = Annotated[
 MAX_WAIT_SECONDS = 30
 POLL_INTERVAL_SECONDS = 2.0
 FINISHED_RUN_STATUSES = frozenset({"completed", "failed", "cancelled"})
+FINAL_OUTPUT_STATUSES = frozenset({"failed", "skipped", "unavailable"})
 
 
 def progress(run: dict[str, Any]) -> tuple[Any, ...]:
@@ -82,7 +83,9 @@ def format_seconds(seconds: float) -> str:
     return f"{seconds:g}"
 
 
-def read_json_or_raise(response: httpx.Response, method: HttpMethod, path: str) -> Any:
+def read_json_with_retry_hint(
+    response: httpx.Response, method: HttpMethod, path: str
+) -> Any:
     """Return the JSON body of a response, like `read_json`.
 
     When an error response has a `Retry-After` header, the error message
@@ -108,7 +111,13 @@ def output_result(
     detail: str | None = None,
     retry_after_seconds: float | None = None,
 ) -> dict[str, Any]:
-    """Return a `get_run_output` result. Every result has the same keys."""
+    """Return a `get_run_output` result. Every result has the same keys.
+
+    `final` is true when reading the output again can't give a different
+    answer: the value is available, or the output failed, was skipped, or
+    is unavailable for good. An output that is `waiting` or `pending`, or
+    one that Prefect Cloud couldn't read this time, can still arrive.
+    """
     return {
         "available": available,
         "value": value,
@@ -116,6 +125,7 @@ def output_result(
         "reason": reason,
         "detail": detail,
         "retry_after_seconds": retry_after_seconds,
+        "final": available or output_status in FINAL_OUTPUT_STATUSES,
     }
 
 
@@ -163,7 +173,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             body["idempotency_key"] = idempotency_key
         path = f"/flows/{flow_id}/execution-plan/runs"
         response = await api.request("POST", path, json=body)
-        flow_run = read_json_or_raise(response, "POST", path)
+        flow_run = read_json_with_retry_hint(response, "POST", path)
         return {
             "created": response.status_code == 201,
             "flow_run_id": flow_run["id"],
@@ -172,7 +182,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
 
     async def read_run(flow_run_id: UUID) -> dict[str, Any]:
         path = f"/flow_runs/{flow_run_id}/execution-plan"
-        return read_json_or_raise(await api.request("GET", path), "GET", path)
+        return read_json_with_retry_hint(await api.request("GET", path), "GET", path)
 
     @tool(mcp, read_only=True)
     async def get_run(
@@ -262,10 +272,16 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         Returns `available` and, when it is true, the output's `value`.
         When the output can't be read yet or at all, `available` is false and
         `output_status`, `reason`, and `detail` say why, as Prefect Cloud
-        reports them. `retry_after_seconds` is set when Prefect Cloud asks
-        you to try again after that many seconds. When it is null and
-        `available` is false, the output won't become available by waiting,
-        for example because the node failed or didn't select it.
+        reports them.
+
+        `final` says whether the answer can still change. When `final` is
+        false, the output can still arrive: `output_status` is `waiting` or
+        `pending` while the run or node is still working, and it is null when
+        Prefect Cloud couldn't read the output this time. Read it again after
+        `retry_after_seconds` when that is set, or after `get_run` shows
+        progress. When `final` is true and `available` is false, the output
+        will never arrive, for example because its node failed (`failed`) or
+        didn't produce it (`skipped`).
         """
         run_path = f"/flow_runs/{flow_run_id}/execution-plan"
         if activation_id is None:
@@ -288,7 +304,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                 detail=response_detail(response),
                 retry_after_seconds=retry_after_seconds(response),
             )
-        value = read_json_or_raise(response, "GET", path)
+        value = read_json_with_retry_hint(response, "GET", path)
         return output_result(available=True, value=value, output_status="available")
 
     @tool(mcp, read_only=False)
@@ -326,7 +342,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             f"{activation_id}/human-input/responses"
         )
         result = await api.request("POST", path, json={"response": response})
-        read_json_or_raise(result, "POST", path)
+        read_json_with_retry_hint(result, "POST", path)
         return {
             "submitted": True,
             "flow_run_id": str(flow_run_id),
