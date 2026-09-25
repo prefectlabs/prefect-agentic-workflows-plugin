@@ -1872,7 +1872,7 @@ dev = [
 requires-dist = [
     { name = "fastmcp", specifier = ">=3.0.0,<4" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "prefect", specifier = ">=3.4.22" },
+    { name = "prefect", specifier = ">=3.4.22,<4" },
 ]
 
 [package.metadata.requires-dev]
