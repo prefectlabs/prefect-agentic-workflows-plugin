@@ -10,6 +10,10 @@ can use execution plans, and it turns each known failure into a message that
 says how to fix it. A passing check is cached for the API URL it ran against.
 A failing check is not cached, so the next tool call runs it again after the
 user fixes the problem.
+
+The preflight check can't detect a workspace with no object storage bucket,
+because Cloud only rejects requests that write to the bucket. `read_json`
+turns that rejection into a message that names the missing bucket.
 """
 
 from typing import Any, Literal
@@ -54,7 +58,14 @@ FEATURE_NOT_ENABLED_MESSAGE = (
     "to turn on the `execution-plans` feature for the account, then call this "
     "tool again."
 )
-UNREACHABLE_MESSAGE = "Could not reach Prefect Cloud at {api_url}: {error}"
+NO_BUCKET_DETAIL = "object storage bucket has not been provisioned"
+NO_BUCKET_MESSAGE = (
+    "This workspace has no object storage bucket, so Prefect Cloud has nowhere "
+    "to store execution plans (HTTP 409: {detail}). Ask your Prefect contact to "
+    "configure an object storage bucket for the workspace, then call this tool "
+    "again."
+)
+UNREACHABLE_MESSAGE ="Could not reach Prefect Cloud at {api_url}: {error}"
 PREFLIGHT_FAILED_MESSAGE = (
     "Prefect Cloud returned HTTP {status_code} while checking that execution "
     "plans are available: {detail}"
@@ -85,6 +96,38 @@ def response_detail(response: httpx.Response) -> str:
     return str(body)
 
 
+def read_json(response: httpx.Response, method: HttpMethod, path: str) -> Any:
+    """Return the JSON body of the response to a request for `method` and `path`.
+
+    Raises `ToolError` with the API's error detail for any status of 400 or
+    higher. Returns None when the response has no body.
+    """
+    if response.is_error:
+        detail = response_detail(response)
+        # Cloud answers 409 with this detail when a request needs to write to
+        # the workspace's object storage bucket and the workspace has none.
+        if response.status_code == 409 and NO_BUCKET_DETAIL in detail:
+            raise ToolError(NO_BUCKET_MESSAGE.format(detail=detail))
+        raise ToolError(
+            REQUEST_FAILED_MESSAGE.format(
+                status_code=response.status_code,
+                method=method,
+                path=path,
+                detail=detail,
+            )
+        )
+    if not response.content:
+        return None
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise ToolError(
+            NOT_JSON_MESSAGE.format(
+                method=method, path=path, status_code=response.status_code
+            )
+        ) from exc
+
+
 class WorkspaceApi:
     """Sends requests to the Cloud workspace in the active Prefect profile.
 
@@ -108,7 +151,8 @@ class WorkspaceApi:
         """Send a request to a workspace-relative path and return the response.
 
         The response is returned for every HTTP status, so a caller can read
-        headers such as `Retry-After`. Use `call` to raise on error statuses.
+        headers such as `Retry-After`. Use `call`, or pass the response to
+        `read_json`, to raise on error statuses.
         Raises `ToolError` with a fix-it message when the preflight check fails.
         """
         if not path.startswith("/"):
@@ -147,25 +191,7 @@ class WorkspaceApi:
         response = await self.request(
             method, path, json=json, params=params, timeout=timeout
         )
-        if response.is_error:
-            raise ToolError(
-                REQUEST_FAILED_MESSAGE.format(
-                    status_code=response.status_code,
-                    method=method,
-                    path=path,
-                    detail=response_detail(response),
-                )
-            )
-        if not response.content:
-            return None
-        try:
-            return response.json()
-        except ValueError as exc:
-            raise ToolError(
-                NOT_JSON_MESSAGE.format(
-                    method=method, path=path, status_code=response.status_code
-                )
-            ) from exc
+        return read_json(response, method, path)
 
     def _read_profile(self) -> tuple[str, str]:
         settings = get_current_settings()
