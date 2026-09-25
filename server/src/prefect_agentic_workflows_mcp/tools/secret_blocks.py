@@ -58,9 +58,9 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                 },
             )
             documents: list[dict[str, Any]] = page or []
-            # Copy only the name and ID. The filter already asks for Secret
-            # blocks without their values, and this keeps both promises even
-            # if the API sends back something else.
+            # Copy only the name and ID, and check the block type here too,
+            # so a value or another block type never reaches the agent even
+            # if the API returns one.
             blocks.extend(
                 SecretBlock(name=str(document["name"]), id=str(document["id"]))
                 for document in documents

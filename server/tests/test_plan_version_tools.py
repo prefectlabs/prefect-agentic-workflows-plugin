@@ -143,10 +143,10 @@ async def test_publish_plan_returns_the_errors_from_a_rejected_create(
 ):
     mock_valid_plan(cloud_api)
     error = {
-        "code": "unsupported_orchestration_node",
+        "code": "cycle_detected",
         "phase": "semantic",
-        "path": ["nodes", "wait"],
-        "message": "Timer nodes can't be activated yet.",
+        "path": ["edges", 1],
+        "message": "Edge 'back' participates in a cycle involving nodes ['a', 'b'].",
     }
     cloud_api.post(VERSIONS_PATH).respond(422, json={"detail": [error]})
 

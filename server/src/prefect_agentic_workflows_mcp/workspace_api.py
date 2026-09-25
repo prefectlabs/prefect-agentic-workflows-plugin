@@ -65,7 +65,7 @@ NO_BUCKET_MESSAGE = (
     "configure an object storage bucket for the workspace, then call this tool "
     "again."
 )
-UNREACHABLE_MESSAGE ="Could not reach Prefect Cloud at {api_url}: {error}"
+UNREACHABLE_MESSAGE = "Could not reach Prefect Cloud at {api_url}: {error}"
 PREFLIGHT_FAILED_MESSAGE = (
     "Prefect Cloud returned HTTP {status_code} while checking that execution "
     "plans are available: {detail}"

@@ -125,7 +125,7 @@ async def test_create_schedule_reports_a_flow_without_an_active_plan(
     mcp_client: Client[Any], cloud_api: respx.MockRouter
 ):
     cloud_api.post(SCHEDULES_PATH).respond(
-        409, json={"detail": "The flow has no active execution plan version."}
+        409, json={"detail": "Flow has no active execution plan version."}
     )
 
     result = await mcp_client.call_tool(

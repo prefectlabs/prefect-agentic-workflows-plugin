@@ -89,7 +89,7 @@ ScheduleSpec = Annotated[
 
 FlowId = Annotated[UUID, Field(description="ID of the flow that owns the schedule.")]
 ScheduleId = Annotated[UUID, Field(description="ID of the schedule.")]
-ScheduleName =Annotated[str, Field(description="Name of the schedule.")]
+ScheduleName = Annotated[str, Field(description="Name of the schedule.")]
 ScheduleParameters = Annotated[
     dict[str, Any],
     Field(
