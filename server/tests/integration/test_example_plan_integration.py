@@ -33,4 +33,3 @@ async def test_example_plan_passes_validate_plan(mcp_client: Client[Any], path: 
     assert body is not None
     assert body["errors"] == []
     assert body["valid"] is True
-
