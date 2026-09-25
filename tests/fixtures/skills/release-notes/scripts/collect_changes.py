@@ -20,9 +20,7 @@ CHANGE_TYPES = {
 
 
 def git(*args: str) -> str:
-    result = subprocess.run(
-        ["git", *args], capture_output=True, text=True, check=True
-    )
+    result = subprocess.run(["git", *args], capture_output=True, text=True, check=True)
     return result.stdout.strip()
 
 
@@ -42,14 +40,18 @@ def pr_number(subject: str) -> int | None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--since", help="start tag; defaults to the latest tag")
+    parser.add_argument(
+        "--since",
+        help="start tag or commit; defaults to the latest tag before --until",
+    )
     parser.add_argument("--until", default="HEAD", help="end ref; defaults to HEAD")
     args = parser.parse_args()
 
     since = args.since
     if since is None:
         try:
-            since = git("describe", "--tags", "--abbrev=0", args.until)
+            # Start from the parent so a tag on --until itself is skipped.
+            since = git("describe", "--tags", "--abbrev=0", f"{args.until}^")
         except subprocess.CalledProcessError:
             print("No tag found. Pass --since with a tag or commit.", file=sys.stderr)
             return 1
@@ -67,7 +69,8 @@ def main() -> int:
             }
         )
 
-    json.dump({"since": since, "until": args.until, "changes": changes}, sys.stdout, indent=2)
+    result = {"since": since, "until": args.until, "changes": changes}
+    json.dump(result, sys.stdout, indent=2)
     print()
     return 0
 
