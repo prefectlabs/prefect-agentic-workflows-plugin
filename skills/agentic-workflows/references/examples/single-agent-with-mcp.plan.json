@@ -1,0 +1,88 @@
+{
+  "kind": "ExecutionPlan",
+  "schema_version": "0.2",
+  "inputs": {
+    "repository": {
+      "schema": {
+        "type": "string",
+        "description": "GitHub repository as owner/name, for example prefecthq/prefect.",
+        "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+      },
+      "required": true
+    }
+  },
+  "nodes": {
+    "summarize_bugs": {
+      "kind": "AgentNode",
+      "label": "Summarize open bugs",
+      "objective": "Use the GitHub tools to list the open issues labeled `bug` in the repository given in the `repository` input. Read at most the 20 most recently updated issues. Select the `summary` output with `issue_count`, the number of open bug issues, and `summary`, three to five sentences on the common themes and the issues that need attention first.",
+      "mcp": {
+        "mcpServers": {
+          "github": {
+            "type": "http",
+            "url": "https://api.githubcopilot.com/mcp/",
+            "headers": {
+              "Authorization": {
+                "$ref": {
+                  "block_document_id": "00000000-0000-0000-0000-000000000000"
+                }
+              }
+            }
+          }
+        }
+      },
+      "inputs": {
+        "repository": {
+          "schema": {"type": "string"},
+          "expects": {"cardinality": "exactly_one", "shape": "value"}
+        }
+      },
+      "outputs": {
+        "summary": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "issue_count": {"type": "integer", "minimum": 0},
+              "summary": {"type": "string"}
+            },
+            "required": ["issue_count", "summary"]
+          }
+        }
+      },
+      "orchestration": {
+        "output_selection": "exactly_one",
+        "evaluate_when": "all_required_inputs_produced",
+        "on_failure": {"retry": {"max_attempts": 2, "delay_seconds": 10}}
+      }
+    }
+  },
+  "edges": [
+    {
+      "id": "repository-to-summarize_bugs",
+      "from": {"type": "plan_input", "input": "repository"},
+      "to": {"node": "summarize_bugs", "input": "repository"}
+    }
+  ],
+  "outputs": {
+    "bug_report": {
+      "fields": {
+        "report": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "issue_count": {"type": "integer", "minimum": 0},
+              "summary": {"type": "string"}
+            },
+            "required": ["issue_count", "summary"]
+          },
+          "source": {
+            "type": "node_output",
+            "node": "summarize_bugs",
+            "output": "summary"
+          }
+        }
+      },
+      "required": ["report"]
+    }
+  }
+}

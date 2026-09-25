@@ -1,6 +1,6 @@
 # Design guidance
 
-Read this before you draft a plan. `get_schema` is the source of truth for field names and shapes. This file explains how to use them well.
+Read this before you draft a plan. `get_schema` is the source of truth for field names and shapes. This file explains how to use them well, and [example-plans.md](example-plans.md) has complete plans that use them.
 
 ## A plan is a graph of outcomes
 

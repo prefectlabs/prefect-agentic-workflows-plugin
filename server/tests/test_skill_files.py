@@ -2,9 +2,11 @@
 
 The skill is Markdown in `skills/` at the repo root. These tests read it as
 text and fail when it names a tool the server doesn't register or links to a
-file that doesn't exist.
+file that doesn't exist. They also check the example plans offline. The
+integration suite validates the example plans against Cloud.
 """
 
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -55,3 +57,28 @@ def test_platform_limits_say_when_they_were_last_verified():
     text = (SKILL_DIR / "references" / "platform-limits.md").read_text()
 
     assert re.search(r"^Last verified: \d{4}-\d{2}-\d{2}", text, re.MULTILINE)
+
+
+def example_plans() -> list[Path]:
+    examples = sorted((SKILL_DIR / "references" / "examples").glob("*.plan.json"))
+    assert examples, "the skill has no example plans"
+    return examples
+
+
+def test_example_plans_are_linked_from_the_examples_reference():
+    text = (SKILL_DIR / "references" / "example-plans.md").read_text()
+    linked = set(MARKDOWN_LINK.findall(text))
+
+    unlinked = [
+        path.name for path in example_plans() if f"examples/{path.name}" not in linked
+    ]
+
+    assert not unlinked
+
+
+def test_example_plans_are_plan_documents_without_a_layout():
+    for path in example_plans():
+        plan = json.loads(path.read_text())
+
+        assert plan["kind"] == "ExecutionPlan", path.name
+        assert "layout" not in plan, path.name
