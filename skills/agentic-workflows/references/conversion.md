@@ -16,17 +16,17 @@ Work through these steps in order. Finish each step before starting the next.
 To find an installed skill, search the project's and the user's skill directories and the plugin cache. Replace `<name>` with the name the user gave:
 
 ```bash
-find .claude/skills .agents/skills ~/.claude/skills ~/.agents/skills ~/.claude/plugins/cache \
-  -name SKILL.md 2>/dev/null | xargs grep -l -E "^name: *<name> *$" 2>/dev/null
+find -L .claude/skills .agents/skills ~/.claude/skills ~/.agents/skills ~/.claude/plugins/cache \
+  -name SKILL.md -exec grep -l -E "^name:[[:space:]]*['\"]?<name>['\"]?[[:space:]]*$" {} + 2>/dev/null
 ```
 
-When there is no match, search for the name in directory paths with `-path "*<name>*"` and show the user what you find. When the plugin cache has several versions of one skill, use the newest version. When different skills match, show the user their paths and ask which one to convert.
+Keep the `-L`: skill installers often link a skill directory to its real copy, and `find` doesn't follow a linked directory without it. The same skill can then show up under several paths. When there is no match, search for the name in directory paths with `-path "*<name>*"` and show the user what you find. When the plugin cache has several versions of one skill, use the newest version. When different skills match, show the user their paths and ask which one to convert.
 
 The step is done when you have the skill's directory, or the pasted text.
 
 ## 2. Read the whole skill
 
-List every file in the skill directory with `find <skill directory> -type f`, then read every file: `SKILL.md`, its reference files, scripts, templates, and config. A reference file often holds the rules a step checks against, and a script's code shows what it reads, what it prints, and what it changes. For each script, write down its inputs, its output, and its side effects.
+List every file in the skill directory with `find -L <skill directory> -type f`, then read every file except binary and cache files such as `__pycache__/` and `.DS_Store`: `SKILL.md`, its reference files, scripts, templates, and config. A reference file often holds the rules a step checks against, and a script's code shows what it reads, what it prints, and what it changes. For each script, write down its inputs, its output, and its side effects.
 
 When the text is pasted, ask the user to paste each file it names or links to, such as a script or a reference file.
 
@@ -49,7 +49,7 @@ Then check each step against the table below. Each match is an unsupported part.
 | Reading or writing a local file, such as saving a draft to disk | An agent node can't reach the user's files. | Pass the content to the next node as a typed output. Return a final file as a plan output, or write it with a remote MCP tool. |
 | A question to the user in the middle of the work | The run has no conversation. | A plan input when the answer is known before the run starts. A human-input node when the answer depends on earlier work. |
 | A credential in an environment variable or config file | Plans refer to credentials only through Secret blocks. | A Secret block reference. See [secret-blocks.md](secret-blocks.md). |
-| A human approval | Converts as written. | A human-input node with one output per choice. |
+| A human approval | Converts as written, unless the user can ask for edits and see the result again. That edit round is a loop. | A human-input node with one output per choice. For an edit round that shows the result again, use a fixed number of review rounds, or a "request changes" output that leads to one revision node and then a final approval. |
 | A reference file with rules or a style guide | Converts as written. | Copy the rules the node needs into its objective. |
 | Setup instructions, such as adding an MCP server | Not work the run does. | The node's `mcp` config. Setup needs no node. |
 

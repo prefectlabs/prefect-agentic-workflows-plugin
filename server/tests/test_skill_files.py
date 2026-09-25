@@ -85,6 +85,49 @@ def test_conversion_guide_proposes_a_substitute_for_each_unsupported_part():
     assert not missing
 
 
+def test_conversion_guide_handles_every_input_form():
+    text = (SKILL_DIR / "references" / "conversion.md").read_text()
+
+    missing = [
+        form
+        for form in [
+            "A path to a `SKILL.md` file",
+            "A path to a directory",
+            "A skill name",
+            "Pasted text",
+        ]
+        if form not in text
+    ]
+
+    assert not missing
+
+
+def test_conversion_guide_follows_symlinked_skill_directories():
+    # `npx skills add` installs a skill as a symlink, and `find` doesn't
+    # follow a symlinked starting path without -L.
+    text = (SKILL_DIR / "references" / "conversion.md").read_text()
+
+    assert re.findall(r"\bfind (?!-L )[.~<]", text) == []
+
+
+def test_conversion_guide_treats_an_edit_round_as_a_loop():
+    text = (SKILL_DIR / "references" / "conversion.md").read_text()
+    approval_row = next(
+        line for line in text.splitlines() if line.startswith("| A human approval")
+    )
+
+    assert "loop" in approval_row
+
+
+def test_skill_carries_the_step_map_into_the_summary_and_report():
+    text = (SKILL_DIR / "SKILL.md").read_text()
+    summary = next(line for line in text.splitlines() if "**Summary.**" in line)
+    report = next(line for line in text.splitlines() if "**Report.**" in line)
+
+    assert "step map" in summary
+    assert "step map" in report
+
+
 def example_plans() -> list[Path]:
     examples = sorted((SKILL_DIR / "references" / "examples").glob("*.plan.json"))
     assert examples, "the skill has no example plans"
