@@ -1,6 +1,6 @@
 # Platform limits
 
-Last verified: 2026-09-25, against Prefect Cloud.
+Last verified: 2026-09-25, against the Prefect Cloud API.
 
 These are the limits a plan must fit when you draft it. The platform changes, so when a `validate_plan` or `publish_plan` error disagrees with this file, follow the error and tell the user this file may be out of date.
 
@@ -14,7 +14,7 @@ These are the limits a plan must fit when you draft it. The platform changes, so
 - An agent node has at most 60 seconds to finish its work. Split longer work across nodes, or move it into a Deployment node.
 - Prefect Cloud chooses the model. A plan can't set one.
 - Tools come only from remote MCP servers over Streamable HTTP (`"type": "http"`). Stdio MCP servers are rejected, and so are server URLs with an `/sse` path segment.
-- An MCP server URL has no credentials, query string, or fragment. It must use HTTPS when the server has `headers` or `query` values.
+- An MCP server URL has no credentials, path parameters (`;`), query string, or fragment. It must use HTTPS when the server has `headers` or `query` values.
 - Sensitive headers and query values must reference a Secret block as `{"$ref": {"block_document_id": "<id>"}}`. This applies to `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, and any name that contains `token`, `secret`, `password`, `credential`, `apikey`, `accesskey`, or `privatekey`. Case and separators such as `-` and `_` don't matter, so `X-Api-Key` counts. See [secret-blocks.md](secret-blocks.md).
 
 ## Graph shape
