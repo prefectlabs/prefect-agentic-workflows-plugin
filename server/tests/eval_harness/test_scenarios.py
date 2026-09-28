@@ -8,6 +8,7 @@ from harness_plans import approval_plan
 from evals.fake_cloud import FakeCloud
 from evals.record import Reply, ToolCall, Transcript
 from evals.scenario import Outcome, Rule, next_rule
+from evals.scenarios import release_notes_conversion
 from evals.scenarios import SCENARIOS
 
 RULES = [
@@ -99,3 +100,35 @@ def test_release_notes_checks_fail_without_a_human_input_node():
     plan["nodes"]["approve"]["kind"] = "AgentNode"
 
     assert failed_checks(outcome(plan=plan)) == ["plan has at least 1 HumanInputNode"]
+
+
+INFRASTRUCTURE_QUESTION = """\
+Before we design the workflow, I need to know which of your business tools it
+can use. A step that an AI agent runs in Prefect Cloud can only use a tool
+through a remote MCP server: a web address that lets an agent use one of your
+business tools. For each tool this workflow needs, do you have that web
+address?
+"""
+
+
+def test_release_notes_user_answers_the_infrastructure_check_before_the_design():
+    rule = next_rule(
+        release_notes_conversion.USER, INFRASTRUCTURE_QUESTION, transcript_with()
+    )
+
+    assert rule is not None
+    assert rule.label == "reachable-systems"
+    assert rule.reply is not None
+    assert "https://tools.example.com/mcp" in rule.reply
+
+
+def test_release_notes_user_approves_the_design_after_the_infrastructure_check():
+    transcript = transcript_with(replies=["reachable-systems"])
+    rule = next_rule(
+        release_notes_conversion.USER,
+        "Here is the conversion report. Do you approve this design?",
+        transcript,
+    )
+
+    assert rule is not None
+    assert rule.label == "design-approval"

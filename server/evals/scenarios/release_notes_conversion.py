@@ -4,6 +4,10 @@ The fixture skill has one part for each case of the conversion report: a local
 script whose output later steps read, a stdio MCP server, a repeat-until-done
 loop, and a human approval. See `tests/fixtures/skills/README.md`.
 
+When the infrastructure check asks which business tools an agent can reach,
+the simulated user names the GitHub server and a tools server that needs no
+credentials, and says the Docker-based server runs only on their machine.
+
 Expected results:
 
 - the conversion report lists every one of those parts
@@ -35,6 +39,13 @@ available as the `collect_changes` tool on our remote MCP server at
 https://tools.example.com/mcp, which needs no credentials. Go ahead.
 """
 
+REACHABLE_SYSTEMS = """\
+GitHub is reachable through https://api.githubcopilot.com/mcp/ with the token
+in the Secret block `github-token`. We also host a remote MCP server at
+https://tools.example.com/mcp that needs no credentials. The Docker-based
+server in the skill runs only on my machine. Nothing else is reachable.
+"""
+
 REPORT_PARTS = {
     "local script": r"collect_changes",
     "stdio MCP server": r"stdio|docker run",
@@ -61,6 +72,13 @@ USER = [
         max_uses=1,
     ),
     Rule(label="end", after_tool="start_run", reply=None),
+    Rule(
+        label="reachable-systems",
+        before_tool="validate_plan",
+        pattern=r"reach|business tool|web address|remote MCP server",
+        reply=REACHABLE_SYSTEMS,
+        max_uses=1,
+    ),
     Rule(
         label="design-approval",
         before_tool="validate_plan",

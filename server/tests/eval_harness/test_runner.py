@@ -18,6 +18,7 @@ from evals.runner import (
     LOCAL_HOST,
     WORKSPACE_PATH,
     RunResult,
+    agent_arguments,
     prefect_environment,
     run_scenario,
     serve,
@@ -151,3 +152,16 @@ def test_the_release_notes_scenario_is_registered():
     scenario = SCENARIOS["release-notes-conversion"]
 
     assert (scenario.files["release-notes"] / "SKILL.md").exists()
+
+
+def test_the_agent_may_load_the_skill_with_the_skill_tool(tmp_path: Path):
+    arguments = agent_arguments(
+        ["claude"],
+        mcp_config_path=tmp_path / "mcp.json",
+        session_id=None,
+        agent_turn_limit=10,
+        model=None,
+    )
+
+    allowed = next(item for item in arguments if item.startswith("--allowedTools="))
+    assert "Skill" in allowed.removeprefix("--allowedTools=").split(",")

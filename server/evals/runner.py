@@ -48,6 +48,7 @@ ALLOWED_TOOLS = [
     "Edit",
     "Glob",
     "Grep",
+    "Skill",
     "Bash(find:*)",
     "Bash(ls:*)",
     "Bash(cat:*)",
