@@ -1,6 +1,6 @@
 # Example plans
 
-Three complete plans that pass `validate_plan`. Start a draft from the example closest to the workflow, then change it to fit. Each example uses schema version 0.2, which adds plan `outputs`. When `get_schema` returns a different `schema_version`, write that version, and remove `outputs` if the version doesn't declare them.
+Three complete plans that pass `validate_plan`. Start a draft from the example closest to the workflow, then change it to fit. Each example uses schema version 0.2, which adds plan `outputs`. Write your plan against the newest version in `get_schema`'s `supported_schema_versions`. If that version doesn't declare `outputs`, remove them.
 
 The examples hold placeholder IDs of all zeros. Replace each one before you publish: a Secret block ID comes from `list_secret_blocks`, and a deployment ID comes from the user. `validate_plan` accepts the placeholders, but `publish_plan` rejects a Secret block ID that the publisher can't see.
 

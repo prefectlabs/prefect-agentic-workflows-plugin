@@ -27,8 +27,9 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
     async def get_schema(version: SchemaVersion = None) -> dict[str, Any]:
         """Read the JSON Schema for execution-plan documents from Prefect Cloud.
 
-        Call this before drafting a plan, and write the plan against the
-        returned `schema_version`. The schema covers document shape only.
+        Call this before drafting a plan. Omitting `version` returns the
+        platform's current version, which can be older than the newest one in
+        `supported_schema_versions`. The schema covers document shape only.
         Call `validate_plan` to check a draft against the graph rules too.
         """
         params = {"version": version} if version is not None else None

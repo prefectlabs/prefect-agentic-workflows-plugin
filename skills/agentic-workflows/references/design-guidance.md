@@ -18,7 +18,7 @@ Name each output for the outcome it means (`approved`, `rejected`, `summary_read
 
 ## Typed outputs are the contract between nodes
 
-Every output port and input port has a JSON Schema. The downstream input schema must accept what the upstream output schema allows, and `validate_plan` checks this. Use small object schemas with `required` fields, so each node states exactly what it hands on and the next node's objective can name those fields.
+Every output port and input port has a JSON Schema. The downstream input schema must accept what the upstream output schema allows. `validate_plan` does not check this for edges between nodes. It checks it only for plan outputs, so compare the two schemas yourself for every edge. Use small object schemas with `required` fields, so each node states exactly what it hands on and the next node's objective can name those fields.
 
 ## Output names are durable
 
