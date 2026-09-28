@@ -1853,13 +1853,11 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "jsonschema" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "respx" },
     { name = "ruff" },
     { name = "ty" },
-    { name = "uvicorn" },
 ]
 
 [package.metadata]
@@ -1871,13 +1869,11 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "jsonschema", specifier = ">=4.18" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "respx", specifier = ">=0.22" },
     { name = "ruff", specifier = ">=0.13" },
     { name = "ty", specifier = ">=0.0.1a20" },
-    { name = "uvicorn", specifier = ">=0.30" },
 ]
 
 [[package]]
