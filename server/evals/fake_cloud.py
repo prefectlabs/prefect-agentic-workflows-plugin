@@ -17,6 +17,12 @@ that Cloud serves, then runs the graph checks the skill depends on:
 - a human-input node with more than one response output has a required
   `decision` property whose `enum` lists those outputs
 
+Other Cloud checks are not ported, such as the root `evaluate_when` rule, the
+output schema compatibility checks, the human-input deadline and retry rules,
+and activation limits. Shape errors use `jsonschema` validator names as their
+codes, not Cloud's codes. Activation doesn't refuse timer nodes or manual
+evaluation, and a new version doesn't check that its Secret blocks exist.
+
 A run moves one node forward each time it is read. Agent, deployment, and
 timer nodes complete with their first declared output unless a `NodeScript`
 says otherwise. A human-input node waits until a response is submitted, then
@@ -477,7 +483,14 @@ class FakeRun:
                 ports.setdefault(str(target.get("input")), []).append(
                     self.source_state(graph.edge_source(edge))
                 )
-        states = ["produced" if "produced" in s else s[0] for s in ports.values()]
+        states = [
+            "produced"
+            if "produced" in sources
+            else "waiting"
+            if "waiting" in sources
+            else "dead"
+            for sources in ports.values()
+        ]
         if any(state == "waiting" for state in states):
             return "waiting"
         if any(state == "dead" for state in states):

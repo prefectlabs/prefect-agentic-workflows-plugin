@@ -495,3 +495,65 @@ async def test_a_seeded_flow_has_its_active_version_and_schedule(
     assert found["created"] is False
     assert active["active_version"]["id"] == version["id"]
     assert schedules == {"schedules": [schedule]}
+
+
+def join_after_approval_plan() -> dict[str, Any]:
+    """Return a plan where `finish` joins an approval branch and a skipped branch.
+
+    `draft` selects `drafted`, which leads to the `approve` form. Its other
+    output, `skipped`, leads to `notify`, which never runs. Both `notify` and
+    `approve` feed the same input on `finish`.
+    """
+    plan = approval_plan()
+    nodes = plan["nodes"]
+    nodes["draft"]["outputs"]["skipped"] = {"schema": {"type": "object"}}
+    nodes["notify"] = {
+        "kind": "AgentNode",
+        "objective": "Say that nothing was drafted.",
+        "inputs": {"reason": port({})},
+        "outputs": {"notified": {"schema": {"type": "object"}}},
+        "orchestration": nodes["publish"]["orchestration"],
+    }
+    nodes["finish"] = {
+        "kind": "AgentNode",
+        "objective": "Wrap up.",
+        "inputs": {"outcome": port({})},
+        "outputs": {"done": {"schema": {"type": "object"}}},
+        "orchestration": nodes["publish"]["orchestration"],
+    }
+    plan["edges"] += [
+        edge("skipped-to-notify", from_node("draft", "skipped"), "notify", "reason"),
+        edge("notify-to-finish", from_node("notify", "notified"), "finish", "outcome"),
+        edge(
+            "approved-to-finish", from_node("approve", "approved"), "finish", "outcome"
+        ),
+    ]
+    return plan
+
+
+async def test_a_join_waits_while_one_of_its_sources_is_waiting_for_an_answer(
+    client: Client[Any],
+):
+    flow_id = await publish(client, join_after_approval_plan())
+    started = await call(
+        client, "start_run", flow_id=flow_id, parameters={"topic": "release 1.2"}
+    )
+    flow_run_id = started["flow_run_id"]
+    waiting = await wait_for_status(client, flow_run_id, "awaiting_external_progress")
+    for _ in range(3):
+        waiting = await call(client, "get_run", flow_run_id=flow_run_id)
+
+    assert node(waiting, "notify")["status"] == "skipped"
+    assert node(waiting, "finish")["status"] == "pending"
+
+    await call(
+        client,
+        "submit_human_input",
+        flow_run_id=flow_run_id,
+        activation_id=node(waiting, "approve")["activation_id"],
+        response={"decision": "approved"},
+    )
+    finished = await wait_for_status(client, flow_run_id, "completed")
+
+    assert node(finished, "finish")["status"] == "completed"
+
