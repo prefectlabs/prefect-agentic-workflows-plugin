@@ -5,7 +5,6 @@ from typing import Any
 
 import respx
 from fastmcp import Client
-
 from support import error_text
 
 FLOW_ID = "33333333-3333-3333-3333-333333333333"
@@ -71,9 +70,7 @@ async def test_get_or_create_flow_returns_the_same_flow_id_on_a_second_call(
     cloud_api.post("/flows/").respond(201, json=flow)
 
     first = await mcp_client.call_tool("get_or_create_flow", {"name": "daily-summary"})
-    second = await mcp_client.call_tool(
-        "get_or_create_flow", {"name": "daily-summary"}
-    )
+    second = await mcp_client.call_tool("get_or_create_flow", {"name": "daily-summary"})
 
     assert first.structured_content is not None
     assert second.structured_content is not None

@@ -24,7 +24,7 @@ the profile or the workspace, relay that error to the user.
 
 
 def build_server() -> FastMCP[Any]:
-    """Return a server with every tool group in `prefect_agentic_workflows_mcp.tools`."""
+    """Return a server with every tool group in the `tools` package."""
     mcp: FastMCP[Any] = FastMCP(
         SERVER_NAME, instructions=INSTRUCTIONS, version=__version__
     )

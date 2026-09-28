@@ -23,7 +23,9 @@ Run these commands from this directory.
 ```sh
 uv sync                  # install the package and the dev tools
 uv run pytest            # run the mocked test suite
-uv run pyright           # type-check src/ and tests/
+uv run ruff check .      # lint
+uv run ruff format .     # format
+uv run ty check          # type-check src/ and tests/
 ```
 
 The mocked tests call tools through an in-memory FastMCP client and mock the

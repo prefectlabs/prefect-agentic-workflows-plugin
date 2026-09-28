@@ -5,7 +5,6 @@ from typing import Any
 
 import respx
 from fastmcp import Client
-
 from support import error_text, schema_response
 
 

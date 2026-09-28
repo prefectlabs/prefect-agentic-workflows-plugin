@@ -5,7 +5,6 @@ from typing import Any
 
 import respx
 from fastmcp import Client
-
 from support import error_text
 
 FLOW_ID = "33333333-3333-3333-3333-333333333333"

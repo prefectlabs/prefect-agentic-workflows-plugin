@@ -15,9 +15,9 @@ import pytest
 import respx
 from fastmcp import Client
 from prefect.settings import PREFECT_API_KEY, PREFECT_API_URL, temporary_settings
+from support import API_KEY, WORKSPACE_API_URL, schema_response
 
 from prefect_agentic_workflows_mcp.server import build_server
-from support import API_KEY, WORKSPACE_API_URL, schema_response
 
 
 @pytest.fixture(autouse=True)

@@ -6,7 +6,6 @@ from typing import Any
 import pytest
 import respx
 from fastmcp import Client
-
 from support import error_text
 
 FLOW_ID = "33333333-3333-3333-3333-333333333333"
@@ -61,9 +60,7 @@ async def test_create_schedule_sends_a_cron_schedule(
     assert body is not None
     assert body["next_scheduled_time"] == "2026-09-28T09:00:00Z"
     assert body["last_error"] == "Parameter 'channel' is required."
-    assert (
-        body["last_created_flow_run_id"] == "55555555-5555-5555-5555-555555555555"
-    )
+    assert body["last_created_flow_run_id"] == "55555555-5555-5555-5555-555555555555"
 
 
 @pytest.mark.parametrize(

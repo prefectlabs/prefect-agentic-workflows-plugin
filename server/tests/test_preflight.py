@@ -7,9 +7,9 @@ import pytest
 import respx
 from fastmcp import Client
 from prefect.settings import PREFECT_API_KEY, PREFECT_API_URL, temporary_settings
+from support import error_text
 
 from prefect_agentic_workflows_mcp.server import build_server
-from support import error_text
 
 VALID = {"valid": True, "errors": []}
 PLAN = {"schema_version": "0.1"}

@@ -49,5 +49,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         if response.status_code != 404:
             return {"created": False, "flow": read_json(response, "GET", lookup_path)}
 
-        flow = await api.call("POST", "/flows/", json={"name": name, "tags": tags or []})
+        flow = await api.call(
+            "POST", "/flows/", json={"name": name, "tags": tags or []}
+        )
         return {"created": True, "flow": flow}

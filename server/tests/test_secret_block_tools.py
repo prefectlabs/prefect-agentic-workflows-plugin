@@ -5,7 +5,6 @@ from typing import Any
 
 import respx
 from fastmcp import Client
-
 from support import error_text
 
 SECRET_TYPE_ID = "33333333-3333-3333-3333-333333333333"
@@ -157,9 +156,7 @@ async def test_list_secret_blocks_reports_a_failed_request(
         403, json={"detail": "Missing scope see_secret_blocks"}
     )
 
-    result = await mcp_client.call_tool(
-        "list_secret_blocks", {}, raise_on_error=False
-    )
+    result = await mcp_client.call_tool("list_secret_blocks", {}, raise_on_error=False)
 
     message = error_text(result)
     assert "403" in message
