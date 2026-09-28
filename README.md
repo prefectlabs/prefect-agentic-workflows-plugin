@@ -133,6 +133,12 @@ ways to start:
   Cloud, for example a local script or a stdio MCP server, and proposes a
   substitute for each one.
 
+Before any design questions, and before a conversion report, the agent checks
+what the workflow can use: which of your business tools an agent can reach
+from Prefect Cloud, which Secret blocks exist, and which deployments exist. If
+a step needs a tool it can't reach yet, the agent tells you before you spend
+time on the design.
+
 All three ways continue with the same steps:
 
 1. The agent writes a plain-language summary of the plan and waits for you to
@@ -167,6 +173,7 @@ your agent can ask before a tool writes.
 | `start_run`, `get_run`, `get_run_output`, `submit_human_input` | Start a run of the active plan, watch its status, read outputs, and answer human-input forms |
 | `create_schedule`, `list_schedules`, `get_schedule`, `update_schedule`, `delete_schedule` | Manage a flow's plan schedules |
 | `list_secret_blocks` | List Secret block names and IDs, never their values |
+| `list_deployments` | List deployment names and IDs, for Deployment nodes |
 
 ## Development
 

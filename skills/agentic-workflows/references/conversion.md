@@ -55,7 +55,13 @@ Then check each step against the table below. Each match is an unsupported part.
 
 The step is done when every step has a number, and every match is listed.
 
-## 4. Write the conversion report
+## 4. Run the infrastructure check
+
+Follow [infrastructure-check.md](infrastructure-check.md). Ask about every system the source skill touches: each stdio MCP server, each service a script calls, and each credential. The answers decide which substitutes in step 5 need a new service.
+
+The step is done when every system has an answer and the user has read the note on what it limits.
+
+## 5. Write the conversion report
 
 Write the report in this form:
 
@@ -68,7 +74,7 @@ Source: <path, or "pasted text">. Files read: <every file, by path>.
 
 | # | Part | Where | Why it can't run as written | Proposed substitute | Other options |
 |---|---|---|---|---|---|
-| 1 | Runs `scripts/collect_changes.py` | S1 | No shell or local files in a plan | Remote MCP tool, because S2 to S4 need its JSON | Deployment node: passes on only the child run's ID and state, so later nodes can't read the JSON |
+| 1 | Runs `scripts/collect_changes.py` | S1 | No shell or local files in a plan | Remote MCP tool, because S2 to S4 need its JSON. Needs a new service. | Deployment node: passes on only the child run's ID and state, so later nodes can't read the JSON. Human approval step: a person pastes the changes in. |
 
 ### Step map
 
@@ -82,10 +88,10 @@ Source: <path, or "pasted text">. Files read: <every file, by path>.
 1. <each choice the user must make, numbered to match the rows above>
 ```
 
-Every unsupported part from step 3 gets a row in "Parts that need a decision". Every step from step 3 gets a row in the step map. A step's "Where it goes" names a node, a merge into another step's node, or a decision row. When you propose leaving a step out of the plan, give it a decision row too.
+Every unsupported part from step 3 gets a row in "Parts that need a decision". When a proposed substitute or option means hosting a new service, write "Needs a new service." in it. When a row's system isn't reachable yet, list the options that need no new service: a human approval step, or leaving the step out of the first version. Every step from step 3 gets a row in the step map. A step's "Where it goes" names a node, a merge into another step's node, or a decision row. When you propose leaving a step out of the plan, give it a decision row too.
 
 The step is done when the report has a row for every unsupported part and every step.
 
-## 5. Take the report to the summary
+## 6. Take the report to the summary
 
 Continue with step 1 of the pipeline in `SKILL.md`, and show the report together with the summary. The user decides every row and confirms the summary in one design approval, so don't ask for decisions on the report alone. Accepting the whole report counts as a decision on every row. When the user's answers change the plan, update the step map and the summary, and show both again.

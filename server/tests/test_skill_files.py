@@ -241,3 +241,39 @@ def test_a_failed_activation_retry_says_whether_it_needs_approval():
 
     assert "activation_error" in publish
     assert "same approval" in publish
+
+
+def test_every_entry_path_runs_the_infrastructure_check_first():
+    entry_paths = skill_section("Pick the entry path")
+    conversion = (SKILL_DIR / "references" / "conversion.md").read_text()
+
+    assert "(references/infrastructure-check.md)" in entry_paths
+    for marker in ["**The user hands you", "**The user describes", "**The user gives"]:
+        line = skill_line(marker)
+        assert "infrastructure check" in line, marker
+    describes = skill_line("**The user describes")
+    assert describes.index("infrastructure check") < describes.index("checklist")
+    interview = skill_line("**The user gives")
+    assert interview.index("infrastructure check") < interview.index("interview:")
+    assert conversion.index("## 4. Run the infrastructure check") < conversion.index(
+        "## 5. Write the conversion report"
+    )
+
+
+def test_checklist_leaves_remote_mcp_servers_to_the_infrastructure_check():
+    row = skill_line("| Tools and systems")
+
+    assert "Ask which remote MCP servers exist" not in row
+    assert "infrastructure check" in row
+
+
+def test_infrastructure_check_explains_mcp_and_what_its_absence_limits():
+    text = (SKILL_DIR / "references" / "infrastructure-check.md").read_text()
+
+    assert "`list_secret_blocks`" in text
+    assert "`list_deployments`" in text
+    assert "a web address that lets an agent use one of your business tools" in text
+    assert "**No reachable systems at all.**" in text
+    assert "human approval step" in text
+    assert "leaving the step out of the first version" in text
+    assert "needs a new service" in text

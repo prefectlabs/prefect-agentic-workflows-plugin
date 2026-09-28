@@ -9,16 +9,18 @@ An execution plan is a JSON graph of agent, human-input, and deployment nodes at
 
 ## Pick the entry path
 
-- **The user hands you an existing skill to convert**, as a `SKILL.md` path, a directory, an installed skill's name, or pasted text. Follow [references/conversion.md](references/conversion.md): read the whole skill and write the conversion report. Then continue with the pipeline. The user decides the report's rows in the summary step.
-- **The user describes the workflow.** Map the description onto the checklist below. Fill every item the description answers, and fill the rest with the recommended default when it is safe. Then ask only about the gaps: items with no answer and no safe default. Name the defaults you chose in the summary. Continue with the pipeline.
-- **The user gives you nothing to work from.** Run the interview: ask the checklist in one message, with the recommended default beside each item, so the user can answer "defaults are fine" to most of it. Ask a second round only about answers that left gaps. When the workflow has more than one branch, more than one approval, or touches more than two systems, offer the deeper interview in [references/interview.md](references/interview.md). Continue with the pipeline.
+Every path runs the infrastructure check in [references/infrastructure-check.md](references/infrastructure-check.md) before its first design question. The check tells the user which business tools the workflow can reach, and what that limits, before they spend time on the design.
+
+- **The user hands you an existing skill to convert**, as a `SKILL.md` path, a directory, an installed skill's name, or pasted text. Follow [references/conversion.md](references/conversion.md): read the whole skill, run the infrastructure check, and write the conversion report. Then continue with the pipeline. The user decides the report's rows in the summary step.
+- **The user describes the workflow.** Run the infrastructure check. Then map the description onto the checklist below. Fill every item the description answers, and fill the rest with the recommended default when it is safe. Then ask only about the gaps: items with no answer and no safe default. Name the defaults you chose in the summary. Continue with the pipeline.
+- **The user gives you nothing to work from.** Run the infrastructure check, then the interview: ask the checklist in one message, with the recommended default beside each item, so the user can answer "defaults are fine" to most of it. Ask a second round only about answers that left gaps. When the workflow has more than one branch, more than one approval, or touches more than two systems, offer the deeper interview in [references/interview.md](references/interview.md). Continue with the pipeline.
 
 | Checklist item | Recommended default |
 |---|---|
 | Trigger: what starts a run | Started by hand. Add a schedule after a test run works. |
 | Inputs: values each run needs | A value the user changes between runs is a plan input, such as the repository to check. A fixed instruction stays in the node objective, such as "reply in under 100 words". |
 | Steps: the work, in order | No default. Ask. |
-| Tools and systems the steps touch | No default. Ask which remote MCP servers exist. |
+| Tools and systems the steps touch | The systems the infrastructure check found reachable. |
 | Human approval points | One approval before any step that writes to an outside system. |
 | Outputs: what the run produces | One plan output, `result`, taken from the last node's output. |
 | Success: how the user knows it worked | The test run completes and the final result is what the user expected. |

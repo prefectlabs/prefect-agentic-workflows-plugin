@@ -7,9 +7,9 @@ Offer this after the checklist when the workflow has more than one branch, more 
 - What does this step decide, and what are the possible outcomes?
 - What does it read, and from where: a run input, an earlier step, or an outside system?
 - What does it hand to the next step? Name the fields.
-- Which tools and credentials does it use? Is each tool on a remote MCP server the workflow can reach?
+- Which tools and credentials does it use? Did the infrastructure check find each tool reachable?
 - Could it take longer than 60 seconds? If so, where can it be split?
-- Is it the same every time, like a script or a data load? If so, is there a Prefect deployment for it?
+- Is it the same every time, like a script or a data load? If so, which deployment from the infrastructure check runs it?
 
 ## For each approval
 
