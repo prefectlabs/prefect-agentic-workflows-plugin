@@ -387,6 +387,54 @@ async def test_a_scripted_expiry_selects_the_expiry_output(
     ]
 
 
+async def test_a_script_for_a_node_kind_applies_to_every_node_of_that_kind(
+    fake_cloud: FakeCloud, client: Client[Any]
+):
+    plan = approval_plan()
+    approve = plan["nodes"]["approve"]
+    approve["outputs"]["expired"] = {"schema": {"type": "object"}}
+    approve["human_input"]["deadline"] = {
+        "after": "P1D",
+        "on_expiry": {"output": "expired", "value": {"reason": "No answer."}},
+    }
+    fake_cloud.scripts["HumanInputNode"] = NodeScript(expire=True)
+    fake_cloud.scripts["AgentNode"] = NodeScript(value={"draft": "By kind."})
+    fake_cloud.scripts["draft"] = NodeScript(value={"draft": "By ID."})
+    flow_id = await publish(client, plan)
+    started = await call(
+        client, "start_run", flow_id=flow_id, parameters={"topic": "release 1.2"}
+    )
+
+    finished = await wait_for_status(client, started["flow_run_id"], "completed")
+
+    run = fake_cloud.runs[started["flow_run_id"]]
+    assert run.nodes["draft"].value == {"draft": "By ID."}
+    assert node(finished, "approve")["outputs"][-1] == {
+        "output": "expired",
+        "status": "available",
+    }
+
+
+async def test_a_lost_start_run_response_fails_the_call_but_starts_the_run(
+    fake_cloud: FakeCloud, client: Client[Any]
+):
+    flow_id = await publish(client, approval_plan())
+    fake_cloud.lose_response("POST", r"/flows/[^/]+/execution-plan/runs")
+    arguments = {
+        "flow_id": flow_id,
+        "parameters": {"topic": "release 1.2"},
+        "idempotency_key": "test-run-1",
+    }
+
+    lost = await client.call_tool("start_run", arguments, raise_on_error=False)
+    retried = await call(client, "start_run", **arguments)
+
+    assert lost.is_error
+    assert "HTTP 504" in error_text(lost)
+    assert retried["created"] is False
+    assert list(fake_cloud.runs) == [retried["flow_run_id"]]
+
+
 async def test_start_run_with_the_same_idempotency_key_starts_one_run(
     fake_cloud: FakeCloud, client: Client[Any]
 ):

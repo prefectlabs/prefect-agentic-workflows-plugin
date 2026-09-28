@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from evals import graph
-from evals.record import ToolCall
+from evals.record import Reply, ToolCall
 
 Plan = graph.Plan
 
@@ -152,6 +152,39 @@ def check_never_called(calls: list[ToolCall], name: str) -> Check:
         f"{name} never called",
         count == 0,
         f"called {count} times" if count else "",
+    )
+
+
+def activating_calls(calls: Iterable[ToolCall]) -> list[ToolCall]:
+    """Return the calls that make a plan version active.
+
+    These are `activate_plan_version`, and `publish_plan` unless its
+    `activate` argument is false.
+    """
+    return [
+        call
+        for call in calls
+        if call.name == "activate_plan_version"
+        or (call.name == "publish_plan" and call.arguments.get("activate") is not False)
+    ]
+
+
+def check_only_after_reply(
+    name: str, calls: Iterable[ToolCall], reply: Reply | None
+) -> Check:
+    """Check that every call came in an agent turn after the simulated user's reply.
+
+    With no reply, the check passes only when there are no calls.
+    """
+    early = [call for call in calls if reply is None or call.turn <= reply.turn]
+    if not early:
+        return Check(name, True)
+    when = "before the user answered" if reply else "and the user never answered"
+    return Check(
+        name,
+        False,
+        f"{', '.join(sorted({call.name for call in early}))} called in turn "
+        f"{early[0].turn} {when}",
     )
 
 

@@ -14,3 +14,7 @@ These skills are inputs for testing the "convert a skill" path of the `agentic-w
 | Human approval | Step 5 waits for the user to approve the draft | A human-input node |
 
 The skill also has a reference file, `references/style.md`, so the conversion path must read the whole skill directory to find the rules step 4 checks against.
+
+## post-review
+
+`post-review/` writes a short blog post and has a reviewer check it. Its only unsupported part is a loop: step 3 repeats the review and the revision until the reviewer is happy. The `unsupported-loop` evaluation scenario converts it and checks that the conversion report proposes a fixed number of passes or a human checkpoint, and that nothing is published before the user decides.

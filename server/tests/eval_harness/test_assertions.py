@@ -5,7 +5,7 @@ from typing import Any
 from harness_plans import approval_plan, edge, from_node, port
 
 from evals import assertions
-from evals.record import ToolCall
+from evals.record import Reply, ToolCall
 
 
 def cyclic_plan() -> dict[str, Any]:
@@ -163,3 +163,29 @@ def test_check_text_mentions():
     failed = assertions.check_text_mentions("report", text, {"stdio": r"stdio"})
     assert failed.passed is False
     assert failed.detail == "missing: stdio"
+
+
+def test_activating_calls_leave_out_a_publish_without_activation():
+    calls = [
+        ToolCall("publish_plan", {"activate": False}),
+        ToolCall("publish_plan", {"activate": True}),
+        ToolCall("activate_plan_version", {"version_id": "v1"}),
+        ToolCall("get_plan", {}),
+    ]
+
+    assert [call.arguments for call in assertions.activating_calls(calls)] == [
+        {"activate": True},
+        {"version_id": "v1"},
+    ]
+
+
+def test_check_only_after_reply():
+    reply = Reply(2, "approval", "Yes.")
+    early = ToolCall("publish_plan", {}, turn=2)
+    late = ToolCall("publish_plan", {}, turn=3)
+
+    assert assertions.check_only_after_reply("after", [late], reply).passed
+    assert not assertions.check_only_after_reply("after", [early, late], reply).passed
+    assert assertions.check_only_after_reply("after", [], None).passed
+    failed = assertions.check_only_after_reply("after", [late], None)
+    assert failed.detail == "publish_plan called in turn 3 and the user never answered"

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from evals.record import ToolCall, Transcript, read_plan_files
+from evals.record import Reply, ToolCall, Transcript, read_plan_files
 
 
 def event(**body: Any) -> str:
@@ -105,3 +105,15 @@ def test_read_plan_files_reads_every_plan_in_the_workflows_directory(tmp_path: P
         "broken.plan.json": "{",
         "release-notes.plan.json": {"kind": "ExecutionPlan"},
     }
+
+
+def test_first_reply_and_final_message():
+    transcript = Transcript(
+        turn_results=["First.", "Second."],
+        replies=[Reply(1, "design", "Yes."), Reply(2, "design", "Still yes.")],
+    )
+
+    assert transcript.first_reply("design") == Reply(1, "design", "Yes.")
+    assert transcript.first_reply("run") is None
+    assert transcript.final_message(2) == "Second."
+    assert transcript.final_message(3) == ""
