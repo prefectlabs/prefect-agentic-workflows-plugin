@@ -921,13 +921,14 @@ class FakeCloud:
         return deployment
 
     def lose_response(self, method: str, path: str, *, times: int = 1) -> None:
-        """Lose the response to the next `times` requests that match.
+        """Lose the response to the next `times` requests that match and succeed.
 
         `path` is a regular expression for the workspace-relative path, such
         as `/flows/[^/]+/execution-plan/runs`. The fake still does what each
         request asks, then answers 504 with a plain-text body, the way a
         gateway does when it gives up waiting. The client can't tell whether
-        the request took effect.
+        the request took effect. A request the fake rejects keeps its error
+        and doesn't use up a lost response.
         """
         self.lost_responses.append(LostResponse(method, re.compile(f"^{path}$"), times))
 
@@ -958,7 +959,9 @@ class FakeCloud:
                     response = handler(
                         body=body, params=dict(request.url.params), **match.groupdict()
                     )
-                    if self.take_lost_response(request.method, path):
+                    if response.is_success and self.take_lost_response(
+                        request.method, path
+                    ):
                         return httpx.Response(504, text="upstream request timeout")
                     return response
         return error(

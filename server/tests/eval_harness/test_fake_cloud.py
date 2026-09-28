@@ -435,6 +435,34 @@ async def test_a_lost_start_run_response_fails_the_call_but_starts_the_run(
     assert list(fake_cloud.runs) == [retried["flow_run_id"]]
 
 
+async def test_a_lost_response_keeps_an_error_answer_and_waits_for_a_success(
+    fake_cloud: FakeCloud, client: Client[Any]
+):
+    flow_id = await publish(client, approval_plan())
+    fake_cloud.lose_response("POST", r"/flows/[^/]+/execution-plan/runs")
+
+    rejected = await client.call_tool(
+        "start_run",
+        {"flow_id": flow_id, "parameters": {}, "idempotency_key": "bad"},
+        raise_on_error=False,
+    )
+    lost = await client.call_tool(
+        "start_run",
+        {
+            "flow_id": flow_id,
+            "parameters": {"topic": "release 1.2"},
+            "idempotency_key": "good",
+        },
+        raise_on_error=False,
+    )
+
+    assert rejected.is_error
+    assert "HTTP 504" not in error_text(rejected)
+    assert lost.is_error
+    assert "HTTP 504" in error_text(lost)
+    assert len(fake_cloud.runs) == 1
+
+
 async def test_start_run_with_the_same_idempotency_key_starts_one_run(
     fake_cloud: FakeCloud, client: Client[Any]
 ):

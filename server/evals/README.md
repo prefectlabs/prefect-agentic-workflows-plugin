@@ -73,8 +73,9 @@ that kind that has no script of its own.
 
 `fake.lose_response(method, path)` makes the fake do what the next matching
 request asks and then answer 504, as a gateway does when it times out. The
-agent can't tell whether the request took effect. The `run-retry` scenario
-uses it to lose the response to the first `start_run`.
+agent can't tell whether the request took effect. Only a request that
+succeeds loses its response; one the fake rejects keeps its error. The
+`run-retry` scenario uses it to lose the response to the first `start_run`.
 
 ## Scenarios
 
