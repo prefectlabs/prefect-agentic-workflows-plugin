@@ -146,8 +146,11 @@ All three ways continue with the same steps:
 6. It reports the flow and run links, the results, and any platform limits
    that still affect the workflow.
 
-The agent asks before it activates a new version on a flow that already has an
-active plan, starts a run, or deletes a schedule. Credentials stay in Prefect
+The agent asks for your approval at four points: the design summary, before
+each run it starts, before it activates a new version on a flow that already
+has an active plan, and before it creates, changes, or deletes a schedule. A
+run always uses the flow's active version, and the agent's report names the
+version a run used. Credentials stay in Prefect
 Secret blocks. The agent refers to a block by its ID and never asks for a
 secret value.
 

@@ -151,3 +151,81 @@ def test_example_plans_are_plan_documents_without_a_layout():
 
         assert plan["kind"] == "ExecutionPlan", path.name
         assert "layout" not in plan, path.name
+
+
+def skill_section(heading: str) -> str:
+    """Return the text of one `## ` section of `SKILL.md`."""
+    text = (SKILL_DIR / "SKILL.md").read_text()
+    start = text.index(f"## {heading}\n")
+    end = text.find("\n## ", start + 1)
+    return text[start : end if end != -1 else None]
+
+
+def test_every_tool_that_runs_activates_or_schedules_has_one_approval_point():
+    points = [
+        line
+        for line in skill_section("Approval points").splitlines()
+        if re.match(r"\d\. \*\*", line)
+    ]
+    assert len(points) == 4
+    design, external_effects, promotion, recurring_runs = points
+
+    def points_naming(tool: str) -> list[str]:
+        return [point for point in points if f"`{tool}`" in point]
+
+    assert points_naming("start_run") == [external_effects]
+    for tool in ["create_schedule", "update_schedule", "delete_schedule"]:
+        assert points_naming(tool) == [recurring_runs], tool
+    # Activation splits by the flow's state, so each call still has one point:
+    # design when the flow has no active version, promotion when it has one.
+    for tool in ["publish_plan", "activate_plan_version"]:
+        assert points_naming(tool) == [design, promotion], tool
+    assert "no active version" in design
+    assert "already has an active version" in promotion
+    assert "`list_schedules`" in promotion
+
+
+def test_a_conversion_has_one_design_approval():
+    summary = next(
+        line
+        for line in (SKILL_DIR / "SKILL.md").read_text().splitlines()
+        if "**Summary.**" in line
+    )
+    conversion = (SKILL_DIR / "references" / "conversion.md").read_text()
+
+    assert "conversion report" in summary
+    assert "design approval" in summary
+    assert "Stop for the user's decisions" not in conversion
+    assert "one design approval" in conversion
+
+
+def test_checklist_separates_run_inputs_from_fixed_instructions():
+    row = next(
+        line
+        for line in (SKILL_DIR / "SKILL.md").read_text().splitlines()
+        if line.startswith("| Inputs:")
+    )
+
+    assert "Hardcode" not in row
+    assert "plan input" in row
+    assert "objective" in row
+
+
+def test_starting_a_run_keeps_one_idempotency_key_per_run():
+    text = skill_section("Starting a run")
+
+    assert "idempotency key" in text
+    assert "same key" in text
+    assert "`created` false" in text
+
+
+def test_skill_says_a_run_uses_the_active_version():
+    text = skill_section("Starting a run")
+    report = next(
+        line
+        for line in (SKILL_DIR / "SKILL.md").read_text().splitlines()
+        if "**Report.**" in line
+    )
+
+    assert "A run always uses the flow's active version." in text
+    assert "execution_plan_version_id" in report
