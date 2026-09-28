@@ -15,6 +15,7 @@ from prefect_agentic_workflows_mcp.tools import runs
 FLOW_ID = "33333333-3333-3333-3333-333333333333"
 FLOW_RUN_ID = "66666666-6666-6666-6666-666666666666"
 SNAPSHOT_ID = "77777777-7777-7777-7777-777777777777"
+VERSION_ID = "55555555-5555-5555-5555-555555555555"
 ACTIVATION_ID = "88888888-8888-8888-8888-888888888888"
 RUNS_PATH = f"/flows/{FLOW_ID}/execution-plan/runs"
 RUN_PATH = f"/flow_runs/{FLOW_RUN_ID}/execution-plan"
@@ -163,6 +164,7 @@ def run_observation(
             "id": SNAPSHOT_ID,
             "flow_run_id": FLOW_RUN_ID,
             "flow_id": FLOW_ID,
+            "execution_plan_version_id": VERSION_ID,
             "schema_version": "0.1",
             "graph_revision": 3,
         },

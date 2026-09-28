@@ -132,7 +132,8 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         that is active when the schedule fires. The result includes
         `next_scheduled_time`, and after the schedule fires, the ID of the
         last run it started in `last_created_flow_run_id` and any failure to
-        start a run in `last_error`.
+        start a run in `last_error`. Ask the user to confirm before you call
+        this tool.
         """
         return await api.call(
             "POST",
@@ -204,7 +205,8 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
 
         Only the arguments you pass are changed. Pass at least one of `name`,
         `active`, `schedule`, or `parameters`. The flow must have an active
-        plan version. Returns the updated schedule.
+        plan version. Returns the updated schedule. Ask the user to confirm
+        before you call this tool.
         """
         changes: dict[str, Any] = {}
         if name is not None:

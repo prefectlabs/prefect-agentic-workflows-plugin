@@ -202,12 +202,14 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
     ) -> dict[str, Any]:
         """Read the progress of an execution-plan run.
 
-        Returns the run as Prefect Cloud reports it. `status` is the run's
-        status: `running`, `awaiting_external_progress`, `blocked`,
-        `completed`, `failed`, or `cancelled`. `nodes` lists each node with
-        its `status`, `activation_id`, `outputs`, and any `failure`. A node
-        that waits for a person has a `wait` with `kind` set to
-        `human_input`, the `form_schema` to show the user, and a
+        Returns the run as Prefect Cloud reports it.
+        `snapshot.execution_plan_version_id` is the plan version the run
+        uses, which was the flow's active version when the run started.
+        `status` is the run's status: `running`, `awaiting_external_progress`,
+        `blocked`, `completed`, `failed`, or `cancelled`. `nodes` lists each
+        node with its `status`, `activation_id`, `outputs`, and any
+        `failure`. A node that waits for a person has a `wait` with `kind`
+        set to `human_input`, the `form_schema` to show the user, and a
         `deadline_at`. `outputs` lists the plan outputs and their status, and
         `diagnostics` explains why a run is stuck or failed.
 

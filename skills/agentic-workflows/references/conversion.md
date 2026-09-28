@@ -1,6 +1,6 @@
 # Converting a skill
 
-A skill runs on the user's machine: it can run scripts, start stdio MCP servers, read and write local files, and loop until it is done. An execution plan runs in Prefect Cloud, where an agent node's only tools are the remote MCP servers in its `mcp` config. Converting a skill means finding every part that depends on the local machine and agreeing a substitute with the user before you draft.
+A skill runs on the user's machine: it can run scripts, start stdio MCP servers, read and write local files, and loop until it is done. An execution plan runs in Prefect Cloud, where an agent node's only tools are the remote MCP servers in its `mcp` config. Converting a skill means finding every part that depends on the local machine and agreeing a substitute with the user before you draft. The user agrees the substitutes when they approve the design in the summary step.
 
 Work through these steps in order. Finish each step before starting the next.
 
@@ -57,7 +57,7 @@ The step is done when every step has a number, and every match is listed.
 
 ## 4. Write the conversion report
 
-Show the user the report in this form:
+Write the report in this form:
 
 ```markdown
 ## Conversion report: <skill name>
@@ -86,8 +86,6 @@ Every unsupported part from step 3 gets a row in "Parts that need a decision". E
 
 The step is done when the report has a row for every unsupported part and every step.
 
-## 5. Stop for the user's decisions
+## 5. Take the report to the summary
 
-Stop after the report. Ask the user to accept or change each proposed substitute, and wait for their answer. Accepting the whole report in one reply counts as a decision on every row. When the user's answers change the plan, update the step map and show it again.
-
-The step is done when every row has a decision from the user. Then continue with step 1 of the pipeline in `SKILL.md`. The summary includes the step map with each decision, so every source step is in the plan or left out by the user's choice.
+Continue with step 1 of the pipeline in `SKILL.md`, and show the report together with the summary. The user decides every row and confirms the summary in one design approval, so don't ask for decisions on the report alone. Accepting the whole report counts as a decision on every row. When the user's answers change the plan, update the step map and the summary, and show both again.
