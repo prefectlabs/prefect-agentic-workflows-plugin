@@ -59,7 +59,7 @@ The step is done when every step has a number, and every match is listed.
 
 Follow [infrastructure-check.md](infrastructure-check.md). Ask about every system the source skill touches: each stdio MCP server, each service a script calls, and each credential. The answers decide which substitutes in step 5 need a new service.
 
-The step is done when every system has an answer and the user has read the note on what it limits.
+The step is done when every system has an answer. Send the note on what this limits with the conversion report in step 5, not before it.
 
 ## 5. Write the conversion report
 

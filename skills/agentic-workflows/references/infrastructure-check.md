@@ -31,7 +31,7 @@ The step is done when every system the workflow needs has one of these two answe
 
 ## 3. Tell the user what this limits
 
-Send a short note before the checklist, before the gap questions, or with the conversion report. It covers each case below that applies.
+Send a short note before the checklist or the gap questions. On the conversion path, send it with the conversion report instead. It covers each case below that applies.
 
 - **What the workflow can use.** The reachable systems, the Secret blocks that match them, and the deployments that match a step.
 - **A system that isn't reachable yet.** Name the steps that need it. Offer the two options that need no new service: a human approval step, where a person does that part by hand and then continues the run, or leaving the step out of the first version. Then name the third option, a remote MCP server for that system, and say plainly that someone has to find or host that service first.
