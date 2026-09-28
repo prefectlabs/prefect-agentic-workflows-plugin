@@ -105,6 +105,16 @@ class Transcript:
     def replies_labeled(self, label: str) -> list[Reply]:
         return [reply for reply in self.replies if reply.label == label]
 
+    def first_reply(self, label: str) -> Reply | None:
+        """Return the first reply the simulated user sent with a rule, or None."""
+        return next(iter(self.replies_labeled(label)), None)
+
+    def final_message(self, turn: int) -> str:
+        """Return the agent's final message of a turn, counting from 1."""
+        if 1 <= turn <= len(self.turn_results):
+            return self.turn_results[turn - 1]
+        return ""
+
     def to_json(self) -> dict[str, Any]:
         return {
             "session_id": self.session_id,

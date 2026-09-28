@@ -29,6 +29,9 @@ timer nodes complete with their first declared output unless a `NodeScript`
 says otherwise. A human-input node waits until a response is submitted, then
 selects the output its `decision` names.
 
+`FakeCloud.lose_response` makes the fake do what a request asks and then
+answer 504, as when a gateway times out after Cloud acted on the request.
+
 The copies of the schema are in `evals/schemas/`. They were copied from
 `GET /execution-plans/schema` on 2026-09-28, when Cloud's current version was
 0.1 and its newest was 0.2.
@@ -542,13 +545,18 @@ class FakeRun:
             return "skip"
         return "ready"
 
+    def script(self, node_id: str) -> NodeScript:
+        """Return the node's script by its ID, else by its kind, else the default."""
+        kind = str(graph.nodes(self.plan).get(node_id, {}).get("kind"))
+        return self.scripts.get(node_id) or self.scripts.get(kind) or NodeScript()
+
     def advance(self) -> None:
         """Move the run forward by one node, as a read of the run does."""
         order, _ = graph.topological_order(self.plan)
         node_map = graph.nodes(self.plan)
         for node_id in order:
             state = self.nodes[node_id]
-            script = self.scripts.get(node_id, NodeScript())
+            script = self.script(node_id)
             if state.status == "suspended" and script.expire:
                 human_input = node_map[node_id].get("human_input") or {}
                 on_expiry = (human_input.get("deadline") or {}).get("on_expiry")
@@ -578,7 +586,7 @@ class FakeRun:
 
     def start_node(self, node_id: str, node: dict[str, Any]) -> None:
         state = self.nodes[node_id]
-        script = self.scripts.get(node_id, NodeScript())
+        script = self.script(node_id)
         state.activation_id = new_id()
         if node.get("kind") == "HumanInputNode":
             state.status = "suspended"
@@ -712,6 +720,15 @@ class FakeRun:
 
 
 @dataclass
+class LostResponse:
+    """Requests whose responses the fake loses after it has acted on them."""
+
+    method: str
+    pattern: re.Pattern[str]
+    remaining: int
+
+
+@dataclass
 class RecordedRequest:
     method: str
     path: str
@@ -723,7 +740,10 @@ class FakeCloud:
 
     `api_url` is the workspace API URL the server sends requests to. Only its
     path matters, so the same fake works behind `respx` and behind a local
-    HTTP server. `scripts` sets how each node, by ID, behaves in every run.
+    HTTP server. `scripts` sets how nodes behave in every run. A key is a
+    node ID, or a node kind such as `HumanInputNode` for every node of that
+    kind that has no script of its own. Use a kind when the agent picks the
+    node IDs.
     """
 
     def __init__(
@@ -739,6 +759,7 @@ class FakeCloud:
         self.deployments: list[dict[str, Any]] = []
         self.runs: dict[str, FakeRun] = {}
         self.requests: list[RecordedRequest] = []
+        self.lost_responses: list[LostResponse] = []
         self._lock = threading.Lock()
         routes: list[tuple[str, str, Handler]] = [
             ("GET", r"/execution-plans/schema", self.get_schema),
@@ -899,6 +920,28 @@ class FakeCloud:
         self.deployments.append(deployment)
         return deployment
 
+    def lose_response(self, method: str, path: str, *, times: int = 1) -> None:
+        """Lose the response to the next `times` requests that match.
+
+        `path` is a regular expression for the workspace-relative path, such
+        as `/flows/[^/]+/execution-plan/runs`. The fake still does what each
+        request asks, then answers 504 with a plain-text body, the way a
+        gateway does when it gives up waiting. The client can't tell whether
+        the request took effect.
+        """
+        self.lost_responses.append(LostResponse(method, re.compile(f"^{path}$"), times))
+
+    def take_lost_response(self, method: str, path: str) -> bool:
+        for lost in self.lost_responses:
+            if (
+                lost.remaining > 0
+                and lost.method == method
+                and lost.pattern.match(path)
+            ):
+                lost.remaining -= 1
+                return True
+        return False
+
     # Request handling.
 
     def handle(self, request: httpx.Request) -> httpx.Response:
@@ -912,9 +955,12 @@ class FakeCloud:
             for method, pattern, handler in self._compiled:
                 match = pattern.match(path)
                 if method == request.method and match:
-                    return handler(
+                    response = handler(
                         body=body, params=dict(request.url.params), **match.groupdict()
                     )
+                    if self.take_lost_response(request.method, path):
+                        return httpx.Response(504, text="upstream request timeout")
+                    return response
         return error(
             404, f"The fake Cloud API has no route for {request.method} {path}."
         )

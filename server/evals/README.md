@@ -67,7 +67,26 @@ A run moves one node forward each time the agent reads it with `get_run`:
 
 Change this for a node with a `NodeScript` in `fake.scripts`, by node ID. It
 can set the output and the value, make the node fail, or make a human-input
-node's deadline pass.
+node's deadline pass. When the agent picks the node IDs, key the script by a
+node kind instead, such as `HumanInputNode`. It then applies to every node of
+that kind that has no script of its own.
+
+`fake.lose_response(method, path)` makes the fake do what the next matching
+request asks and then answer 504, as a gateway does when it times out. The
+agent can't tell whether the request took effect. The `run-retry` scenario
+uses it to lose the response to the first `start_run`.
+
+## Scenarios
+
+| Scenario | What it checks |
+|---|---|
+| `release-notes-conversion` | Converting the `release-notes` fixture skill: the conversion report, one design approval, no cycle, and a publish only after a passing validation. |
+| `rejected-approval` | The README quickstart workflow, with the draft rejected in the test run: the rejected output leads to the revision node, the agent submits the user's answer unchanged, and the run ends with its `reply` output. |
+| `expired-approval` | An approval with a deadline that passes: `on_expiry` leads somewhere, the agent never answers the form, and it reports the expiry without polling on and on. |
+| `unsupported-loop` | Converting the `post-review` fixture skill, which repeats until the reviewer is happy: the report flags the loop and proposes a substitute, the plan has no cycle, and nothing is published before the user decides. |
+| `scheduled-edit` | Changing a flow that has an active version and a schedule: the agent names the schedule before it asks to activate, activates only after the yes, and leaves the schedule alone. |
+| `run-retry` | A lost response to the first `start_run`: the retry uses the same idempotency key, and only one run exists. |
+| `no-infrastructure` | A workflow that needs Zendesk and Slack, for a user with no remote MCP servers: the infrastructure check comes first, and the agent offers a version without those tools. |
 
 ## Adding a scenario
 
@@ -75,10 +94,10 @@ node's deadline pass.
    that defines `SCENARIO = Scenario(...)`. Start from
    `scenarios/release_notes_conversion.py`.
 2. Add `SCENARIO` to the list in `scenarios/__init__.py`.
-3. Add a test in `tests/eval_harness/test_scenarios.py` that runs the
-   scenario's `checks` on a hand-written `Outcome`: one that passes, and one
-   for each way the agent can fail. This test runs in CI and catches a check
-   that can never fail.
+3. Add tests in `tests/eval_harness/` that run the scenario's `checks` on a
+   hand-written `Outcome`: one that passes, and one for each way the agent can
+   fail. `test_behavior_scenarios.py` has examples. These tests run in CI and
+   catch a check that can never fail.
 4. Run the scenario a few times with `--repeat` and read the transcripts of
    the failures.
 
@@ -112,10 +131,14 @@ Write checks with the helpers in `assertions.py`:
   `plan_inputs`, and `plan_outputs` return the same facts for a check of
   your own.
 - For the tool calls: `check_called` (with `times` and a `where` filter on
-  arguments), `check_never_called`, `check_called_in_order`, and
-  `check_published_only_after_valid`.
+  arguments), `check_never_called`, `check_called_in_order`,
+  `check_published_only_after_valid`, and `check_only_after_reply`, which
+  checks that calls came after the simulated user's reply. Pass it
+  `outcome.transcript.first_reply(label)`, and `activating_calls(calls)` to
+  check activations.
 - For what the agent said: `check_text_mentions`, with a regular expression
-  for each part you expect.
+  for each part you expect. `outcome.transcript.final_message(turn)` is the
+  agent's last message of a turn. A reply's `turn` is the turn it answered.
 
 `outcome.fake` has the state the agent left in the fake, such as
 `fake.runs[run_id].responses`, the answers it submitted to each form.
