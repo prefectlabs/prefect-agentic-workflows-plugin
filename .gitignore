@@ -219,3 +219,6 @@ __marimo__/
 
 # Local issue tracker (see docs/agents/issue-tracker.md)
 .scratch/
+
+# Behavioral evaluation transcripts and plans (see server/evals/README.md)
+server/evals/results/

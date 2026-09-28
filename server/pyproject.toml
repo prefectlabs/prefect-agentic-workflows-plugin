@@ -23,15 +23,18 @@ packages = ["src/prefect_agentic_workflows_mcp"]
 
 [dependency-groups]
 dev = [
+    "jsonschema>=4.18",
     "pytest>=8",
     "pytest-asyncio>=0.24",
     "respx>=0.22",
     "ruff>=0.13",
     "ty>=0.0.1a20",
+    "uvicorn>=0.30",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = [
@@ -46,7 +49,7 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.ty.environment]
 python-version = "3.10"
-extra-paths = ["tests"]
+extra-paths = ["tests", "."]
 
 [tool.ty.src]
-include = ["src", "tests"]
+include = ["src", "tests", "evals"]
