@@ -36,7 +36,8 @@ plugins from your own Claude Code settings are not used.
 1. Makes a temporary working directory with the skill in
    `.claude/skills/agentic-workflows/` and the scenario's files.
 2. Starts a new `FakeCloud` from `fake_cloud.py`, and lets the scenario add
-   state to it, such as Secret blocks, an existing flow, or node scripts.
+   state to it, such as Secret blocks, deployments, an existing flow, or node
+   scripts.
 3. Sends the scenario's `prompt` to `claude -p`. After each turn, the simulated
    user answers the agent's final message from the scenario's rules, and the
    runner resumes the same session with that answer. The conversation ends when
@@ -47,11 +48,13 @@ plugins from your own Claude Code settings are not used.
 ## The fake Cloud API
 
 `FakeCloud` keeps flows, plan versions and the active version, schedules,
-Secret blocks, and runs. `validate_plan` checks the plan's shape against the
-copy of the schema in `schemas/`, then runs the graph checks: edges that point
-at real plan inputs, nodes, and ports, no cycles, `exactly_one` output
-selection on nodes other than agent nodes, and a `decision` enum on a
-human-input node with more than one response output.
+Secret blocks, deployments, and runs. `validate_plan` checks the plan's shape
+against the copy of the schema in `schemas/`, then runs the graph checks: edges
+that point at real plan inputs, nodes, and ports, no cycles, `exactly_one`
+output selection on nodes other than agent nodes, a `decision` enum on a
+human-input node with more than one response output, and no stdio MCP servers.
+It doesn't run every check Cloud runs. The docstring in `fake_cloud.py` lists
+the ones it skips.
 
 A run moves one node forward each time the agent reads it with `get_run`:
 
@@ -59,7 +62,8 @@ A run moves one node forward each time the agent reads it with `get_run`:
   value built from that output's schema.
 - A human-input node waits with its form until `submit_human_input` answers
   it. Then it selects the output that the answer's `decision` names.
-- A node whose inputs can no longer arrive is skipped.
+- A node whose inputs can no longer arrive is skipped. An input fed by several
+  edges waits while any of them can still produce a value.
 
 Change this for a node with a `NodeScript` in `fake.scripts`, by node ID. It
 can set the output and the value, make the node fail, or make a human-input

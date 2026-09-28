@@ -579,3 +579,29 @@ async def test_validate_plan_rejects_a_stdio_mcp_server(client: Client[Any]):
         "type",
     ]
 
+async def test_list_deployments_returns_the_seeded_deployments(
+    fake_cloud: FakeCloud, client: Client[Any]
+):
+    flow = fake_cloud.add_flow("collect-changes")
+    fake_cloud.add_deployment(
+        flow["id"], "nightly", description="Collects merged changes."
+    )
+
+    result = await call(client, "list_deployments")
+
+    assert result == {
+        "deployments": [
+            {
+                "id": result["deployments"][0]["id"],
+                "name": "nightly",
+                "flow_name": "collect-changes",
+                "description": "Collects merged changes.",
+            }
+        ]
+    }
+
+
+async def test_list_deployments_is_empty_in_a_new_workspace(client: Client[Any]):
+    result = await call(client, "list_deployments")
+
+    assert result == {"deployments": []}

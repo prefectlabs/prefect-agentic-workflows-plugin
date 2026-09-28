@@ -2,9 +2,9 @@
 
 `FakeCloud` answers the requests the MCP server sends, and keeps state between
 them: flows, plan versions and which one is active, schedules, Secret blocks,
-and runs. `FakeCloud.handle` takes an `httpx.Request` and returns an
-`httpx.Response`, so tests can route requests to it with `respx`, and the
-runner can serve it over HTTP with `evals.runner.serve`.
+deployments, and runs. `FakeCloud.handle` takes an `httpx.Request` and
+returns an `httpx.Response`, so tests can route requests to it with `respx`,
+and the runner can serve it over HTTP with `evals.runner.serve`.
 
 `validate_plan` checks the document shape against a copy of the JSON Schema
 that Cloud serves, then runs the graph checks the skill depends on:
@@ -736,6 +736,7 @@ class FakeCloud:
         self.active: dict[str, dict[str, Any]] = {}
         self.schedules: dict[str, dict[str, dict[str, Any]]] = {}
         self.secret_blocks: list[dict[str, str]] = []
+        self.deployments: list[dict[str, Any]] = []
         self.runs: dict[str, FakeRun] = {}
         self.requests: list[RecordedRequest] = []
         self._lock = threading.Lock()
@@ -808,6 +809,8 @@ class FakeCloud:
                 self.submit_human_input,
             ),
             ("POST", r"/block_documents/filter", self.filter_block_documents),
+            ("POST", r"/deployments/filter", self.filter_deployments),
+            ("POST", r"/flows/filter", self.filter_flows),
         ]
         self._compiled: list[tuple[str, re.Pattern[str], Handler]] = [
             (method, re.compile(f"^{pattern}$"), handler)
@@ -882,6 +885,19 @@ class FakeCloud:
         block_id = new_id()
         self.secret_blocks.append({"id": block_id, "name": name})
         return block_id
+
+    def add_deployment(
+        self, flow_id: str, name: str, *, description: str | None = None
+    ) -> dict[str, Any]:
+        deployment = {
+            "id": new_id(),
+            "flow_id": flow_id,
+            "name": name,
+            "description": description,
+            "created": now(),
+        }
+        self.deployments.append(deployment)
+        return deployment
 
     # Request handling.
 
@@ -1193,3 +1209,22 @@ class FakeCloud:
                 for block in blocks[offset : offset + limit]
             ],
         )
+
+    def filter_deployments(self, *, body: Json, **_: Any) -> httpx.Response:
+        body = body or {}
+        offset = int(body.get("offset", 0))
+        limit = int(body.get("limit", 200))
+        deployments = sorted(self.deployments, key=lambda item: item["name"])
+        return json_response(200, deployments[offset : offset + limit])
+
+    def filter_flows(self, *, body: Json, **_: Any) -> httpx.Response:
+        body = body or {}
+        offset = int(body.get("offset", 0))
+        limit = int(body.get("limit", 200))
+        wanted = ((body.get("flows") or {}).get("id") or {}).get("any_")
+        flows = [
+            flow
+            for flow in sorted(self.flows.values(), key=lambda item: item["name"])
+            if wanted is None or flow["id"] in wanted
+        ]
+        return json_response(200, flows[offset : offset + limit])
