@@ -557,3 +557,25 @@ async def test_a_join_waits_while_one_of_its_sources_is_waiting_for_an_answer(
 
     assert node(finished, "finish")["status"] == "completed"
 
+
+async def test_validate_plan_rejects_a_stdio_mcp_server(client: Client[Any]):
+    plan = approval_plan()
+    plan["nodes"]["draft"]["mcp"] = {
+        "mcpServers": {
+            "notes": {"type": "stdio", "command": "docker", "args": ["run", "notes"]}
+        }
+    }
+
+    result = await call(client, "validate_plan", plan=plan)
+
+    assert result["valid"] is False
+    assert codes(result) == ["unsupported_mcp_server_type"]
+    assert result["errors"][0]["path"] == [
+        "nodes",
+        "draft",
+        "mcp",
+        "mcpServers",
+        "notes",
+        "type",
+    ]
+

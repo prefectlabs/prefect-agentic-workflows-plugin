@@ -16,6 +16,7 @@ that Cloud serves, then runs the graph checks the skill depends on:
 - nodes other than agent nodes use `exactly_one` output selection
 - a human-input node with more than one response output has a required
   `decision` property whose `enum` lists those outputs
+- agent nodes use no stdio MCP servers
 
 Other Cloud checks are not ported, such as the root `evaluate_when` rule, the
 output schema compatibility checks, the human-input deadline and retry rules,
@@ -33,6 +34,7 @@ The copies of the schema are in `evals/schemas/`. They were copied from
 0.1 and its newest was 0.2.
 """
 
+import copy
 import hashlib
 import json
 import re
@@ -383,8 +385,50 @@ def check_human_input_node(node_id: str, node: dict[str, Any]) -> list[dict[str,
     return []
 
 
+def stdio_servers(plan: Json) -> list[tuple[str, str]]:
+    """Return the node and server ID of each stdio MCP server in `plan`."""
+    if not isinstance(plan, dict) or not isinstance(plan.get("nodes"), dict):
+        return []
+    found = []
+    for node_id, node in plan["nodes"].items():
+        mcp = node.get("mcp") if isinstance(node, dict) else None
+        servers = mcp.get("mcpServers") if isinstance(mcp, dict) else None
+        for server_id, server in (servers or {}).items():
+            if isinstance(server, dict) and server.get("type") == "stdio":
+                found.append((str(node_id), str(server_id)))
+    return found
+
+
+def without_stdio_servers(plan: Json, found: list[tuple[str, str]]) -> Json:
+    """Return a copy of `plan` with the stdio MCP servers in `found` removed."""
+    plan = copy.deepcopy(plan)
+    for node_id, server_id in found:
+        mcp = plan["nodes"][node_id]["mcp"]
+        del mcp["mcpServers"][server_id]
+        if not mcp["mcpServers"]:
+            del plan["nodes"][node_id]["mcp"]
+    return plan
+
+
 def validate(plan: Json) -> list[dict[str, Any]]:
-    """Return the errors `POST /execution-plans/validate` reports for a plan."""
+    """Return the errors `POST /execution-plans/validate` reports for a plan.
+
+    Cloud parses a stdio MCP server, then rejects it with
+    `unsupported_mcp_server_type`. The schema it serves leaves stdio servers
+    out, so the fake checks the shape of the plan without them and reports
+    each one with Cloud's code.
+    """
+    found = stdio_servers(plan)
+    stdio_errors = [
+        plan_error(
+            "unsupported_mcp_server_type",
+            ["nodes", node_id, "mcp", "mcpServers", server_id, "type"],
+            "MCP stdio servers are not supported for execution plans.",
+        )
+        for node_id, server_id in found
+    ]
+    if found:
+        plan = without_stdio_servers(plan, found)
     shape_errors = check_document_shape(plan)
     if shape_errors:
         return shape_errors
@@ -393,6 +437,7 @@ def validate(plan: Json) -> list[dict[str, Any]]:
         *check_plan_outputs(plan),
         *check_cycles(plan),
         *check_nodes(plan),
+        *stdio_errors,
     ]
 
 
