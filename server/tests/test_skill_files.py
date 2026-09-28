@@ -161,6 +161,12 @@ def skill_section(heading: str) -> str:
     return text[start : end if end != -1 else None]
 
 
+def skill_line(marker: str) -> str:
+    """Return the first line of `SKILL.md` that contains `marker`."""
+    lines = (SKILL_DIR / "SKILL.md").read_text().splitlines()
+    return next(line for line in lines if marker in line)
+
+
 def test_every_tool_that_runs_activates_or_schedules_has_one_approval_point():
     points = [
         line
@@ -186,11 +192,7 @@ def test_every_tool_that_runs_activates_or_schedules_has_one_approval_point():
 
 
 def test_a_conversion_has_one_design_approval():
-    summary = next(
-        line
-        for line in (SKILL_DIR / "SKILL.md").read_text().splitlines()
-        if "**Summary.**" in line
-    )
+    summary = skill_line("**Summary.**")
     conversion = (SKILL_DIR / "references" / "conversion.md").read_text()
 
     assert "conversion report" in summary
@@ -200,11 +202,7 @@ def test_a_conversion_has_one_design_approval():
 
 
 def test_checklist_separates_run_inputs_from_fixed_instructions():
-    row = next(
-        line
-        for line in (SKILL_DIR / "SKILL.md").read_text().splitlines()
-        if line.startswith("| Inputs:")
-    )
+    row = skill_line("| Inputs:")
 
     assert "Hardcode" not in row
     assert "plan input" in row
@@ -221,11 +219,25 @@ def test_starting_a_run_keeps_one_idempotency_key_per_run():
 
 def test_skill_says_a_run_uses_the_active_version():
     text = skill_section("Starting a run")
-    report = next(
-        line
-        for line in (SKILL_DIR / "SKILL.md").read_text().splitlines()
-        if "**Report.**" in line
-    )
+    test_run = skill_line("**Test run.**")
+    report = skill_line("**Report.**")
 
     assert "A run always uses the flow's active version." in text
+    assert "active version" in test_run
     assert "execution_plan_version_id" in report
+    assert "`list_plan_versions`" in report
+
+
+def test_input_values_come_before_the_external_effects_approval():
+    steps = skill_section("Starting a run")
+
+    assert steps.index("Ask for any input values") < steps.index(
+        "external-effects approval"
+    )
+
+
+def test_a_failed_activation_retry_says_whether_it_needs_approval():
+    publish = skill_line("**Publish.**")
+
+    assert "activation_error" in publish
+    assert "same approval" in publish

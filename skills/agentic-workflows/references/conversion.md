@@ -1,6 +1,6 @@
 # Converting a skill
 
-A skill runs on the user's machine: it can run scripts, start stdio MCP servers, read and write local files, and loop until it is done. An execution plan runs in Prefect Cloud, where an agent node's only tools are the remote MCP servers in its `mcp` config. Converting a skill means finding every part that depends on the local machine and agreeing a substitute with the user before you draft. The user agrees the substitutes when they approve the design in the summary step.
+A skill runs on the user's machine: it can run scripts, start stdio MCP servers, read and write local files, and loop until it is done. An execution plan runs in Prefect Cloud, where an agent node's only tools are the remote MCP servers in its `mcp` config. Converting a skill means finding every part that depends on the local machine and agreeing a substitute with the user before you draft. The user accepts or changes each substitute when they approve the design in the summary step.
 
 Work through these steps in order. Finish each step before starting the next.
 
