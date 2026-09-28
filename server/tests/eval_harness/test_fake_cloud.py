@@ -579,6 +579,7 @@ async def test_validate_plan_rejects_a_stdio_mcp_server(client: Client[Any]):
         "type",
     ]
 
+
 async def test_list_deployments_returns_the_seeded_deployments(
     fake_cloud: FakeCloud, client: Client[Any]
 ):

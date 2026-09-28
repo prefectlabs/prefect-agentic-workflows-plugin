@@ -8,8 +8,7 @@ from harness_plans import approval_plan
 from evals.fake_cloud import FakeCloud
 from evals.record import Reply, ToolCall, Transcript
 from evals.scenario import Outcome, Rule, next_rule
-from evals.scenarios import release_notes_conversion
-from evals.scenarios import SCENARIOS
+from evals.scenarios import SCENARIOS, release_notes_conversion
 
 RULES = [
     Rule(label="run", after_tool="publish_plan", pattern=r"test run", reply="Yes."),
