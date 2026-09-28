@@ -19,6 +19,7 @@ from evals.runner import (
     WORKSPACE_PATH,
     RunResult,
     agent_arguments,
+    agent_environment,
     prefect_environment,
     run_scenario,
     serve,
@@ -165,3 +166,18 @@ def test_the_agent_may_load_the_skill_with_the_skill_tool(tmp_path: Path):
 
     allowed = next(item for item in arguments if item.startswith("--allowedTools="))
     assert "Skill" in allowed.removeprefix("--allowedTools=").split(",")
+
+
+def test_the_agent_environment_drops_the_user_s_prefect_settings(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("PREFECT_PROFILE", "production")
+    monkeypatch.setenv("PREFECT_API_AUTH_STRING", "user:secret")
+    monkeypatch.setenv("EVAL_TEST_OTHER", "kept")
+
+    env = agent_environment({"PREFECT_API_URL": "http://127.0.0.1:1/api"})
+
+    assert "PREFECT_PROFILE" not in env
+    assert "PREFECT_API_AUTH_STRING" not in env
+    assert env["PREFECT_API_URL"] == "http://127.0.0.1:1/api"
+    assert env["EVAL_TEST_OTHER"] == "kept"

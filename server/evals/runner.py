@@ -121,6 +121,20 @@ def serve(fake: FakeCloud) -> Iterator[str]:
         thread.join(timeout=10)
 
 
+def agent_environment(prefect_env: dict[str, str]) -> dict[str, str]:
+    """Return the environment for the agent and the server it starts.
+
+    Drops every `PREFECT_` variable from the user's shell, such as a profile
+    name or an auth string, so only `prefect_env` configures Prefect.
+    """
+    inherited = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith("PREFECT_")
+    }
+    return {**inherited, **prefect_env}
+
+
 def prefect_environment(api_url: str, prefect_home: Path) -> dict[str, str]:
     """Return the Prefect settings that point the server and the agent at the fake.
 
@@ -256,7 +270,7 @@ def run_scenario(
                 transcript,
                 agent=agent,
                 cwd=workspace,
-                env={**os.environ, **prefect_env},
+                env=agent_environment(prefect_env),
                 mcp_config_path=config_path,
                 agent_turn_limit=agent_turn_limit,
                 model=model,
