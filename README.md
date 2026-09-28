@@ -88,8 +88,8 @@ the final reply and the category. It doesn't connect to any other tools.
 
 ### 4. Answer the agent's questions
 
-The agent asks a few questions before it publishes anything. Answer them like
-this:
+The agent asks a few questions before it publishes anything. It may skip some
+of these if your prompt already answered them. Answer them like this:
 
 | The agent asks | Answer |
 |---|---|
@@ -137,6 +137,9 @@ shows **Not selected**.
 You can also ask your agent: "Show me the reply and the category from the last
 customer-feedback-reply run." It reads the run's `reply` and `category`
 results.
+
+The `category` result holds the draft as well as the category, because a
+workflow result takes a whole step output.
 
 ## Connect it to your tools
 

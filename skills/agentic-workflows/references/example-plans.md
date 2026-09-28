@@ -36,7 +36,7 @@ To fan out only to the branches that apply, give one agent node an output per br
 
 [examples/customer-feedback-reply.plan.json](examples/customer-feedback-reply.plan.json)
 
-This plan needs no MCP server, Secret block, or deployment, so it works in a workspace where the infrastructure check found no reachable systems. The README quickstart builds it.
+This is the customer feedback reply example. It needs no MCP server, Secret block, or deployment, so it works in a workspace where the infrastructure check found no reachable systems. The README quickstart builds it.
 
 - `draft_reply` reads the `feedback` plan input, sorts it into `bug`, `feature_request`, `praise`, or `complaint`, and drafts a reply. Its `drafted` output holds both.
 - `review_reply` asks a manager to approve or reject the draft, with optional notes. A human-input form shows only its own fields, so its description tells the manager to read the draft in the output of the step before it.
