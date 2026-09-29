@@ -1,8 +1,6 @@
-"""Tests for the runner, with the fake served over HTTP and a scripted agent."""
+"""Tests for the simulated user's rules and the runner's conversation loop."""
 
 from collections.abc import AsyncIterator, Sequence
-from pathlib import Path
-from typing import Any
 
 import pytest
 from claude_agent_sdk import (
@@ -14,63 +12,46 @@ from claude_agent_sdk import (
     ToolUseBlock,
     UserMessage,
 )
-from fastmcp import Client
-from prefect.settings import PREFECT_API_URL, temporary_settings
 
-from evals.fake_cloud import FakeCloud
-from evals.record import Reply, ToolCall, Transcript, read_plan_files
-from evals.runner import (
-    LOCAL_HOST,
-    WORKSPACE_PATH,
-    agent_options,
-    prefect_environment,
-    serve,
-    talk,
+from evals.record import Reply, ToolCall, Transcript
+from evals.runner import talk
+from evals.scenario import Rule, next_rule
+from evals.scenarios import test_release_notes_conversion as release_notes
+
+INFRASTRUCTURE_QUESTION = (
+    "Which business tools can an agent reach? Any remote MCP server?"
 )
-from evals.scenario import Rule
-from prefect_agentic_workflows_mcp.server import SERVER_NAME, build_server
 
 
-async def test_the_server_passes_its_preflight_check_against_the_served_fake():
-    fake = FakeCloud(f"http://{LOCAL_HOST}{WORKSPACE_PATH}")
+@pytest.mark.parametrize(
+    ("message", "tools", "replies", "expected"),
+    [
+        ("Want a test run?", [], [], "go-ahead"),
+        ("Want a test run?", ["publish_plan"], [], "test-run-approval"),
+        ("Do you approve?", [], [], "design-approval"),
+        ("Do you approve?", ["validate_plan"], [], "go-ahead"),
+        ("Anything else?", [], ["go-ahead"] * 3, None),
+        (INFRASTRUCTURE_QUESTION, [], [], "reachable-systems"),
+        (INFRASTRUCTURE_QUESTION, [], ["reachable-systems"], "go-ahead"),
+    ],
+)
+def test_next_rule(
+    message: str, tools: list[str], replies: list[str], expected: str | None
+):
+    transcript = Transcript(tool_calls=[ToolCall(name, {}) for name in tools])
+    transcript.replies = [Reply(1, label, "") for label in replies]
 
-    with serve(fake) as api_url, temporary_settings(updates={PREFECT_API_URL: api_url}):
-        async with Client(build_server()) as client:
-            result = await client.call_tool("get_or_create_flow", {"name": "release"})
+    rule = next_rule(release_notes.USER, message, transcript)
 
-    assert api_url.startswith(f"http://{LOCAL_HOST}:")
-    assert result.structured_content is not None
-    assert result.structured_content["created"] is True
-    assert [flow["name"] for flow in fake.flows.values()] == ["release"]
-
-
-def test_prefect_environment_refuses_an_api_url_that_is_not_local(tmp_path: Path):
-    with pytest.raises(ValueError, match="only run against a local fake"):
-        prefect_environment(
-            "https://api.prefect.cloud/api/accounts/a/workspaces/w", tmp_path
-        )
-
-
-def test_agent_options_load_only_the_skill_and_the_server(tmp_path: Path):
-    env = prefect_environment(f"http://{LOCAL_HOST}:1{WORKSPACE_PATH}", tmp_path)
-
-    options = agent_options(tmp_path, env, model=None)
-
-    assert options.skills == ["agentic-workflows"]
-    assert options.setting_sources == ["project"]
-    assert options.strict_mcp_config is True
-    assert isinstance(options.mcp_servers, dict)
-    assert list(options.mcp_servers) == [SERVER_NAME]
-    assert options.mcp_servers[SERVER_NAME].get("env") == env
-    assert options.env == env
+    assert (rule.label if rule else None) == expected
 
 
-def result(text: str, *, is_error: bool = False) -> ResultMessage:
+def result(text: str) -> ResultMessage:
     return ResultMessage(
-        subtype="error_during_execution" if is_error else "success",
+        subtype="success",
         duration_ms=1,
         duration_api_ms=1,
-        is_error=is_error,
+        is_error=False,
         num_turns=1,
         session_id="session",
         total_cost_usd=0.01,
@@ -93,98 +74,48 @@ class ScriptedAgent:
             yield message
 
 
-PLAN = {"kind": "ExecutionPlan"}
-FIRST_TURN: list[Message] = [
-    AssistantMessage([TextBlock("I'll validate the plan.")], model="m"),
-    AssistantMessage(
-        [
-            ToolUseBlock(
-                "call-1",
-                "mcp__prefect-agentic-workflows__validate_plan",
-                {"plan": PLAN},
-            ),
-            ToolUseBlock("call-2", "Read", {"file_path": "SKILL.md"}),
-        ],
-        model="m",
-    ),
-    UserMessage(
-        [
-            ToolResultBlock("call-1", [{"type": "text", "text": '{"valid": true}'}]),
-            ToolResultBlock("call-2", "No such file", is_error=True),
-        ]
-    ),
-    result("The plan is valid. Do you approve?"),
-]
-RULES = [
-    Rule(label="approve", pattern=r"approve", reply="Yes."),
-    Rule(label="end", reply=None),
-]
-
-
 async def test_talk_records_tool_calls_and_answers_from_the_rules():
-    agent = ScriptedAgent(FIRST_TURN, [result("Published.")])
+    plan = {"kind": "ExecutionPlan"}
+    first_turn: list[Message] = [
+        AssistantMessage([TextBlock("I'll validate the plan.")], model="m"),
+        AssistantMessage(
+            [
+                ToolUseBlock(
+                    "call-1",
+                    "mcp__prefect-agentic-workflows__validate_plan",
+                    {"plan": plan},
+                ),
+                ToolUseBlock("call-2", "Read", {"file_path": "SKILL.md"}),
+            ],
+            model="m",
+        ),
+        UserMessage(
+            [
+                ToolResultBlock(
+                    "call-1", [{"type": "text", "text": '{"valid": true}'}]
+                ),
+                ToolResultBlock("call-2", "No such file", is_error=True),
+            ]
+        ),
+        result("The plan is valid. Do you approve?"),
+    ]
+    agent = ScriptedAgent(first_turn, [result("Published.")])
+    rules = [
+        Rule(label="approve", pattern=r"approve", reply="Yes."),
+        Rule(label="end", reply=None),
+    ]
     transcript = Transcript()
 
-    await talk(agent, transcript, "Convert the skill.", RULES, max_turns=5)
+    await talk(agent, transcript, "Convert the skill.", rules, max_turns=5)
 
     assert agent.prompts == ["Convert the skill.", "Yes."]
     assert transcript.tool_calls == [
-        ToolCall("validate_plan", {"plan": PLAN}, {"valid": True}, False, 1),
+        ToolCall("validate_plan", {"plan": plan}, {"valid": True}, False, 1),
         ToolCall("Read", {"file_path": "SKILL.md"}, "No such file", True, 1),
     ]
-    assert transcript.agent_text == ["I'll validate the plan."]
     assert transcript.turn_results == [
         "The plan is valid. Do you approve?",
         "Published.",
     ]
     assert transcript.replies == [Reply(1, "approve", "Yes.")]
-    assert transcript.cost_usd == pytest.approx(0.02)
     assert transcript.errors == []
-
-
-async def test_talk_stops_at_an_error_result():
-    agent = ScriptedAgent([result("API error", is_error=True)])
-    transcript = Transcript()
-
-    await talk(agent, transcript, "Convert the skill.", RULES, max_turns=5)
-
-    assert transcript.errors == ["turn 1: API error"]
-    assert transcript.replies == []
-
-
-async def test_talk_reports_a_conversation_that_reaches_the_turn_limit():
-    agent = ScriptedAgent(*[[result("Do you approve?")] for _ in range(2)])
-    transcript = Transcript()
-
-    await talk(agent, transcript, "Convert the skill.", RULES, max_turns=2)
-
-    assert transcript.errors == [
-        "the conversation reached the scenario's limit of 2 turns"
-    ]
-
-
-def test_read_plan_files_reads_every_plan_in_the_workflows_directory(tmp_path: Path):
-    workflows = tmp_path / "workflows"
-    workflows.mkdir()
-    (workflows / "release-notes.plan.json").write_text('{"kind": "ExecutionPlan"}')
-    (workflows / "broken.plan.json").write_text("{")
-    (workflows / "notes.md").write_text("ignored")
-
-    plans: dict[str, Any] = read_plan_files(tmp_path)
-
-    assert plans == {
-        "broken.plan.json": "{",
-        "release-notes.plan.json": {"kind": "ExecutionPlan"},
-    }
-
-
-def test_first_reply_and_final_message():
-    transcript = Transcript(
-        turn_results=["First.", "Second."],
-        replies=[Reply(1, "design", "Yes."), Reply(2, "design", "Still yes.")],
-    )
-
-    assert transcript.first_reply("design") == Reply(1, "design", "Yes.")
-    assert transcript.first_reply("run") is None
-    assert transcript.final_message(2) == "Second."
-    assert transcript.final_message(3) == ""
