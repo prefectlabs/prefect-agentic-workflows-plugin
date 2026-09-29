@@ -39,6 +39,10 @@ account has the `execution-plans` feature:
 PREFECT_AGENTIC_WORKFLOWS_INTEGRATION=1 uv run pytest tests/integration
 ```
 
+The behavioral evaluations in `evals/` run a real agent with the skill and
+this server against a fake Prefect Cloud API. They cost money and CI doesn't
+run them. See [`evals/README.md`](evals/README.md) to run one or add one.
+
 ### Adding a tool group
 
 Each module in `src/prefect_agentic_workflows_mcp/tools/` is one tool group.
