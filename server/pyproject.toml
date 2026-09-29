@@ -1,0 +1,53 @@
+[project]
+name = "prefect-agentic-workflows-mcp"
+version = "0.1.0a1"
+description = "Alpha MCP server for authoring and running Prefect Cloud execution plans"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=3.0.0,<4",
+    "httpx>=0.27",
+    "prefect>=3.4.22,<4",
+]
+
+[project.scripts]
+prefect-agentic-workflows-mcp = "prefect_agentic_workflows_mcp.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/prefect_agentic_workflows_mcp"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "respx>=0.22",
+    "ruff>=0.13",
+    "ty>=0.0.1a20",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: calls a real Prefect Cloud workspace and skips without credentials",
+]
+
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ty.environment]
+python-version = "3.10"
+extra-paths = ["tests", "."]
+
+[tool.ty.src]
+include = ["src", "tests"]
