@@ -1,12 +1,13 @@
 """Tests for the preflight check that runs before a tool's first request."""
 
+from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
 import respx
 from fastmcp import Client
-from support import PLAN, error_text
+from support import API_KEY, PLAN, WORKSPACE_API_URL, error_text
 
 from prefect_agentic_workflows_mcp.server import build_server
 from prefect_agentic_workflows_mcp.workspace_api import is_cloud_workspace_api_url
@@ -163,3 +164,24 @@ async def test_a_profile_switch_takes_effect_without_a_restart(
     result = await mcp_client.call_tool("get_schema", {}, raise_on_error=False)
 
     assert "not a Prefect Cloud workspace" in error_text(result)
+
+
+async def test_the_saved_active_profile_is_used(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, cloud_api: respx.MockRouter
+):
+    # `prefect cloud login` saves the workspace in profiles.toml and sets no
+    # environment variables.
+    (tmp_path / "profiles.toml").write_text(
+        'active = "cloud"\n'
+        "[profiles.cloud]\n"
+        f'PREFECT_API_URL = "{WORKSPACE_API_URL}"\n'
+        f'PREFECT_API_KEY = "{API_KEY}"\n'
+    )
+    for name in ("PREFECT_API_URL", "PREFECT_API_KEY", "PREFECT_PROFILE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("PREFECT_PROFILES_PATH", str(tmp_path / "profiles.toml"))
+
+    async with Client(build_server()) as client:
+        await client.call_tool("get_schema", {})
+
+    assert cloud_api.calls.last.request.headers["Authorization"] == f"Bearer {API_KEY}"

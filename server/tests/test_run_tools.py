@@ -168,6 +168,23 @@ async def test_get_run_returns_the_last_observation_when_a_poll_times_out(
     assert result["wait"]["status_changed"] is False
 
 
+async def test_get_run_output_reports_a_missing_bucket_as_an_error(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    cloud_api.get(f"{RUN_PATH}/outputs/result").respond(
+        409,
+        json={"detail": "Workspace object storage bucket has not been provisioned."},
+    )
+
+    result = await mcp_client.call_tool(
+        "get_run_output",
+        {"flow_run_id": FLOW_RUN_ID, "output_name": "result"},
+        raise_on_error=False,
+    )
+
+    assert "no object storage bucket" in error_text(result)
+
+
 def problem(output_status: str) -> dict[str, Any]:
     return {
         "detail": "Not yet.",

@@ -1,5 +1,6 @@
 """A tool that lists the deployments a Deployment node can run."""
 
+import re
 from typing import Any
 
 from fastmcp import FastMCP
@@ -15,18 +16,40 @@ PAGE_SIZE = 200
 SCHEMA_MAPS = frozenset({"properties", "patternProperties", "definitions", "$defs"})
 # Keywords that carry example or default values, which can hold credentials.
 VALUE_KEYWORDS = frozenset({"default", "examples", "example"})
+# Keywords that list allowed values. They stay, except under a parameter whose
+# name looks like a credential, where an allowed value can be the secret itself.
+LITERAL_KEYWORDS = frozenset({"const", "enum"})
+CREDENTIAL_NAME = re.compile(
+    r"token|secret|password|passwd|credential|api_?key|access_?key|private_?key|auth",
+    re.IGNORECASE,
+)
 
 
-def without_values(schema: Any, *, in_map: bool = False) -> Any:
-    """Return a JSON Schema without its default and example values."""
+def without_values(
+    schema: Any, *, in_map: bool = False, credential: bool = False
+) -> Any:
+    """Return a JSON Schema without values that can hold credentials.
+
+    Default and example values are always removed. Allowed values (`const`
+    and `enum`) are removed only under a parameter with a credential-like
+    name, so ordinary choices such as a list of regions stay.
+    """
     if isinstance(schema, list):
-        return [without_values(item) for item in schema]
+        return [without_values(item, credential=credential) for item in schema]
     if not isinstance(schema, dict):
         return schema
+    if in_map:
+        return {
+            key: without_values(
+                value, credential=credential or bool(CREDENTIAL_NAME.search(key))
+            )
+            for key, value in schema.items()
+        }
+    removed = VALUE_KEYWORDS | (LITERAL_KEYWORDS if credential else frozenset())
     return {
-        key: without_values(value, in_map=not in_map and key in SCHEMA_MAPS)
+        key: without_values(value, in_map=key in SCHEMA_MAPS, credential=credential)
         for key, value in schema.items()
-        if in_map or key not in VALUE_KEYWORDS
+        if key not in removed
     }
 
 

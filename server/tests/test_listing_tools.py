@@ -32,8 +32,12 @@ def block_document(
 STORED_SCHEMA = {
     "type": "object",
     "properties": {
-        "region": {"type": "string"},
-        "api_token": {"type": "string", "default": "sk-live-not-for-the-agent"},
+        "region": {"type": "string", "enum": ["us", "eu"]},
+        "api_token": {
+            "type": "string",
+            "default": "sk-live-not-for-the-agent",
+            "enum": ["sk-live-not-for-the-agent"],
+        },
         "default": {"type": "boolean", "default": True, "examples": [False]},
     },
     "required": ["region"],
@@ -41,7 +45,7 @@ STORED_SCHEMA = {
 RETURNED_SCHEMA = {
     "type": "object",
     "properties": {
-        "region": {"type": "string"},
+        "region": {"type": "string", "enum": ["us", "eu"]},
         "api_token": {"type": "string"},
         "default": {"type": "boolean"},
     },

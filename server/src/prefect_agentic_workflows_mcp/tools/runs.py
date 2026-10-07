@@ -19,6 +19,7 @@ from pydantic import Field
 
 from prefect_agentic_workflows_mcp.tools import tool
 from prefect_agentic_workflows_mcp.workspace_api import (
+    NO_BUCKET_DETAIL,
     HttpMethod,
     RequestTimedOutError,
     WorkspaceApi,
@@ -320,6 +321,12 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             path = f"{run_path}/activations/{activation_id}/outputs/{output_name}"
         response = await api.request("GET", path)
 
+        if response.status_code == 409 and NO_BUCKET_DETAIL in response_detail(
+            response
+        ):
+            # A missing bucket is a workspace problem, not an output that can
+            # still arrive, so raise the message that says how to fix it.
+            read_json(response, "GET", path)
         if response.status_code in (202, 409, 503):
             try:
                 body = response.json()
