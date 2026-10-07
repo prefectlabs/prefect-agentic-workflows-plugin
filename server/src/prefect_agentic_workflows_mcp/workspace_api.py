@@ -54,10 +54,13 @@ FORBIDDEN_MESSAGE = (
     "`prefect cloud login` with a different key, then call this tool again."
 )
 FEATURE_NOT_ENABLED_MESSAGE = (
-    "Execution plans are not enabled for this workspace's account. Prefect "
-    "Cloud returned 404 for the execution-plan API. Ask your Prefect contact "
-    "to turn on the `execution-plans` feature for the account, then call this "
-    "tool again."
+    "Prefect Cloud returned 404 for the execution-plan API at {api_url}. "
+    "Either the account and workspace in the active Prefect profile don't "
+    "exist, or execution plans are not enabled for the account. Check the "
+    "workspace with `prefect cloud workspace ls` and switch with "
+    "`prefect cloud workspace set`. If the workspace is right, ask your "
+    "Prefect contact to turn on the `execution-plans` feature for the "
+    "account. Then call this tool again."
 )
 NO_BUCKET_DETAIL = "object storage bucket has not been provisioned"
 NO_BUCKET_MESSAGE = (
@@ -224,6 +227,15 @@ class WorkspaceApi:
         )
         return read_json(response, method, path)
 
+    def current_api_url(self) -> str:
+        """Return the workspace API URL from the current Prefect settings.
+
+        Raises `ToolError` with a fix-it message when the settings have no
+        Cloud workspace URL or no API key.
+        """
+        api_url, _ = self._read_profile()
+        return api_url
+
     def _read_profile(self) -> tuple[str, str]:
         # Load settings fresh on every call. Prefect's current-settings context
         # is fixed when the process starts, so it would miss a user switching
@@ -250,7 +262,7 @@ class WorkspaceApi:
             ) from exc
 
         if response.status_code == 404:
-            raise ToolError(FEATURE_NOT_ENABLED_MESSAGE)
+            raise ToolError(FEATURE_NOT_ENABLED_MESSAGE.format(api_url=api_url))
         if response.status_code == 401:
             raise ToolError(UNAUTHORIZED_MESSAGE)
         if response.status_code == 403:

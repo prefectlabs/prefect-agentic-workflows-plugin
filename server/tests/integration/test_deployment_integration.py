@@ -11,11 +11,4 @@ async def test_list_deployments_returns_ids_and_names(mcp_client: Client[Any]):
     body = result.structured_content
     assert body is not None
     for deployment in body["deployments"]:
-        assert set(deployment) == {
-            "id",
-            "name",
-            "flow_name",
-            "description",
-            "parameters",
-            "parameter_openapi_schema",
-        }
+        assert set(deployment) == {"id", "name", "flow_name", "description"}

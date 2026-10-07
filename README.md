@@ -334,6 +334,8 @@ your agent can ask before a tool writes.
 | `create_schedule`, `list_schedules`, `get_schedule`, `update_schedule`, `delete_schedule` | Manage a flow's plan schedules |
 | `list_secret_blocks` | List Secret block names and IDs, never their values |
 | `list_deployments` | List deployment names and IDs, for Deployment nodes |
+| `get_deployment` | Read one deployment's parameters and their schema |
+| `get_workspace` | Show the workspace the server uses, with its Prefect Cloud UI address |
 
 ## Development
 

@@ -102,7 +102,7 @@ async def test_list_secret_blocks_reads_every_page(
     assert offsets(route) == [0, 200]
 
 
-async def test_list_deployments_returns_names_flow_names_and_parameters(
+async def test_list_deployments_returns_ids_names_and_flow_names(
     mcp_client: Client[Any], cloud_api: respx.MockRouter
 ):
     first_page = [
@@ -139,16 +139,12 @@ async def test_list_deployments_returns_names_flow_names_and_parameters(
             "name": "nightly",
             "flow_name": "load-orders",
             "description": "Loads orders",
-            "parameters": {"region": "us"},
-            "parameter_openapi_schema": REGION_SCHEMA,
         },
         {
             "id": SLACK_TOKEN_ID,
             "name": "weekly",
             "flow_name": "report",
             "description": None,
-            "parameters": {},
-            "parameter_openapi_schema": None,
         },
     ]
     assert len(result.structured_content["deployments"]) == 201
@@ -168,3 +164,33 @@ async def test_list_deployments_skips_the_flow_lookup_when_there_are_none(
 
     assert result.structured_content == {"deployments": []}
     assert not flows_route.called
+
+
+async def test_get_deployment_returns_its_parameters_and_schema(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    cloud_api.get(f"/deployments/{GITHUB_ID}").respond(
+        200,
+        json=deployment(
+            GITHUB_ID,
+            "nightly",
+            LOAD_FLOW_ID,
+            "Loads orders",
+            parameters={"region": "us"},
+            parameter_openapi_schema=REGION_SCHEMA,
+        ),
+    )
+    cloud_api.get(f"/flows/{LOAD_FLOW_ID}").respond(
+        200, json={"id": LOAD_FLOW_ID, "name": "load-orders"}
+    )
+
+    result = await mcp_client.call_tool("get_deployment", {"deployment_id": GITHUB_ID})
+
+    assert result.structured_content == {
+        "id": GITHUB_ID,
+        "name": "nightly",
+        "flow_name": "load-orders",
+        "description": "Loads orders",
+        "parameters": {"region": "us"},
+        "parameter_openapi_schema": REGION_SCHEMA,
+    }
