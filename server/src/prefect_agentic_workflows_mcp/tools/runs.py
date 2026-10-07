@@ -43,9 +43,6 @@ STOP_WAITING_STATUSES = frozenset({"completed", "failed", "cancelled", "blocked"
 FINAL_OUTPUT_STATUSES = frozenset({"failed", "skipped", "unavailable"})
 
 
-MIN_READ_SECONDS = 1.0
-
-
 def awaits_input(run: dict[str, Any]) -> bool:
     """Return whether any node is waiting for a person to answer a form."""
     return any(
@@ -255,11 +252,12 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             if remaining <= 0:
                 break
             await sleep(min(POLL_INTERVAL_SECONDS, remaining))
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                break
             # Bound the read by the time left, so a slow response can't stretch
             # the call past the wait the caller asked for.
-            run = await read_run(
-                flow_run_id, timeout=max(deadline - monotonic(), MIN_READ_SECONDS)
-            )
+            run = await read_run(flow_run_id, timeout=remaining)
             if progress(run) != before:
                 changed = True
                 break
@@ -333,7 +331,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         value = read_json_with_retry_hint(response, "GET", path)
         return output_result(available=True, value=value, output_status="available")
 
-    @tool(mcp, read_only=False)
+    @tool(mcp, read_only=False, destructive=True)
     async def submit_human_input(
         flow_run_id: FlowRunId,
         activation_id: Annotated[

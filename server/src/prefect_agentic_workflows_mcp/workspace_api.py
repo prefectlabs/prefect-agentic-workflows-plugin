@@ -20,7 +20,7 @@ from typing import Any, Literal
 
 import httpx
 from fastmcp.exceptions import ToolError
-from prefect.settings import get_current_settings
+from prefect.settings import Settings
 
 HttpMethod = Literal["GET", "POST", "PATCH", "DELETE"]
 
@@ -210,7 +210,10 @@ class WorkspaceApi:
         return read_json(response, method, path)
 
     def _read_profile(self) -> tuple[str, str]:
-        settings = get_current_settings()
+        # Load settings fresh on every call. Prefect's current-settings context
+        # is fixed when the process starts, so it would miss a user switching
+        # profiles or logging in to another workspace while the server runs.
+        settings = Settings()
         api_url = settings.api.url
         if not api_url:
             raise ToolError(NO_API_URL_MESSAGE)

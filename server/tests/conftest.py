@@ -14,19 +14,20 @@ from typing import Any
 import pytest
 import respx
 from fastmcp import Client
-from prefect.settings import PREFECT_API_KEY, PREFECT_API_URL, temporary_settings
 from support import API_KEY, WORKSPACE_API_URL, schema_response
 
 from prefect_agentic_workflows_mcp.server import build_server
 
 
 @pytest.fixture(autouse=True)
-def cloud_profile() -> Iterator[None]:
-    """Point the active Prefect profile at a fake Cloud workspace."""
-    with temporary_settings(
-        updates={PREFECT_API_URL: WORKSPACE_API_URL, PREFECT_API_KEY: API_KEY}
-    ):
-        yield
+def cloud_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point the Prefect settings at a fake Cloud workspace.
+
+    The server loads settings fresh on each call, so tests set environment
+    variables, which take precedence over the developer's profile.
+    """
+    monkeypatch.setenv("PREFECT_API_URL", WORKSPACE_API_URL)
+    monkeypatch.setenv("PREFECT_API_KEY", API_KEY)
 
 
 @pytest.fixture

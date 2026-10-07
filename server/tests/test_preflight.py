@@ -6,7 +6,6 @@ import httpx
 import pytest
 import respx
 from fastmcp import Client
-from prefect.settings import PREFECT_API_KEY, PREFECT_API_URL, temporary_settings
 from support import PLAN, error_text
 
 from prefect_agentic_workflows_mcp.server import build_server
@@ -15,13 +14,19 @@ from prefect_agentic_workflows_mcp.workspace_api import is_cloud_workspace_api_u
 VALID = {"valid": True, "errors": []}
 
 
+def set_profile(monkeypatch: pytest.MonkeyPatch, values: dict[str, str | None]) -> None:
+    """Override Prefect settings. An empty value hides the profile's setting."""
+    for name, value in values.items():
+        monkeypatch.setenv(name, value or "")
+
+
 @pytest.mark.parametrize("api_url", [None, "http://127.0.0.1:4200/api"])
 async def test_server_starts_and_lists_tools_without_a_cloud_profile(
-    api_url: str | None,
+    monkeypatch: pytest.MonkeyPatch, api_url: str | None
 ):
-    with temporary_settings(updates={PREFECT_API_URL: api_url, PREFECT_API_KEY: None}):
-        async with Client(build_server()) as client:
-            names = {tool.name for tool in await client.list_tools()}
+    set_profile(monkeypatch, {"PREFECT_API_URL": api_url, "PREFECT_API_KEY": None})
+    async with Client(build_server()) as client:
+        names = {tool.name for tool in await client.list_tools()}
 
     assert {"get_schema", "validate_plan"} <= names
 
@@ -36,11 +41,11 @@ async def test_server_starts_and_lists_tools_without_a_cloud_profile(
     ids=["plain-http", "lookalike-host", "other-host"],
 )
 async def test_the_api_key_is_only_sent_to_prefect_cloud_over_https(
-    cloud_api: respx.MockRouter, api_url: str
+    monkeypatch: pytest.MonkeyPatch, cloud_api: respx.MockRouter, api_url: str
 ):
-    with temporary_settings(updates={PREFECT_API_URL: api_url}):
-        async with Client(build_server()) as client:
-            result = await client.call_tool("get_schema", {}, raise_on_error=False)
+    set_profile(monkeypatch, {"PREFECT_API_URL": api_url})
+    async with Client(build_server()) as client:
+        result = await client.call_tool("get_schema", {}, raise_on_error=False)
 
     assert "not a Prefect Cloud workspace" in error_text(result)
     assert not cloud_api.calls
@@ -61,21 +66,24 @@ def test_cloud_and_loopback_workspace_urls_are_accepted(api_url: str):
 @pytest.mark.parametrize(
     ("updates", "expected"),
     [
-        ({PREFECT_API_URL: None}, ["No Prefect API URL", "prefect cloud login"]),
+        ({"PREFECT_API_URL": None}, ["No Prefect API URL", "prefect cloud login"]),
         (
-            {PREFECT_API_URL: "http://127.0.0.1:4200/api"},
+            {"PREFECT_API_URL": "http://127.0.0.1:4200/api"},
             ["http://127.0.0.1:4200/api", "not a Prefect Cloud workspace"],
         ),
-        ({PREFECT_API_KEY: None}, ["no API key", "prefect cloud login"]),
+        ({"PREFECT_API_KEY": None}, ["no API key", "prefect cloud login"]),
     ],
     ids=["no-url", "self-hosted", "no-key"],
 )
 async def test_a_profile_that_is_not_a_cloud_workspace_sends_no_request(
-    cloud_api: respx.MockRouter, updates: dict[Any, Any], expected: list[str]
+    monkeypatch: pytest.MonkeyPatch,
+    cloud_api: respx.MockRouter,
+    updates: dict[str, str | None],
+    expected: list[str],
 ):
-    with temporary_settings(updates=updates):
-        async with Client(build_server()) as client:
-            result = await client.call_tool("get_schema", {}, raise_on_error=False)
+    set_profile(monkeypatch, updates)
+    async with Client(build_server()) as client:
+        result = await client.call_tool("get_schema", {}, raise_on_error=False)
 
     message = error_text(result)
     for text in expected:
@@ -144,3 +152,14 @@ async def test_a_failing_preflight_runs_again_on_the_next_call(
     result = await mcp_client.call_tool("validate_plan", {"plan": PLAN})
 
     assert result.structured_content == VALID
+
+
+async def test_a_profile_switch_takes_effect_without_a_restart(
+    monkeypatch: pytest.MonkeyPatch, mcp_client: Client[Any]
+):
+    await mcp_client.call_tool("get_schema", {})
+
+    set_profile(monkeypatch, {"PREFECT_API_URL": "http://127.0.0.1:4200/api"})
+    result = await mcp_client.call_tool("get_schema", {}, raise_on_error=False)
+
+    assert "not a Prefect Cloud workspace" in error_text(result)

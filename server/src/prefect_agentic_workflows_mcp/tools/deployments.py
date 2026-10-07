@@ -16,6 +16,8 @@ class Deployment(BaseModel):
     name: str
     flow_name: str | None
     description: str | None
+    parameters: dict[str, Any]
+    parameter_openapi_schema: dict[str, Any] | None
 
 
 class DeploymentList(BaseModel):
@@ -42,10 +44,13 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
     async def list_deployments() -> DeploymentList:
         """List the deployments in the workspace.
 
-        Returns each deployment's `id`, `name`, `flow_name`, and
-        `description`, sorted by deployment name. A Deployment node runs a
-        deployment by its `id`. A step that must run code, such as a script
-        or a data load, needs a deployment that runs that code.
+        Returns each deployment's `id`, `name`, `flow_name`, `description`,
+        default `parameters`, and `parameter_openapi_schema`, sorted by
+        deployment name. A Deployment node runs a deployment by its `id`. Use
+        the schema and defaults to build the node's `parameters` input, and
+        ask the user for any required parameter that has no default. A step
+        that must run code, such as a script or a data load, needs a
+        deployment that runs that code.
         """
         deployments = await read_all("/deployments/filter", {"sort": "NAME_ASC"})
         flow_ids = sorted({str(d["flow_id"]) for d in deployments if d.get("flow_id")})
@@ -62,6 +67,8 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                     name=str(deployment["name"]),
                     flow_name=flow_names.get(str(deployment.get("flow_id"))),
                     description=deployment.get("description") or None,
+                    parameters=deployment.get("parameters") or {},
+                    parameter_openapi_schema=deployment.get("parameter_openapi_schema"),
                 )
                 for deployment in deployments
             ]

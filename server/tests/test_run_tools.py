@@ -147,8 +147,8 @@ async def test_get_run_bounds_each_read_by_the_time_left(
     await get_run(mcp_client, 5)
 
     # The first read happens before the wait starts. Each later read gets only
-    # the seconds left before the 5-second deadline, never the default 30.
-    assert read_timeouts[1:] == [3.0, 1.0, 1.0]
+    # the seconds left before the 5-second deadline, and none starts after it.
+    assert read_timeouts[1:] == [3.0, 1.0]
 
 
 def problem(output_status: str) -> dict[str, Any]:

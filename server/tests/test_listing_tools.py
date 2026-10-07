@@ -26,8 +26,20 @@ def block_document(
     }
 
 
+REGION_SCHEMA = {
+    "type": "object",
+    "properties": {"region": {"type": "string"}},
+    "required": ["region"],
+}
+
+
 def deployment(
-    deployment_id: str, name: str, flow_id: str, description: str | None = None
+    deployment_id: str,
+    name: str,
+    flow_id: str,
+    description: str | None = None,
+    parameters: dict[str, Any] | None = None,
+    parameter_openapi_schema: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return a deployment in the shape `/deployments/filter` returns."""
     return {
@@ -35,6 +47,8 @@ def deployment(
         "name": name,
         "flow_id": flow_id,
         "description": description,
+        "parameters": parameters or {},
+        "parameter_openapi_schema": parameter_openapi_schema,
     }
 
 
@@ -88,13 +102,22 @@ async def test_list_secret_blocks_reads_every_page(
     assert offsets(route) == [0, 200]
 
 
-async def test_list_deployments_returns_ids_names_and_flow_names(
+async def test_list_deployments_returns_names_flow_names_and_parameters(
     mcp_client: Client[Any], cloud_api: respx.MockRouter
 ):
     first_page = [
         deployment(f"eeeeeeee-0000-0000-0000-{i:012d}", f"d-{i:03d}", LOAD_FLOW_ID)
         for i in range(199)
-    ] + [deployment(GITHUB_ID, "nightly", LOAD_FLOW_ID, "Loads orders")]
+    ] + [
+        deployment(
+            GITHUB_ID,
+            "nightly",
+            LOAD_FLOW_ID,
+            "Loads orders",
+            parameters={"region": "us"},
+            parameter_openapi_schema=REGION_SCHEMA,
+        )
+    ]
     last_page = [deployment(SLACK_TOKEN_ID, "weekly", REPORT_FLOW_ID)]
     deployments_route = cloud_api.post("/deployments/filter").mock(
         side_effect=pages(first_page, last_page)
@@ -116,12 +139,16 @@ async def test_list_deployments_returns_ids_names_and_flow_names(
             "name": "nightly",
             "flow_name": "load-orders",
             "description": "Loads orders",
+            "parameters": {"region": "us"},
+            "parameter_openapi_schema": REGION_SCHEMA,
         },
         {
             "id": SLACK_TOKEN_ID,
             "name": "weekly",
             "flow_name": "report",
             "description": None,
+            "parameters": {},
+            "parameter_openapi_schema": None,
         },
     ]
     assert len(result.structured_content["deployments"]) == 201
