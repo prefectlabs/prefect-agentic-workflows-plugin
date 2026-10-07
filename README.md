@@ -302,8 +302,9 @@ All three ways continue with the same steps:
 
 1. The agent writes a plain-language summary of the plan and waits for you to
    confirm it.
-2. It drafts the plan in `workflows/<flow-name>.plan.json` in your working
-   directory.
+2. It drafts the plan in `workflows/<file-name>.plan.json` in your working
+   directory, where the file name is the flow name with unusual characters
+   replaced by `-`.
 3. It validates the plan against the live schema and fixes errors until the
    plan passes.
 4. It publishes the plan to a flow, which it creates if needed.

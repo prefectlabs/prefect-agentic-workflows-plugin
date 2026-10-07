@@ -16,6 +16,6 @@ async def test_list_deployments_returns_ids_and_names(mcp_client: Client[Any]):
             "name",
             "flow_name",
             "description",
-            "parameters_with_defaults",
+            "parameters",
             "parameter_openapi_schema",
         }

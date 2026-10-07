@@ -36,3 +36,4 @@ These are the limits a plan must fit when you draft it. The platform changes, so
 
 - A plan that passes `validate_plan` can still fail on `publish_plan`. Publishing also checks that every MCP server hostname resolves in DNS, and that the publisher can see every referenced Secret block. An API key without access to Secret blocks fails this check.
 - A plan declares at most 32 plan outputs, with at most 256 fields across all of them.
+- Nothing stops another workspace user from activating a different version between your check and your activation or run. `start_run` always runs whatever version is active when it starts.

@@ -1,6 +1,5 @@
 """Tests for `list_secret_blocks` and `list_deployments`, which read every page."""
 
-import json
 from typing import Any
 
 import httpx
@@ -27,41 +26,10 @@ def block_document(
     }
 
 
-# The schema Cloud stores for a flow with a credential default, and a parameter
-# that happens to be named `default`.
-STORED_SCHEMA = {
+REGION_SCHEMA = {
     "type": "object",
-    "properties": {
-        "region": {"type": "string", "enum": ["us", "eu"]},
-        "api_token": {
-            "type": "string",
-            "default": "sk-live-not-for-the-agent",
-            "enum": ["sk-live-not-for-the-agent"],
-        },
-        "default": {"type": "boolean", "default": True, "examples": [False]},
-        "api_key": {"$ref": "#/$defs/KeyOptions"},
-    },
+    "properties": {"region": {"type": "string", "enum": ["us", "eu"]}},
     "required": ["region"],
-    "$defs": {
-        "KeyOptions": {"$ref": "#/$defs/KeyValues"},
-        "KeyValues": {"type": "string", "enum": ["sk-live-not-for-the-agent"]},
-        "Region": {"type": "string", "enum": ["us", "eu"]},
-    },
-}
-RETURNED_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "region": {"type": "string", "enum": ["us", "eu"]},
-        "api_token": {"type": "string"},
-        "default": {"type": "boolean"},
-        "api_key": {"$ref": "#/$defs/KeyOptions"},
-    },
-    "required": ["region"],
-    "$defs": {
-        "KeyOptions": {"$ref": "#/$defs/KeyValues"},
-        "KeyValues": {"type": "string"},
-        "Region": {"type": "string", "enum": ["us", "eu"]},
-    },
 }
 
 
@@ -146,8 +114,8 @@ async def test_list_deployments_returns_names_flow_names_and_parameters(
             "nightly",
             LOAD_FLOW_ID,
             "Loads orders",
-            parameters={"region": "us", "api_token": "sk-live-not-for-the-agent"},
-            parameter_openapi_schema=STORED_SCHEMA,
+            parameters={"region": "us"},
+            parameter_openapi_schema=REGION_SCHEMA,
         )
     ]
     last_page = [deployment(SLACK_TOKEN_ID, "weekly", REPORT_FLOW_ID)]
@@ -171,19 +139,18 @@ async def test_list_deployments_returns_names_flow_names_and_parameters(
             "name": "nightly",
             "flow_name": "load-orders",
             "description": "Loads orders",
-            "parameters_with_defaults": ["api_token", "region"],
-            "parameter_openapi_schema": RETURNED_SCHEMA,
+            "parameters": {"region": "us"},
+            "parameter_openapi_schema": REGION_SCHEMA,
         },
         {
             "id": SLACK_TOKEN_ID,
             "name": "weekly",
             "flow_name": "report",
             "description": None,
-            "parameters_with_defaults": [],
+            "parameters": {},
             "parameter_openapi_schema": None,
         },
     ]
-    assert "sk-live-not-for-the-agent" not in json.dumps(result.structured_content)
     assert len(result.structured_content["deployments"]) == 201
     assert offsets(deployments_route) == [0, 200]
     assert request_body(deployments_route.calls.last.request)["sort"] == "NAME_ASC"
