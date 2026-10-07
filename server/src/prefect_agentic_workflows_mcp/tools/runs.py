@@ -20,6 +20,7 @@ from pydantic import Field
 from prefect_agentic_workflows_mcp.tools import tool
 from prefect_agentic_workflows_mcp.workspace_api import (
     HttpMethod,
+    RequestTimedOutError,
     WorkspaceApi,
     read_json,
     response_detail,
@@ -257,7 +258,12 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                 break
             # Bound the read by the time left, so a slow response can't stretch
             # the call past the wait the caller asked for.
-            run = await read_run(flow_run_id, timeout=remaining)
+            try:
+                run = await read_run(flow_run_id, timeout=remaining)
+            except RequestTimedOutError:
+                # The wait ran out while Cloud was answering, which is the
+                # same as a wait with no change. Return the last observation.
+                break
             if progress(run) != before:
                 changed = True
                 break

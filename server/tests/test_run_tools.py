@@ -151,6 +151,23 @@ async def test_get_run_bounds_each_read_by_the_time_left(
     assert read_timeouts[1:] == [3.0, 1.0]
 
 
+async def test_get_run_returns_the_last_observation_when_a_poll_times_out(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter, clock: FakeClock
+):
+    observation = run_observation("running")
+    cloud_api.get(RUN_PATH).mock(
+        side_effect=[
+            httpx.Response(200, json=observation),
+            httpx.ReadTimeout("Cloud took too long"),
+        ]
+    )
+
+    result = await get_run(mcp_client, 5)
+
+    assert result["status"] == "running"
+    assert result["wait"]["status_changed"] is False
+
+
 def problem(output_status: str) -> dict[str, Any]:
     return {
         "detail": "Not yet.",

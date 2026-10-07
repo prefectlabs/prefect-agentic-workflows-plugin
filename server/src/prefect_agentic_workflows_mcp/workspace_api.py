@@ -66,6 +66,12 @@ NO_BUCKET_MESSAGE = (
     "again."
 )
 UNREACHABLE_MESSAGE = "Could not reach Prefect Cloud at {api_url}: {error}"
+
+
+class RequestTimedOutError(ToolError):
+    """Prefect Cloud didn't answer a request within its timeout."""
+
+
 PREFLIGHT_FAILED_MESSAGE = (
     "Prefect Cloud returned HTTP {status_code} while checking that execution "
     "plans are available: {detail}"
@@ -185,6 +191,10 @@ class WorkspaceApi:
                 self._verified_api_url = api_url
             try:
                 return await client.request(method, path, json=json, params=params)
+            except httpx.TimeoutException as exc:
+                raise RequestTimedOutError(
+                    UNREACHABLE_MESSAGE.format(api_url=api_url, error=exc)
+                ) from exc
             except httpx.HTTPError as exc:
                 raise ToolError(
                     UNREACHABLE_MESSAGE.format(api_url=api_url, error=exc)

@@ -27,9 +27,24 @@ def block_document(
     }
 
 
-REGION_SCHEMA = {
+# The schema Cloud stores for a flow with a credential default, and a parameter
+# that happens to be named `default`.
+STORED_SCHEMA = {
     "type": "object",
-    "properties": {"region": {"type": "string"}},
+    "properties": {
+        "region": {"type": "string"},
+        "api_token": {"type": "string", "default": "sk-live-not-for-the-agent"},
+        "default": {"type": "boolean", "default": True, "examples": [False]},
+    },
+    "required": ["region"],
+}
+RETURNED_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "region": {"type": "string"},
+        "api_token": {"type": "string"},
+        "default": {"type": "boolean"},
+    },
     "required": ["region"],
 }
 
@@ -116,7 +131,7 @@ async def test_list_deployments_returns_names_flow_names_and_parameters(
             LOAD_FLOW_ID,
             "Loads orders",
             parameters={"region": "us", "api_token": "sk-live-not-for-the-agent"},
-            parameter_openapi_schema=REGION_SCHEMA,
+            parameter_openapi_schema=STORED_SCHEMA,
         )
     ]
     last_page = [deployment(SLACK_TOKEN_ID, "weekly", REPORT_FLOW_ID)]
@@ -141,7 +156,7 @@ async def test_list_deployments_returns_names_flow_names_and_parameters(
             "flow_name": "load-orders",
             "description": "Loads orders",
             "parameters_with_defaults": ["api_token", "region"],
-            "parameter_openapi_schema": REGION_SCHEMA,
+            "parameter_openapi_schema": RETURNED_SCHEMA,
         },
         {
             "id": SLACK_TOKEN_ID,

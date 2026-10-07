@@ -10,6 +10,25 @@ from prefect_agentic_workflows_mcp.workspace_api import WorkspaceApi
 
 PAGE_SIZE = 200
 
+# Schema keywords whose values are maps of names to schemas. A key inside one is
+# a parameter or definition name, not a keyword, so it is never removed.
+SCHEMA_MAPS = frozenset({"properties", "patternProperties", "definitions", "$defs"})
+# Keywords that carry example or default values, which can hold credentials.
+VALUE_KEYWORDS = frozenset({"default", "examples", "example"})
+
+
+def without_values(schema: Any, *, in_map: bool = False) -> Any:
+    """Return a JSON Schema without its default and example values."""
+    if isinstance(schema, list):
+        return [without_values(item) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
+    return {
+        key: without_values(value, in_map=not in_map and key in SCHEMA_MAPS)
+        for key, value in schema.items()
+        if in_map or key not in VALUE_KEYWORDS
+    }
+
 
 class Deployment(BaseModel):
     id: str
@@ -47,11 +66,11 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         Returns each deployment's `id`, `name`, `flow_name`, `description`,
         `parameter_openapi_schema`, and `parameters_with_defaults`, sorted by
         deployment name. `parameters_with_defaults` names the parameters that
-        have a stored default. The default values are left out, because they
-        can hold credentials. A Deployment node runs a deployment by its
-        `id`. Use the schema to build the node's `parameters` input, and ask
-        the user for any required parameter that has no default. A step
-        that must run code, such as a script or a data load, needs a
+        have a stored default. Default and example values are left out of both
+        fields, because they can hold credentials. A Deployment node runs a
+        deployment by its `id`. Use the schema to build the node's `parameters`
+        input, and ask the user for any required parameter that has no default.
+        A step that must run code, such as a script or a data load, needs a
         deployment that runs that code.
         """
         deployments = await read_all("/deployments/filter", {"sort": "NAME_ASC"})
@@ -70,7 +89,9 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                     flow_name=flow_names.get(str(deployment.get("flow_id"))),
                     description=deployment.get("description") or None,
                     parameters_with_defaults=sorted(deployment.get("parameters") or {}),
-                    parameter_openapi_schema=deployment.get("parameter_openapi_schema"),
+                    parameter_openapi_schema=without_values(
+                        deployment.get("parameter_openapi_schema")
+                    ),
                 )
                 for deployment in deployments
             ]
