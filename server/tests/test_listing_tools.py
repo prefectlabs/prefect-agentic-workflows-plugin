@@ -1,5 +1,6 @@
 """Tests for `list_secret_blocks` and `list_deployments`, which read every page."""
 
+import json
 from typing import Any
 
 import httpx
@@ -114,7 +115,7 @@ async def test_list_deployments_returns_names_flow_names_and_parameters(
             "nightly",
             LOAD_FLOW_ID,
             "Loads orders",
-            parameters={"region": "us"},
+            parameters={"region": "us", "api_token": "sk-live-not-for-the-agent"},
             parameter_openapi_schema=REGION_SCHEMA,
         )
     ]
@@ -139,7 +140,7 @@ async def test_list_deployments_returns_names_flow_names_and_parameters(
             "name": "nightly",
             "flow_name": "load-orders",
             "description": "Loads orders",
-            "parameters": {"region": "us"},
+            "parameters_with_defaults": ["api_token", "region"],
             "parameter_openapi_schema": REGION_SCHEMA,
         },
         {
@@ -147,10 +148,11 @@ async def test_list_deployments_returns_names_flow_names_and_parameters(
             "name": "weekly",
             "flow_name": "report",
             "description": None,
-            "parameters": {},
+            "parameters_with_defaults": [],
             "parameter_openapi_schema": None,
         },
     ]
+    assert "sk-live-not-for-the-agent" not in json.dumps(result.structured_content)
     assert len(result.structured_content["deployments"]) == 201
     assert offsets(deployments_route) == [0, 200]
     assert request_body(deployments_route.calls.last.request)["sort"] == "NAME_ASC"

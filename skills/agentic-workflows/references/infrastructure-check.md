@@ -24,7 +24,7 @@ Use wording like this:
 
 For each system, record one of these answers:
 
-- **Reachable.** The user gave an `https://` URL on the public internet, with no `localhost`, private IP address, or internal-only host name, and the server accepts a fixed credential, such as an API key or token sent in a header. A plan can only send a fixed credential from a Secret block. A server that needs an interactive sign-in, such as OAuth in a browser, is not reachable yet. When the user doesn't know which kind the server uses, ask them to check its docs.
+- **Reachable.** The user gave an `https://` URL on the public internet, with no `localhost`, private IP address, or internal-only host name. The URL has no user name or password, query string (`?`), fragment (`#`), or path parameters (`;`), because a plan can't use those. When a credential is in the URL, ask the user for the base URL and treat the credential as a Secret block for a header. The server must also accept a fixed credential, such as an API key or token sent in a header. A plan can only send a fixed credential from a Secret block. A server that needs an interactive sign-in, such as OAuth in a browser, is not reachable yet. When the user doesn't know which kind the server uses, ask them to check its docs.
 - **Not reachable yet.** The user has no URL, isn't sure, or the URL runs only on their machine or network. A stdio MCP server in a source skill is in this group until the user names a remote URL for the same tools.
 
 The step is done when every system the workflow needs has one of these two answers.

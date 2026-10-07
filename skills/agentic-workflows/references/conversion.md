@@ -13,7 +13,7 @@ Work through these steps in order. Finish each step before starting the next.
 | A skill name | Search the skill directories with the command below. |
 | Pasted text | Use the text as `SKILL.md`. There is no directory to read. |
 
-To find an installed skill, search the project's and the user's skill directories and the plugin cache. Replace `<name>` with the name the user gave:
+To find an installed skill, search the project's and the user's skill directories and the plugin cache. A skill name uses only letters, digits, `-`, and `_`. When the name the user gave has any other character, don't run a command with it: ask the user for the skill's path instead. Otherwise replace `<name>` with the name:
 
 ```bash
 find -L .claude/skills .agents/skills ~/.claude/skills ~/.agents/skills ~/.claude/plugins/cache \

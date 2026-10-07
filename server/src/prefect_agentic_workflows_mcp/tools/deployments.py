@@ -16,7 +16,7 @@ class Deployment(BaseModel):
     name: str
     flow_name: str | None
     description: str | None
-    parameters: dict[str, Any]
+    parameters_with_defaults: list[str]
     parameter_openapi_schema: dict[str, Any] | None
 
 
@@ -45,10 +45,12 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         """List the deployments in the workspace.
 
         Returns each deployment's `id`, `name`, `flow_name`, `description`,
-        default `parameters`, and `parameter_openapi_schema`, sorted by
-        deployment name. A Deployment node runs a deployment by its `id`. Use
-        the schema and defaults to build the node's `parameters` input, and
-        ask the user for any required parameter that has no default. A step
+        `parameter_openapi_schema`, and `parameters_with_defaults`, sorted by
+        deployment name. `parameters_with_defaults` names the parameters that
+        have a stored default. The default values are left out, because they
+        can hold credentials. A Deployment node runs a deployment by its
+        `id`. Use the schema to build the node's `parameters` input, and ask
+        the user for any required parameter that has no default. A step
         that must run code, such as a script or a data load, needs a
         deployment that runs that code.
         """
@@ -67,7 +69,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                     name=str(deployment["name"]),
                     flow_name=flow_names.get(str(deployment.get("flow_id"))),
                     description=deployment.get("description") or None,
-                    parameters=deployment.get("parameters") or {},
+                    parameters_with_defaults=sorted(deployment.get("parameters") or {}),
                     parameter_openapi_schema=deployment.get("parameter_openapi_schema"),
                 )
                 for deployment in deployments
