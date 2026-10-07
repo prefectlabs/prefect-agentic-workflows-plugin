@@ -116,7 +116,7 @@ def schedules_path(flow_id: UUID) -> str:
 def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
     """Add the schedule tools to `mcp`."""
 
-    @tool(mcp, read_only=False)
+    @tool(mcp, read_only=False, destructive=True)
     async def create_schedule(
         flow_id: FlowId,
         name: ScheduleName,
