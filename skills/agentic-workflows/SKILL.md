@@ -74,5 +74,5 @@ A run always uses the flow's active version. When the user saved the new version
 ## After the first publish
 
 - To edit a workflow, start from `workflows/<flow-name>.plan.json`. When the edit adds or changes a system the workflow uses, run the infrastructure check for that system first. Then run the pipeline from step 1, with a summary of what changes, so the user approves the new design. When the file isn't there, write it from the `plan` that `get_plan` returns. Plan versions are immutable, so each publish creates a new version.
-- To roll back, call `list_plan_versions`, then `get_plan` with the target `version_id`. Tell the user how that plan differs from the active one, get the promotion approval, and call `activate_plan_version`.
+- To roll back, call `list_plan_versions`. Read the target plan with `get_plan` and its `version_id`, and the active plan with `get_plan` and no `version_id`. Tell the user how that plan differs from the active one, get the promotion approval, and call `activate_plan_version`.
 - To schedule a workflow, get the recurring-runs approval, then use `create_schedule`. Read schedules with `list_schedules` and `get_schedule`, and change or pause one with `update_schedule`. A schedule runs the version that is active when it fires.
