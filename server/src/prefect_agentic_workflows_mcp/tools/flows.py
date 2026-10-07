@@ -49,7 +49,10 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         if response.status_code != 404:
             return {"created": False, "flow": read_json(response, "GET", lookup_path)}
 
-        flow = await api.call(
+        response = await api.request(
             "POST", "/flows/", json={"name": name, "tags": tags or []}
         )
-        return {"created": True, "flow": flow}
+        flow = read_json(response, "POST", "/flows/")
+        # Cloud answers 200 instead of 201 when another caller created the flow
+        # between the lookup and this request.
+        return {"created": response.status_code == 201, "flow": flow}

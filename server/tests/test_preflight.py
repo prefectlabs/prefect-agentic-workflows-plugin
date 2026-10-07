@@ -10,6 +10,7 @@ from prefect.settings import PREFECT_API_KEY, PREFECT_API_URL, temporary_setting
 from support import PLAN, error_text
 
 from prefect_agentic_workflows_mcp.server import build_server
+from prefect_agentic_workflows_mcp.workspace_api import is_cloud_workspace_api_url
 
 VALID = {"valid": True, "errors": []}
 
@@ -23,6 +24,38 @@ async def test_server_starts_and_lists_tools_without_a_cloud_profile(
             names = {tool.name for tool in await client.list_tools()}
 
     assert {"get_schema", "validate_plan"} <= names
+
+
+@pytest.mark.parametrize(
+    "api_url",
+    [
+        "http://api.prefect.cloud/api/accounts/a/workspaces/w",
+        "https://api.prefect.cloud.example.com/api/accounts/a/workspaces/w",
+        "https://example.com/api/accounts/a/workspaces/w",
+    ],
+    ids=["plain-http", "lookalike-host", "other-host"],
+)
+async def test_the_api_key_is_only_sent_to_prefect_cloud_over_https(
+    cloud_api: respx.MockRouter, api_url: str
+):
+    with temporary_settings(updates={PREFECT_API_URL: api_url}):
+        async with Client(build_server()) as client:
+            result = await client.call_tool("get_schema", {}, raise_on_error=False)
+
+    assert "not a Prefect Cloud workspace" in error_text(result)
+    assert not cloud_api.calls
+
+
+@pytest.mark.parametrize(
+    "api_url",
+    [
+        "https://api.prefect.cloud/api/accounts/a/workspaces/w",
+        "http://127.0.0.1:4200/api/accounts/a/workspaces/w",
+    ],
+    ids=["cloud", "loopback"],
+)
+def test_cloud_and_loopback_workspace_urls_are_accepted(api_url: str):
+    assert is_cloud_workspace_api_url(api_url)
 
 
 @pytest.mark.parametrize(

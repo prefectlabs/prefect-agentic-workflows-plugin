@@ -37,8 +37,21 @@ FlowRunId = Annotated[
 
 MAX_WAIT_SECONDS = 30
 POLL_INTERVAL_SECONDS = 2.0
-FINISHED_RUN_STATUSES = frozenset({"completed", "failed", "cancelled"})
+# `get_run` returns at once for these: the run either can't change on its own
+# or needs someone to act before it can.
+STOP_WAITING_STATUSES = frozenset({"completed", "failed", "cancelled", "blocked"})
 FINAL_OUTPUT_STATUSES = frozenset({"failed", "skipped", "unavailable"})
+
+
+MIN_READ_SECONDS = 1.0
+
+
+def awaits_input(run: dict[str, Any]) -> bool:
+    """Return whether any node is waiting for a person to answer a form."""
+    return any(
+        (node.get("wait") or {}).get("kind") == "human_input"
+        for node in run.get("nodes") or []
+    )
 
 
 def progress(run: dict[str, Any]) -> tuple[Any, ...]:
@@ -180,9 +193,15 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             "flow_run": flow_run,
         }
 
-    async def read_run(flow_run_id: UUID) -> dict[str, Any]:
+    async def read_run(
+        flow_run_id: UUID, timeout: float | None = None
+    ) -> dict[str, Any]:
         path = f"/flow_runs/{flow_run_id}/execution-plan"
-        return read_json_with_retry_hint(await api.request("GET", path), "GET", path)
+        if timeout is None:
+            response = await api.request("GET", path)
+        else:
+            response = await api.request("GET", path, timeout=timeout)
+        return read_json_with_retry_hint(response, "GET", path)
 
     @tool(mcp, read_only=True)
     async def get_run(
@@ -215,7 +234,8 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
 
         With `wait_seconds`, the tool checks the run every few seconds and
         returns as soon as the run's status or any node's status changes,
-        when the run finishes, or when the wait runs out. `wait` then reports
+        when the run finishes or is blocked, when a node is already waiting
+        for human input, or when the wait runs out. `wait` then reports
         `seconds_waited` and `status_changed`. Without `wait_seconds`, `wait`
         is null.
 
@@ -230,12 +250,16 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         deadline = started + min(wait_seconds, MAX_WAIT_SECONDS)
         before = progress(run)
         changed = False
-        while run["status"] not in FINISHED_RUN_STATUSES:
+        while run["status"] not in STOP_WAITING_STATUSES and not awaits_input(run):
             remaining = deadline - monotonic()
             if remaining <= 0:
                 break
             await sleep(min(POLL_INTERVAL_SECONDS, remaining))
-            run = await read_run(flow_run_id)
+            # Bound the read by the time left, so a slow response can't stretch
+            # the call past the wait the caller asked for.
+            run = await read_run(
+                flow_run_id, timeout=max(deadline - monotonic(), MIN_READ_SECONDS)
+            )
             if progress(run) != before:
                 changed = True
                 break

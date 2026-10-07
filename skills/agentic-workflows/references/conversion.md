@@ -26,7 +26,7 @@ The step is done when you have the skill's directory, or the pasted text.
 
 ## 2. Read the whole skill
 
-List every file in the skill directory with `find -L <skill directory> -type f`, then read every file except binary and cache files such as `__pycache__/` and `.DS_Store`: `SKILL.md`, its reference files, scripts, templates, and config. A reference file often holds the rules a step checks against, and a script's code shows what it reads, what it prints, and what it changes. For each script, write down its inputs, its output, and its side effects.
+List every file in the skill directory with `find -L <skill directory> -type f`, then read every file except binary and cache files such as `__pycache__/` and `.DS_Store`, and except files that can hold secrets: `SKILL.md`, its reference files, scripts, templates, and config. Never open a file that can hold secret values, such as `.env` and `.env.*`, `*.pem`, `*.key`, `credentials*`, or `secrets*`. For each one, list only its name, and for an `.env` file only its variable names, with `grep -o '^[A-Za-z_][A-Za-z0-9_]*' <file>`. Treat every value in it as a credential that needs a Secret block. A reference file often holds the rules a step checks against, and a script's code shows what it reads, what it prints, and what it changes. For each script, write down its inputs, its output, and its side effects.
 
 When the text is pasted, ask the user to paste each file it names or links to, such as a script or a reference file.
 

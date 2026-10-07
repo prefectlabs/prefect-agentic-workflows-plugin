@@ -37,6 +37,18 @@ async def test_get_or_create_flow_creates_a_missing_flow_with_its_tags(
     }
 
 
+async def test_get_or_create_flow_reports_a_flow_another_caller_just_created(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    cloud_api.get("/flows/name/daily-summary").respond(404, json={"detail": "Nope"})
+    flow = flow_response()
+    cloud_api.post("/flows/").respond(200, json=flow)
+
+    result = await mcp_client.call_tool("get_or_create_flow", {"name": "daily-summary"})
+
+    assert result.structured_content == {"created": False, "flow": flow}
+
+
 async def test_get_or_create_flow_escapes_the_name_in_the_lookup_path(
     mcp_client: Client[Any], cloud_api: respx.MockRouter
 ):

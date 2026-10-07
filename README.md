@@ -134,9 +134,10 @@ When the run completes, click **Finish the reply**. Under **Outputs**, click
 unchanged. Click `revised_reply` if the manager rejected it. The other output
 shows **Not selected**.
 
-You can also ask your agent: "Show me the reply and the category from the last
-customer-feedback-reply run." It reads the run's `reply` and `category`
-results.
+You can also ask your agent for the results. Paste the run's URL from the
+Prefect UI, and ask: "Show me the reply and the category from this run." The
+agent needs the run's URL or ID, because it can't look up runs you start in the
+UI.
 
 The `category` result holds the draft as well as the category, because a
 workflow result takes a whole step output.

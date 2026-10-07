@@ -80,9 +80,25 @@ REQUEST_FAILED_MESSAGE = (
 )
 
 
+CLOUD_DOMAIN = "prefect.cloud"
+LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
 def is_cloud_workspace_api_url(api_url: str) -> bool:
-    """Return whether an API URL points at a Prefect Cloud workspace."""
-    return "/accounts/" in api_url and "/workspaces/" in api_url
+    """Return whether an API URL points at a Prefect Cloud workspace.
+
+    The URL must use HTTPS on `prefect.cloud` or one of its subdomains, so the
+    API key is never sent to another host or over plain HTTP. A loopback host
+    is also accepted, so tests can serve a fake Cloud API on this machine.
+    """
+    url = httpx.URL(api_url)
+    if "/accounts/" not in url.path or "/workspaces/" not in url.path:
+        return False
+    host = url.host
+    if host in LOOPBACK_HOSTS:
+        return True
+    is_cloud_host = host == CLOUD_DOMAIN or host.endswith(f".{CLOUD_DOMAIN}")
+    return url.scheme == "https" and is_cloud_host
 
 
 def response_detail(response: httpx.Response) -> str:

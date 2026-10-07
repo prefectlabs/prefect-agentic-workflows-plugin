@@ -8,7 +8,7 @@ The examples that use a Secret block or a deployment hold placeholder IDs of all
 
 [examples/single-agent-with-mcp.plan.json](examples/single-agent-with-mcp.plan.json)
 
-One agent node reads a repository name from a plan input, lists open bug issues with the GitHub MCP server, and selects one `summary` output. The MCP server uses Streamable HTTP, and its `Authorization` header refers to a Secret block, whose value is the whole header value, such as `Bearer <token>`. The node retries twice on failure. The plan output `bug_report` returns the summary as the run's result.
+One agent node reads a repository name from a plan input, lists open bug issues with the GitHub MCP server, and selects one `summary` output. The MCP server uses Streamable HTTP, and its `Authorization` header refers to a Secret block, whose value is the whole header value, such as `Bearer <token>`. On failure the node retries once, so it makes at most two attempts. The plan output `bug_report` returns the summary as the run's result.
 
 Use this shape when the work needs one set of tools and has no branch or approval. That covers most workflows.
 
