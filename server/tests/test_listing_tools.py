@@ -39,8 +39,14 @@ STORED_SCHEMA = {
             "enum": ["sk-live-not-for-the-agent"],
         },
         "default": {"type": "boolean", "default": True, "examples": [False]},
+        "api_key": {"$ref": "#/$defs/KeyOptions"},
     },
     "required": ["region"],
+    "$defs": {
+        "KeyOptions": {"$ref": "#/$defs/KeyValues"},
+        "KeyValues": {"type": "string", "enum": ["sk-live-not-for-the-agent"]},
+        "Region": {"type": "string", "enum": ["us", "eu"]},
+    },
 }
 RETURNED_SCHEMA = {
     "type": "object",
@@ -48,8 +54,14 @@ RETURNED_SCHEMA = {
         "region": {"type": "string", "enum": ["us", "eu"]},
         "api_token": {"type": "string"},
         "default": {"type": "boolean"},
+        "api_key": {"$ref": "#/$defs/KeyOptions"},
     },
     "required": ["region"],
+    "$defs": {
+        "KeyOptions": {"$ref": "#/$defs/KeyValues"},
+        "KeyValues": {"type": "string"},
+        "Region": {"type": "string", "enum": ["us", "eu"]},
+    },
 }
 
 

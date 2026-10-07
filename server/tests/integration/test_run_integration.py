@@ -10,7 +10,7 @@ from typing import Any
 from fastmcp import Client
 
 FLOW_NAME_PREFIX = "prefect-agentic-workflows-integration-run"
-FINISHED = {"completed", "failed", "cancelled"}
+FINISHED = {"completed", "failed", "cancelled", "blocked"}
 WATCH_LIMIT_SECONDS = 300
 
 ORCHESTRATION = {

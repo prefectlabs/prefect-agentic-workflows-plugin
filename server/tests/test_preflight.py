@@ -10,7 +10,10 @@ from fastmcp import Client
 from support import API_KEY, PLAN, WORKSPACE_API_URL, error_text
 
 from prefect_agentic_workflows_mcp.server import build_server
-from prefect_agentic_workflows_mcp.workspace_api import is_cloud_workspace_api_url
+from prefect_agentic_workflows_mcp.workspace_api import (
+    ALLOW_LOOPBACK_VARIABLE,
+    is_cloud_workspace_api_url,
+)
 
 VALID = {"valid": True, "errors": []}
 
@@ -52,16 +55,23 @@ async def test_the_api_key_is_only_sent_to_prefect_cloud_over_https(
     assert not cloud_api.calls
 
 
-@pytest.mark.parametrize(
-    "api_url",
-    [
-        "https://api.prefect.cloud/api/accounts/a/workspaces/w",
-        "http://127.0.0.1:4200/api/accounts/a/workspaces/w",
-    ],
-    ids=["cloud", "loopback"],
-)
-def test_cloud_and_loopback_workspace_urls_are_accepted(api_url: str):
-    assert is_cloud_workspace_api_url(api_url)
+LOOPBACK_URL = "http://127.0.0.1:4200/api/accounts/a/workspaces/w"
+
+
+def test_a_cloud_workspace_url_is_accepted():
+    assert is_cloud_workspace_api_url(
+        "https://api.prefect.cloud/api/accounts/a/workspaces/w"
+    )
+
+
+def test_a_loopback_url_is_accepted_only_when_a_test_harness_allows_it(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.delenv(ALLOW_LOOPBACK_VARIABLE, raising=False)
+    assert not is_cloud_workspace_api_url(LOOPBACK_URL)
+
+    monkeypatch.setenv(ALLOW_LOOPBACK_VARIABLE, "1")
+    assert is_cloud_workspace_api_url(LOOPBACK_URL)
 
 
 @pytest.mark.parametrize(

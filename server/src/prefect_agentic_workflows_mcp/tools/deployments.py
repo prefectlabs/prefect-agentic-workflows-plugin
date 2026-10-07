@@ -25,32 +25,72 @@ CREDENTIAL_NAME = re.compile(
 )
 
 
-def without_values(
-    schema: Any, *, in_map: bool = False, credential: bool = False
-) -> Any:
+def ref_names(schema: Any) -> set[str]:
+    """Return the definition names that `$ref` values in a schema point at."""
+    if isinstance(schema, list):
+        return set().union(*(ref_names(item) for item in schema))
+    if not isinstance(schema, dict):
+        return set()
+    names = {schema["$ref"].rsplit("/", 1)[-1]} if "$ref" in schema else set()
+    return names.union(*(ref_names(value) for value in schema.values()))
+
+
+def credential_definitions(schema: dict[str, Any]) -> set[str]:
+    """Return the definitions a credential-like parameter uses, directly or not."""
+    definitions = {
+        name: value
+        for key in ("definitions", "$defs")
+        for name, value in (schema.get(key) or {}).items()
+    }
+    found = set().union(
+        *(
+            ref_names(value)
+            for name, value in (schema.get("properties") or {}).items()
+            if CREDENTIAL_NAME.search(name)
+        )
+    )
+    pending = list(found)
+    while pending:
+        for name in ref_names(definitions.get(pending.pop())) - found:
+            found.add(name)
+            pending.append(name)
+    return found
+
+
+def without_values(schema: Any) -> Any:
     """Return a JSON Schema without values that can hold credentials.
 
     Default and example values are always removed. Allowed values (`const`
     and `enum`) are removed only under a parameter with a credential-like
-    name, so ordinary choices such as a list of regions stay.
+    name, and in every definition such a parameter uses through `$ref`, so
+    ordinary choices such as a list of regions stay.
     """
-    if isinstance(schema, list):
-        return [without_values(item, credential=credential) for item in schema]
-    if not isinstance(schema, dict):
-        return schema
-    if in_map:
+    sensitive = credential_definitions(schema) if isinstance(schema, dict) else set()
+
+    def strip(node: Any, *, in_map: bool, credential: bool) -> Any:
+        if isinstance(node, list):
+            return [strip(item, in_map=False, credential=credential) for item in node]
+        if not isinstance(node, dict):
+            return node
+        if in_map:
+            return {
+                key: strip(
+                    value,
+                    in_map=False,
+                    credential=credential
+                    or key in sensitive
+                    or bool(CREDENTIAL_NAME.search(key)),
+                )
+                for key, value in node.items()
+            }
+        removed = VALUE_KEYWORDS | (LITERAL_KEYWORDS if credential else frozenset())
         return {
-            key: without_values(
-                value, credential=credential or bool(CREDENTIAL_NAME.search(key))
-            )
-            for key, value in schema.items()
+            key: strip(value, in_map=key in SCHEMA_MAPS, credential=credential)
+            for key, value in node.items()
+            if key not in removed
         }
-    removed = VALUE_KEYWORDS | (LITERAL_KEYWORDS if credential else frozenset())
-    return {
-        key: without_values(value, in_map=key in SCHEMA_MAPS, credential=credential)
-        for key, value in schema.items()
-        if key not in removed
-    }
+
+    return strip(schema, in_map=False, credential=False)
 
 
 class Deployment(BaseModel):
@@ -92,7 +132,10 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         have a stored default. Default and example values are left out of both
         fields, because they can hold credentials. A Deployment node runs a
         deployment by its `id`. Use the schema to build the node's `parameters`
-        input, and ask the user for any required parameter that has no default.
+        input, and ask the user for any required parameter that has no default,
+        except a credential such as a token or password. Never ask for a
+        credential's value: tell the user to set it up inside the deployment
+        instead, for example as a Secret block the flow reads.
         A step that must run code, such as a script or a data load, needs a
         deployment that runs that code.
         """

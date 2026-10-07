@@ -16,6 +16,7 @@ because Cloud only rejects requests that write to the bucket. `read_json`
 turns that rejection into a message that names the missing bucket.
 """
 
+import os
 from typing import Any, Literal
 
 import httpx
@@ -88,6 +89,9 @@ REQUEST_FAILED_MESSAGE = (
 
 CLOUD_DOMAIN = "prefect.cloud"
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+# Lets a test harness point the server at a fake Cloud API on this machine. It
+# is off unless set, so a real API key never goes to a local port by accident.
+ALLOW_LOOPBACK_VARIABLE = "PREFECT_AGENTIC_WORKFLOWS_ALLOW_LOOPBACK_FOR_TESTS"
 
 
 def is_cloud_workspace_api_url(api_url: str) -> bool:
@@ -95,14 +99,15 @@ def is_cloud_workspace_api_url(api_url: str) -> bool:
 
     The URL must use HTTPS on `prefect.cloud` or one of its subdomains, so the
     API key is never sent to another host or over plain HTTP. A loopback host
-    is also accepted, so tests can serve a fake Cloud API on this machine.
+    is accepted only when `PREFECT_AGENTIC_WORKFLOWS_ALLOW_LOOPBACK_FOR_TESTS`
+    is `1`, so a test harness can serve a fake Cloud API on this machine.
     """
     url = httpx.URL(api_url)
     if "/accounts/" not in url.path or "/workspaces/" not in url.path:
         return False
     host = url.host
     if host in LOOPBACK_HOSTS:
-        return True
+        return os.environ.get(ALLOW_LOOPBACK_VARIABLE) == "1"
     is_cloud_host = host == CLOUD_DOMAIN or host.endswith(f".{CLOUD_DOMAIN}")
     return url.scheme == "https" and is_cloud_host
 
