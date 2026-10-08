@@ -9,7 +9,7 @@ An execution plan is a JSON graph of agent, human-input, and deployment nodes at
 
 ## Start
 
-When building or converting a workflow, or editing one to use a new system, run the [infrastructure check](references/infrastructure-check.md) first. Running, rolling back, or scheduling a published workflow skips it. Then:
+When building a workflow, or editing one to use a new system, run the [infrastructure check](references/infrastructure-check.md) first. The conversion guide runs it once it knows which systems the skill uses. Running, rolling back, or scheduling a published workflow skips it. Then:
 
 - **Converting an existing skill:** follow [references/conversion.md](references/conversion.md).
 - **The user describes the workflow:** fill the checklist below from the description and the defaults, and ask only about the gaps.
@@ -27,7 +27,7 @@ When building or converting a workflow, or editing one to use a new system, run 
 ## Pipeline
 
 1. **Summary.** Describe the nodes, branches, approvals, tools, Secret blocks, inputs, and outputs in plain language, with the reason for each node boundary. For a conversion, include the conversion report. The step is done when the user confirms it: the design approval.
-2. **Draft.** Read [references/design-guidance.md](references/design-guidance.md) and start from its closest example. Call `get_schema`, and when `supported_schema_versions` lists a newer version, call it again with that version and write against it. Name the file after the flow, with every character other than letters, digits, `-`, and `_` replaced by `-`. Ask before overwriting a file that belongs to another flow.
+2. **Draft.** Read [references/design-guidance.md](references/design-guidance.md) and start from its closest example. Call `get_schema`, and when `supported_schema_versions` lists a newer version, call it again with that version and write against it. Name the file after the flow, with every character other than letters, digits, `-`, and `_` replaced by `-`. Ask before overwriting an existing file, unless you're editing the flow it was written for.
 3. **Validate.** Call `validate_plan` and fix the file until `valid` is true. When an error and the reference files disagree, the error is right.
 4. **Publish.** Call `get_or_create_flow`, then `get_plan`. When the flow has an active version, activating the new one is a promotion. Call `publish_plan`, with `activate` false when the user only wants to save. A fix that changes the design goes back to step 1. A fix that only changes the document's shape goes back to step 3.
 5. **Test run.** Offer one, and follow [Running](#running).
