@@ -11,7 +11,7 @@ so no profile on the machine is used.
 import asyncio
 import json
 import shutil
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Protocol
@@ -29,9 +29,10 @@ from claude_agent_sdk import (
 )
 from claude_agent_sdk.types import McpStdioServerConfig
 
+from evals.lifecycle import current_run
 from evals.record import Reply, ToolCall, Transcript, read_plan_files
 from evals.sandbox import Credentials, SandboxApi
-from evals.scenario import Outcome, Rule, next_rule
+from evals.scenario import Outcome, Rule, ScenarioInputs, next_rule
 from prefect_agentic_workflows_mcp.server import SERVER_NAME
 
 SERVER_DIR = Path(__file__).resolve().parents[1]
@@ -200,7 +201,6 @@ async def converse(
     sandbox: SandboxApi,
     flow_prefix: str,
     files: dict[str, Path] | None = None,
-    setup: Callable[[SandboxApi, str], None] | None = None,
     max_turns: int = 12,
     model: str | None = None,
 ) -> Outcome:
@@ -208,25 +208,25 @@ async def converse(
 
     `workspace` must be an empty directory. The agent works in
     `workspace/agent`, and its Prefect home is `workspace/prefect-home`. The
-    transcript is saved to `workspace/transcript.json`. After the
-    conversation, the state of each flow whose name starts with
-    `flow_prefix` is read into the outcome.
+    transcript is saved to `workspace/transcript.json`, also when the agent
+    raises. After the conversation, the state of each flow whose name starts
+    with `flow_prefix` is read into the outcome.
     """
     agent_dir = workspace / "agent"
     prefect_home = workspace / "prefect-home"
     prefect_home.mkdir(parents=True)
     prepare_workspace(agent_dir, files or {})
-    if setup is not None:
-        setup(sandbox, flow_prefix)
     transcript = Transcript()
     options = agent_options(
         agent_dir, prefect_environment(sandbox.credentials, prefect_home), model
     )
-    async with ClaudeSDKClient(options) as client:
-        await talk(client, transcript, prompt, user, max_turns)
-    (workspace / "transcript.json").write_text(
-        json.dumps(asdict(transcript), indent=2, default=str)
-    )
+    try:
+        async with ClaudeSDKClient(options) as client:
+            await talk(client, transcript, prompt, user, max_turns)
+    finally:
+        (workspace / "transcript.json").write_text(
+            json.dumps(asdict(transcript), indent=2, default=str)
+        )
     return Outcome(
         transcript,
         read_plan_files(agent_dir),
@@ -234,3 +234,27 @@ async def converse(
         agent_dir,
         flow_prefix,
     )
+
+
+def scenario_task(model: str | None) -> Callable[[ScenarioInputs], Awaitable[Outcome]]:
+    """Return the task the dataset evaluates: one conversation for one case.
+
+    The task reads the run's directory, flow prefix, and sandbox from
+    `current_run()`, which `SandboxLifecycle.setup` sets before the task
+    starts. `model` is the agent's model, or None for the SDK's default.
+    """
+
+    async def run_scenario(inputs: ScenarioInputs) -> Outcome:
+        run = current_run()
+        return await converse(
+            run.directory,
+            inputs.prompt_for(run.flow_prefix),
+            inputs.user,
+            sandbox=run.sandbox,
+            flow_prefix=run.flow_prefix,
+            files=inputs.files,
+            max_turns=inputs.max_turns,
+            model=model,
+        )
+
+    return run_scenario

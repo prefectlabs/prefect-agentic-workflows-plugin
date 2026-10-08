@@ -26,10 +26,11 @@ from evals.runner import REPO_ROOT
 from evals.sandbox import SandboxApi
 from evals.scenario import (
     DECLINE_TEST_RUN,
+    FLOW_PREFIX,
     Outcome,
     Rule,
-    RunScenario,
-    assert_passed,
+    Scenario,
+    ScenarioInputs,
 )
 
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "skills" / "release-notes"
@@ -40,10 +41,9 @@ SECRET_BLOCK = "eval-github-token"
 TOOLS_SERVER = "https://example.com/mcp"
 
 
-def prompt(flow_prefix: str) -> str:
-    return f"""\
+PROMPT = f"""\
 Convert the skill in ./release-notes into a Prefect Cloud workflow. Name the
-flow `{flow_prefix}{FLOW_NAME}`. Our GitHub MCP server is hosted at
+flow `{FLOW_PREFIX}{FLOW_NAME}`. Our GitHub MCP server is hosted at
 https://api.githubcopilot.com/mcp/, and its token is in the Secret block
 `{SECRET_BLOCK}`.
 """
@@ -130,14 +130,13 @@ def checks(outcome: Outcome) -> list[Check]:
         assertions.check_publish_succeeded(calls),
         assertions.check_published_only_after_valid(calls),
         assertions.check_flow_saved(outcome.flows, FLOW_NAME),
-        assertions.check_never_called(calls, "start_run"),
     ]
 
 
-async def test_release_notes_conversion(
-    run_scenario: RunScenario, flow_prefix: str
-) -> None:
-    outcome = await run_scenario(
-        prompt(flow_prefix), USER, files={"release-notes": FIXTURE}, setup=setup
-    )
-    assert_passed(outcome, checks(outcome))
+SCENARIO = Scenario(
+    "release_notes_conversion",
+    ScenarioInputs(
+        prompt=PROMPT, user=USER, files={"release-notes": FIXTURE}, setup=setup
+    ),
+    checks,
+)

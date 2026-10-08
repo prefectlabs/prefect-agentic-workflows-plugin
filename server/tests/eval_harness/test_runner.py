@@ -17,11 +17,12 @@ from claude_agent_sdk import (
 )
 
 from evals import runner
+from evals.lifecycle import CURRENT_RUN, Run
 from evals.record import FlowState, Reply, ToolCall, Transcript
-from evals.runner import converse, talk
+from evals.runner import converse, scenario_task, talk
 from evals.sandbox import Credentials, SandboxApi
-from evals.scenario import Rule, next_rule
-from evals.scenarios import test_release_notes_conversion as release_notes
+from evals.scenario import Rule, ScenarioInputs, next_rule
+from evals.scenarios import release_notes_conversion as release_notes
 
 INFRASTRUCTURE_QUESTION = (
     "Which business tools can an agent reach? Any remote MCP server?"
@@ -129,30 +130,23 @@ async def test_talk_records_tool_calls_and_answers_from_the_rules():
 
 
 class StubSandbox(SandboxApi):
-    """Records the setup calls and returns a fixed snapshot."""
+    """Returns a fixed snapshot, and records the prefixes it was asked for."""
 
     def __init__(self) -> None:
         super().__init__(Credentials("https://api.prefect.cloud/api/x", "pnu_key"))
-        self.created: list[str] = []
         self.snapshot_prefixes: list[str] = []
-
-    def create_flow(self, name: str) -> dict[str, Any]:
-        self.created.append(name)
-        return {"id": "flow-1", "name": name}
 
     def snapshot(self, prefix: str) -> dict[str, FlowState]:
         self.snapshot_prefixes.append(prefix)
         return {"digest": FlowState("flow-1", f"{prefix}digest")}
 
 
-async def test_converse_seeds_the_sandbox_and_snapshots_the_run_prefix(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    clients: list[Any] = []
+def stub_client(clients: list[Any], *turns: Sequence[Message]) -> type[ScriptedAgent]:
+    """Return a stand-in for `ClaudeSDKClient` that plays `turns`."""
 
     class StubClient(ScriptedAgent):
         def __init__(self, options: Any) -> None:
-            super().__init__([result("Done.")])
+            super().__init__(*turns)
             self.options = options
             clients.append(self)
 
@@ -162,11 +156,17 @@ async def test_converse_seeds_the_sandbox_and_snapshots_the_run_prefix(
         async def __aexit__(self, *args: object) -> None:
             pass
 
-    monkeypatch.setattr(runner, "ClaudeSDKClient", StubClient)
-    sandbox = StubSandbox()
+    return StubClient
 
-    def setup(api: SandboxApi, prefix: str) -> None:
-        api.create_flow(f"{prefix}digest")
+
+async def test_converse_snapshots_the_run_prefix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    clients: list[Any] = []
+    monkeypatch.setattr(
+        runner, "ClaudeSDKClient", stub_client(clients, [result("Done.")])
+    )
+    sandbox = StubSandbox()
 
     outcome = await converse(
         tmp_path,
@@ -174,10 +174,8 @@ async def test_converse_seeds_the_sandbox_and_snapshots_the_run_prefix(
         [Rule(label="end", reply=None)],
         sandbox=sandbox,
         flow_prefix="eval-abc123-1-",
-        setup=setup,
     )
 
-    assert sandbox.created == ["eval-abc123-1-digest"]
     assert sandbox.snapshot_prefixes == ["eval-abc123-1-"]
     assert list(outcome.flows) == ["digest"]
     assert outcome.flow_prefix == "eval-abc123-1-"
@@ -188,3 +186,51 @@ async def test_converse_seeds_the_sandbox_and_snapshots_the_run_prefix(
     assert not any("LOOPBACK" in name for name in env)
     transcript = json.loads((tmp_path / "transcript.json").read_text())
     assert transcript["turn_results"] == ["Done."]
+
+
+async def test_converse_saves_the_transcript_when_the_agent_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    # A turn with no messages left raises IndexError in `receive_response`.
+    monkeypatch.setattr(runner, "ClaudeSDKClient", stub_client([]))
+
+    with pytest.raises(IndexError):
+        await converse(
+            tmp_path,
+            "Build it.",
+            [],
+            sandbox=StubSandbox(),
+            flow_prefix="eval-abc123-1-",
+        )
+
+    assert (tmp_path / "transcript.json").exists()
+
+
+async def test_scenario_task_runs_the_conversation_of_the_current_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    clients: list[Any] = []
+    monkeypatch.setattr(
+        runner, "ClaudeSDKClient", stub_client(clients, [result("Done.")])
+    )
+    sandbox = StubSandbox()
+    inputs = ScenarioInputs(
+        prompt="Build {flow_prefix}digest.", user=[Rule(label="end", reply=None)]
+    )
+    token = CURRENT_RUN.set(Run(sandbox, "eval-abc123-2-", tmp_path))
+    try:
+        outcome = await scenario_task("claude-haiku-5-5")(inputs)
+    finally:
+        CURRENT_RUN.reset(token)
+
+    assert clients[0].prompts == ["Build eval-abc123-2-digest."]
+    assert clients[0].options.model == "claude-haiku-5-5"
+    assert outcome.flow_prefix == "eval-abc123-2-"
+    assert (tmp_path / "transcript.json").exists()
+
+
+async def test_scenario_task_needs_a_current_run():
+    inputs = ScenarioInputs(prompt="Build it.", user=[])
+
+    with pytest.raises(RuntimeError, match="No run is in progress"):
+        await scenario_task(None)(inputs)

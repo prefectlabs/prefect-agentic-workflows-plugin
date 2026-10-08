@@ -58,18 +58,18 @@ jobs:
 
       - name: Run the evals
         run: >-
-          uv run --locked pytest evals
-          --agent-model "$AGENT_MODEL"
-          --basetemp "$RUNNER_TEMP/evals"
-          --pass-rate-file "$RUNNER_TEMP/pass-rate.md"
+          uv run --locked python -m evals
+          --model "$AGENT_MODEL"
+          --output-dir "$RUNNER_TEMP/evals"
+          --summary "$RUNNER_TEMP/eval-report.md"
 
-      - name: Write the pass rates to the job summary
+      - name: Write the report to the job summary
         if: always()
         run: |
-          if [ -f "$RUNNER_TEMP/pass-rate.md" ]; then
-            cat "$RUNNER_TEMP/pass-rate.md" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$RUNNER_TEMP/eval-report.md" ]; then
+            cat "$RUNNER_TEMP/eval-report.md" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "The evals wrote no pass rates. Read the job log." >> "$GITHUB_STEP_SUMMARY"
+            echo "The evals wrote no report. Read the job log." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload the transcripts
@@ -80,5 +80,6 @@ jobs:
           path: |
             ${{ runner.temp }}/evals/**/transcript.json
             ${{ runner.temp }}/evals/**/agent/workflows/
+            ${{ runner.temp }}/eval-report.md
           if-no-files-found: ignore
           retention-days: 14

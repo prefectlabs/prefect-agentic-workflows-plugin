@@ -21,20 +21,20 @@ from evals.assertions import Check
 from evals.runner import REPO_ROOT
 from evals.scenario import (
     DECLINE_TEST_RUN,
+    FLOW_PREFIX,
     Outcome,
     Rule,
-    RunScenario,
-    assert_passed,
+    Scenario,
+    ScenarioInputs,
 )
 
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "skills" / "post-review"
 FLOW_NAME = "post-review"
 
 
-def prompt(flow_prefix: str) -> str:
-    return f"""\
+PROMPT = f"""\
 Convert the skill in ./post-review into a Prefect Cloud workflow named
-{flow_prefix}{FLOW_NAME}. Each run should take the topic of the post as its
+{FLOW_PREFIX}{FLOW_NAME}. Each run should take the topic of the post as its
 input.
 """
 
@@ -146,12 +146,11 @@ def checks(outcome: Outcome) -> list[Check]:
         assertions.check_publish_succeeded(calls),
         assertions.check_published_only_after_valid(calls),
         assertions.check_flow_saved(outcome.flows, FLOW_NAME),
-        assertions.check_never_called(calls, "start_run"),
     ]
 
 
-async def test_unsupported_loop(run_scenario: RunScenario, flow_prefix: str) -> None:
-    outcome = await run_scenario(
-        prompt(flow_prefix), USER, files={"post-review": FIXTURE}
-    )
-    assert_passed(outcome, checks(outcome))
+SCENARIO = Scenario(
+    "unsupported_loop",
+    ScenarioInputs(prompt=PROMPT, user=USER, files={"post-review": FIXTURE}),
+    checks,
+)

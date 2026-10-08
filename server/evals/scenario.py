@@ -1,14 +1,16 @@
-"""The simulated user's rules, and what a scenario's checks read after a run."""
+"""What a scenario gives the runner, the simulated user's rules, and a run's outcome."""
 
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
-from evals.assertions import Check, check_flows_named_with_prefix
+from evals.assertions import Check
 from evals.record import FlowState, Transcript
 from evals.sandbox import SandboxApi
+
+FLOW_PREFIX = "{flow_prefix}"
 
 
 @dataclass
@@ -91,42 +93,39 @@ class Outcome:
         return plan if isinstance(plan, dict) else {}
 
 
-class RunScenario(Protocol):
-    """The `run_scenario` fixture: run a conversation and return its outcome.
+@dataclass
+class ScenarioInputs:
+    """The inputs of one case: what the runner needs to hold the conversation.
 
-    `files` copies files or directories into the agent's working directory,
-    by the relative path they get there. `setup` adds state to the sandbox
-    before the agent starts, such as a flow or a Secret block. It gets the
-    `SandboxApi` and the run's flow prefix, and must name every flow it
-    creates with that prefix. `max_turns` caps the number of agent turns in
-    the conversation.
+    `prompt` is the first message to the agent. The runner replaces each
+    `{flow_prefix}` in it with the run's flow prefix, so the agent names
+    every flow it creates with that prefix. `user` is the simulated user's
+    rules. `files` copies files or directories into the agent's working
+    directory, by the relative path they get there. `setup` adds state to
+    the sandbox before the agent starts, such as a flow or a Secret block.
+    It gets the `SandboxApi` and the run's flow prefix, and must name every
+    flow it creates with that prefix. `max_turns` caps the number of agent
+    turns in the conversation.
     """
 
-    async def __call__(
-        self,
-        prompt: str,
-        user: list[Rule],
-        *,
-        files: dict[str, Path] | None = None,
-        setup: Callable[[SandboxApi, str], None] | None = None,
-        max_turns: int = 12,
-    ) -> Outcome: ...
+    prompt: str
+    user: list[Rule]
+    files: dict[str, Path] = field(default_factory=dict)
+    setup: Callable[[SandboxApi, str], None] | None = None
+    max_turns: int = 12
+
+    def prompt_for(self, flow_prefix: str) -> str:
+        return self.prompt.replace(FLOW_PREFIX, flow_prefix)
 
 
-def assert_passed(outcome: Outcome, checks: list[Check]) -> None:
-    """Fail the test with every failed check, and with any error of the agent."""
-    checks = [
-        Check(
-            "agent turns finished without error",
-            not outcome.transcript.errors,
-            "; ".join(outcome.transcript.errors),
-        ),
-        check_flows_named_with_prefix(
-            outcome.transcript.tool_calls, outcome.flow_prefix
-        ),
-        *checks,
-    ]
-    failed = [f"{check.name}: {check.detail}" for check in checks if not check.passed]
-    assert not failed, "\n".join(
-        ["Failed checks:", *failed, f"Working directory: {outcome.workspace.parent}"]
-    )
+@dataclass
+class Scenario:
+    """One case of the dataset, and the checks that run on its outcome.
+
+    `name` is the case name in the report and for `--case`. `checks`
+    returns one `Check` for each thing the scenario expects of the agent.
+    """
+
+    name: str
+    inputs: ScenarioInputs
+    checks: Callable[[Outcome], list[Check]]

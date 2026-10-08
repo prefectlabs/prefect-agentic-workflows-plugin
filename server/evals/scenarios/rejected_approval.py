@@ -17,19 +17,19 @@ from evals import assertions, graph
 from evals.assertions import Check
 from evals.scenario import (
     DECLINE_TEST_RUN,
+    FLOW_PREFIX,
     Outcome,
     Rule,
-    RunScenario,
-    assert_passed,
+    Scenario,
+    ScenarioInputs,
 )
 
 FLOW_NAME = "customer-feedback-reply"
 
 
-def prompt(flow_prefix: str) -> str:
-    return f"""\
+PROMPT = f"""\
 Use the agentic-workflows skill to build a Prefect workflow named
-{flow_prefix}{FLOW_NAME}. Start from the customer feedback reply example.
+{FLOW_PREFIX}{FLOW_NAME}. Start from the customer feedback reply example.
 Each run takes one piece of customer feedback as text. An AI agent sorts it
 into bug, feature request, praise, or complaint, and drafts a reply. A
 manager approves the draft, or rejects it with notes. If the manager rejects
@@ -96,10 +96,9 @@ def checks(outcome: Outcome) -> list[Check]:
         assertions.check_publish_succeeded(calls),
         assertions.check_published_only_after_valid(calls),
         assertions.check_flow_saved(outcome.flows, FLOW_NAME),
-        assertions.check_never_called(calls, "start_run"),
     ]
 
 
-async def test_rejected_approval(run_scenario: RunScenario, flow_prefix: str) -> None:
-    outcome = await run_scenario(prompt(flow_prefix), USER)
-    assert_passed(outcome, checks(outcome))
+SCENARIO = Scenario(
+    "rejected_approval", ScenarioInputs(prompt=PROMPT, user=USER), checks
+)

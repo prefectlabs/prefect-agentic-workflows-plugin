@@ -18,7 +18,7 @@ import re
 
 from evals import assertions
 from evals.assertions import Check
-from evals.scenario import Outcome, Rule, RunScenario, assert_passed
+from evals.scenario import Outcome, Rule, Scenario, ScenarioInputs
 
 PROMPT = """\
 Use the agentic-workflows skill to build a Prefect workflow that reads our
@@ -84,6 +84,6 @@ def checks(outcome: Outcome) -> list[Check]:
     ]
 
 
-async def test_no_infrastructure(run_scenario: RunScenario) -> None:
-    outcome = await run_scenario(PROMPT, USER)
-    assert_passed(outcome, checks(outcome))
+SCENARIO = Scenario(
+    "no_infrastructure", ScenarioInputs(prompt=PROMPT, user=USER), checks
+)

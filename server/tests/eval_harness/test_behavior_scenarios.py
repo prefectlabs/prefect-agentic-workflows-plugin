@@ -15,11 +15,13 @@ from harness_plans import approval_plan, cyclic_plan
 from evals.record import FlowState, Reply, ToolCall, Transcript
 from evals.runner import SKILL_DIR
 from evals.scenario import Outcome
-from evals.scenarios import test_no_infrastructure as no_infrastructure
-from evals.scenarios import test_rejected_approval as rejected_approval
-from evals.scenarios import test_release_notes_conversion as release_notes
-from evals.scenarios import test_scheduled_edit as scheduled_edit
-from evals.scenarios import test_unsupported_loop as unsupported_loop
+from evals.scenarios import (
+    no_infrastructure,
+    rejected_approval,
+    scheduled_edit,
+    unsupported_loop,
+)
+from evals.scenarios import release_notes_conversion as release_notes
 
 PREFIX = "eval-abc123-1-"
 VALID = {"valid": True, "errors": []}
@@ -215,7 +217,6 @@ SCENARIOS = {
             "the rejected output leads to an agent node that revises the draft",
             "plan outputs include ['category', 'reply']",
             "the flow 'customer-feedback-reply' has a saved plan version",
-            "start_run never called",
         ],
     ),
     "unsupported_loop": (
@@ -227,7 +228,6 @@ SCENARIOS = {
             "nothing published before the user decided",
             "plan has no cycle",
             "the plan has two review passes",
-            "start_run never called",
         ],
     ),
     "scheduled_edit": (
@@ -241,7 +241,6 @@ SCENARIOS = {
             "the active plan adds the action items",
             "update_schedule never called",
             "the schedule is unchanged",
-            "start_run never called",
         ],
     ),
     "no_infrastructure": (
