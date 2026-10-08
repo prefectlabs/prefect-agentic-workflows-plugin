@@ -35,7 +35,7 @@ When building a workflow, or editing one to use a new system, run the [infrastru
 
 ## Node-splitting rule
 
-Start a new node only at a branch, a human approval, a change of tools or credentials, a deterministic step (a Deployment node), or a split forced by the 60-second agent limit. Everything else stays in one agent node.
+Start a new node only at a branch, a human approval, a change of tools or credentials, or a deterministic step (a Deployment node). Everything else stays in one agent node.
 
 ## Approvals
 
