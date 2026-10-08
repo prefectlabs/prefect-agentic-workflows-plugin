@@ -48,7 +48,7 @@ Ask at these four points only, and act only on an explicit yes:
 
 ## Running
 
-Read the active plan with `get_plan`, collect a value for each required plan input, and include them in the external-effects approval. A run always uses the active version, so when the new version was saved without activating or failed to activate, tell the user which version the test would run. Create one idempotency key per run the user approved, and reuse it when a `start_run` call fails without a clear result. Watch with `get_run` and `wait_seconds` of 30 until the status is `completed`, `failed`, `cancelled`, or `blocked`.
+Read the active plan with `get_plan`, and `get_deployment` for each Deployment node, collect a value for each required plan input, and include them in the external-effects approval. A run always uses the active version, so when the new version was saved without activating or failed to activate, tell the user which version the test would run. Create one idempotency key per run the user approved, and reuse it when a `start_run` call fails without a clear result. Watch with `get_run` and `wait_seconds` of 30 until the status is `completed`, `failed`, `cancelled`, or `blocked`. When it isn't `completed`, read `diagnostics` and each node's `failure`, and tell the user the cause.
 
 The user answers every human-input form: show it in plain words and submit only their answer. When they ask to leave it unanswered, for example to test its expiry, submit nothing, stop watching, and tell them to come back after the form's `deadline_at`.
 

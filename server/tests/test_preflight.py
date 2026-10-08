@@ -16,6 +16,8 @@ from prefect_agentic_workflows_mcp.workspace_api import (
 )
 
 VALID = {"valid": True, "errors": []}
+# Every setup error says how to fix a setting in the MCP server's configuration.
+OVERRIDE = "restart the server"
 
 
 def set_profile(monkeypatch: pytest.MonkeyPatch, values: dict[str, str | None]) -> None:
@@ -100,15 +102,19 @@ async def test_a_profile_that_is_not_a_cloud_workspace_sends_no_request(
     message = error_text(result)
     for text in expected:
         assert text in message
+    assert OVERRIDE in message
     assert not cloud_api.calls
 
 
 @pytest.mark.parametrize(
     ("response", "expected"),
     [
-        (httpx.Response(404), ["not enabled", "`execution-plans`"]),
-        (httpx.Response(401), ["rejected the API key", "prefect cloud login"]),
-        (httpx.Response(403), ["HTTP 403", "permission", "prefect cloud login"]),
+        (httpx.Response(404), ["not enabled", "`execution-plans`", OVERRIDE]),
+        (
+            httpx.Response(401),
+            ["rejected the API key", "prefect cloud login", OVERRIDE],
+        ),
+        (httpx.Response(403), ["HTTP 403", "permission", OVERRIDE]),
         (httpx.Response(500, json={"detail": "boom"}), ["HTTP 500", "boom"]),
         (
             httpx.ConnectError("connection refused"),

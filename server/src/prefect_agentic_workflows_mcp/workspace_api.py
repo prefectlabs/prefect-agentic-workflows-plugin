@@ -38,9 +38,7 @@ NOT_CLOUD_MESSAGE = (
     "The Prefect API URL is {api_url}, which is not a Prefect Cloud workspace "
     "URL. Execution plans are only available in Prefect Cloud. Run "
     "`prefect cloud login` and pick a workspace, or switch to a Cloud profile "
-    "with `prefect profile use <name>`, then call this tool again. If the MCP "
-    "server's configuration sets `PREFECT_API_URL`, that URL is used instead: "
-    "update or remove it there and restart the server."
+    "with `prefect profile use <name>`, then call this tool again."
 )
 NO_API_KEY_MESSAGE = (
     "The active Prefect profile has no API key. Run `prefect cloud login` to "
@@ -49,8 +47,7 @@ NO_API_KEY_MESSAGE = (
 UNAUTHORIZED_MESSAGE = (
     "Prefect Cloud rejected the API key (HTTP 401). Run `prefect cloud login` "
     "to refresh the key in the active Prefect profile, then call this tool "
-    "again. If the MCP server's configuration sets `PREFECT_API_KEY`, that key "
-    "is used instead: update it there and restart the server."
+    "again."
 )
 FORBIDDEN_MESSAGE = (
     "Prefect Cloud refused the request to the execution-plan API (HTTP 403). "
@@ -66,6 +63,13 @@ FEATURE_NOT_ENABLED_MESSAGE = (
     "`prefect cloud workspace set`. If the workspace is right, ask your "
     "Prefect contact to turn on the `execution-plans` feature for the "
     "account. Then call this tool again."
+)
+# Settings in the MCP server's own configuration override the profile, so the
+# profile fixes above don't change them. Every setup error ends with this note.
+OVERRIDE_NOTE = (
+    " If the MCP server's configuration sets `PREFECT_API_URL` or "
+    "`PREFECT_API_KEY`, those values are used instead of the profile: update "
+    "or remove them there and restart the server."
 )
 NO_BUCKET_DETAIL = "object storage bucket has not been provisioned"
 NO_BUCKET_MESSAGE = (
@@ -253,11 +257,11 @@ class WorkspaceApi:
         settings = Settings()
         api_url = settings.api.url
         if not api_url:
-            raise ToolError(NO_API_URL_MESSAGE)
+            raise ToolError(NO_API_URL_MESSAGE + OVERRIDE_NOTE)
         if not is_cloud_workspace_api_url(api_url):
-            raise ToolError(NOT_CLOUD_MESSAGE.format(api_url=api_url))
+            raise ToolError(NOT_CLOUD_MESSAGE.format(api_url=api_url) + OVERRIDE_NOTE)
         if settings.api.key is None or not settings.api.key.get_secret_value():
-            raise ToolError(NO_API_KEY_MESSAGE)
+            raise ToolError(NO_API_KEY_MESSAGE + OVERRIDE_NOTE)
         return api_url, settings.api.key.get_secret_value()
 
     async def _preflight(self, client: httpx.AsyncClient, api_url: str) -> None:
@@ -272,11 +276,13 @@ class WorkspaceApi:
             ) from exc
 
         if response.status_code == 404:
-            raise ToolError(FEATURE_NOT_ENABLED_MESSAGE.format(api_url=api_url))
+            raise ToolError(
+                FEATURE_NOT_ENABLED_MESSAGE.format(api_url=api_url) + OVERRIDE_NOTE
+            )
         if response.status_code == 401:
-            raise ToolError(UNAUTHORIZED_MESSAGE)
+            raise ToolError(UNAUTHORIZED_MESSAGE + OVERRIDE_NOTE)
         if response.status_code == 403:
-            raise ToolError(FORBIDDEN_MESSAGE)
+            raise ToolError(FORBIDDEN_MESSAGE + OVERRIDE_NOTE)
         if response.is_error:
             raise ToolError(
                 PREFLIGHT_FAILED_MESSAGE.format(
