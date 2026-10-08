@@ -61,3 +61,28 @@ async def test_get_or_create_flow_escapes_the_name_in_the_lookup_path(
     assert lookup.calls.last.request.url.raw_path.endswith(
         b"/flows/name/ops%2Fdaily%20summary"
     )
+
+
+async def test_get_flow_finds_a_flow_without_creating_one(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    flow = flow_response()
+    cloud_api.get("/flows/name/daily-summary").respond(200, json=flow)
+    create = cloud_api.post("/flows/").respond(201, json=flow)
+
+    result = await mcp_client.call_tool("get_flow", {"name": "daily-summary"})
+
+    assert result.structured_content == {"found": True, "flow": flow}
+    assert not create.called
+
+
+async def test_get_flow_reports_a_missing_flow_without_creating_one(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    cloud_api.get("/flows/name/typo").respond(404, json={"detail": "Nope"})
+    create = cloud_api.post("/flows/").respond(201, json=flow_response())
+
+    result = await mcp_client.call_tool("get_flow", {"name": "typo"})
+
+    assert result.structured_content == {"found": False, "flow": None}
+    assert not create.called

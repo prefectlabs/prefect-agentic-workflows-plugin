@@ -39,4 +39,4 @@ Last verified: 2026-09-25, against the Prefect Cloud API. When an error from `va
 Both use schema version 0.2, which adds plan `outputs`. Replace all-zero placeholder IDs before publishing.
 
 - [examples/customer-feedback-reply.plan.json](examples/customer-feedback-reply.plan.json): an agent drafts a reply, a person approves or rejects it with notes, and a rejection gets one revision. No MCP server, Secret block, or deployment. Start here for approvals and branches.
-- [examples/single-agent-with-mcp.plan.json](examples/single-agent-with-mcp.plan.json): one agent node uses a remote MCP server whose `Authorization` header references a Secret block, and retries once on failure. Start here for tools and credentials.
+- [examples/single-agent-with-mcp.plan.json](examples/single-agent-with-mcp.plan.json): one agent node uses a remote MCP server whose `Authorization` header references a Secret block holding `Bearer <token>`, and retries once on failure. Start here for tools and credentials.

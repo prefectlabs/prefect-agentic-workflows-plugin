@@ -282,6 +282,9 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         output_name: Annotated[
             str,
             Field(
+                # The name goes into the request path, so it can't hold `/`,
+                # `.`, `?`, or other characters that change which URL is read.
+                pattern=r"^[A-Za-z0-9_][A-Za-z0-9_-]*$",
                 description=(
                     "Name of a plan output, or of a node output when you pass "
                     "`activation_id`."

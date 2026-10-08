@@ -4,6 +4,7 @@ from typing import Annotated, Any
 from urllib.parse import quote
 
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
 from pydantic import Field
 
 from prefect_agentic_workflows_mcp.tools import tool
@@ -16,6 +17,8 @@ FlowName = Annotated[
         description="Flow name. Flow names are unique in a workspace.",
     ),
 ]
+# Names that a URL path would read as "this directory" or "the parent".
+DOT_SEGMENTS = frozenset({".", ".."})
 FlowTags = Annotated[
     list[str] | None,
     Field(
@@ -29,6 +32,25 @@ FlowTags = Annotated[
 
 def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
     """Add the flow tools to `mcp`."""
+
+    async def find_flow(name: str) -> dict[str, Any] | None:
+        if name in DOT_SEGMENTS:
+            raise ToolError(f"{name!r} isn't a valid flow name.")
+        lookup_path = f"/flows/name/{quote(name, safe='')}"
+        response = await api.request("GET", lookup_path)
+        if response.status_code == 404:
+            return None
+        return read_json(response, "GET", lookup_path)
+
+    @tool(mcp, read_only=True)
+    async def get_flow(name: FlowName) -> dict[str, Any]:
+        """Return the existing flow with this name, without creating one.
+
+        Use this to find a published workflow to run, roll back, or schedule.
+        Returns `found` and, when it is true, the `flow`.
+        """
+        flow = await find_flow(name)
+        return {"found": flow is not None, "flow": flow}
 
     @tool(mcp, read_only=False)
     async def get_or_create_flow(
@@ -44,10 +66,9 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         Returns `created`, which is true when this call created the flow, and
         `flow`, the flow as Prefect Cloud returns it.
         """
-        lookup_path = f"/flows/name/{quote(name, safe='')}"
-        response = await api.request("GET", lookup_path)
-        if response.status_code != 404:
-            return {"created": False, "flow": read_json(response, "GET", lookup_path)}
+        flow = await find_flow(name)
+        if flow is not None:
+            return {"created": False, "flow": flow}
 
         response = await api.request(
             "POST", "/flows/", json={"name": name, "tags": tags or []}

@@ -328,6 +328,7 @@ your agent can ask before a tool writes.
 | Tools | What they do |
 |---|---|
 | `get_schema`, `validate_plan` | Read the current plan schema and validate a plan without publishing it |
+| `get_flow` | Find an existing flow by name |
 | `get_or_create_flow` | Find a flow by name, or create it |
 | `publish_plan`, `get_plan`, `list_plan_versions`, `activate_plan_version` | Publish a plan as a new version, read versions, and activate one, for example to roll back |
 | `start_run`, `get_run`, `get_run_output`, `submit_human_input` | Start a run of the active plan, watch its status, read outputs, and answer human-input forms |

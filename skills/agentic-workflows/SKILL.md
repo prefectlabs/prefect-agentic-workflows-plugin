@@ -54,10 +54,13 @@ The user answers every human-input form: show it in plain words and submit only 
 
 ## Credentials
 
-A plan references a credential by a Secret block's ID from `list_secret_blocks`. When the block is missing, ask the user to create a **Secret** block in the Prefect Cloud UI under **Blocks**, or with `prefect block create secret`, then list the blocks again. Never ask the user to type a secret value. If they paste one, keep it out of the plan and tell them to store it in a block and rotate it.
+A plan references a credential by a Secret block's ID from `list_secret_blocks`. The block holds the whole header value, so for a bearer token it's `Bearer <token>`. When the block is missing, ask the user to create a **Secret** block in the Prefect Cloud UI under **Blocks**, or with `prefect block create secret`, then list the blocks again. Never ask the user to type a secret value. If they paste one, keep it out of the plan and tell them to store it in a block and rotate it.
 
 ## Later changes
 
+Find a published workflow with `get_flow`, which never creates one.
+
+
 - **Edit:** start from the plan file, or from `get_plan` when it's missing, and run the pipeline from step 1 with a summary of what changes.
 - **Roll back:** pick a version with `list_plan_versions`, compare it with the active plan using `get_plan` with and without its `version_id`, get the promotion approval, and call `activate_plan_version`.
-- **Schedule:** get the recurring-runs approval, then use the schedule tools. A schedule runs whatever version is active when it fires.
+- **Schedule:** collect a value for each required input of the active plan, get the recurring-runs approval with those parameters, then use the schedule tools. A schedule runs whatever version is active when it fires.
