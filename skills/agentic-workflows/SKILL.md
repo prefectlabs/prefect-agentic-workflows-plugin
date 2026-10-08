@@ -9,7 +9,7 @@ An execution plan is a JSON graph of agent, human-input, and deployment nodes at
 
 ## Start
 
-Run the [infrastructure check](references/infrastructure-check.md) first on every path. Then:
+When building or converting a workflow, or editing one to use a new system, run the [infrastructure check](references/infrastructure-check.md) first. Running, rolling back, or scheduling a published workflow skips it. Then:
 
 - **Converting an existing skill:** follow [references/conversion.md](references/conversion.md).
 - **The user describes the workflow:** fill the checklist below from the description and the defaults, and ask only about the gaps.
@@ -31,7 +31,7 @@ Run the [infrastructure check](references/infrastructure-check.md) first on ever
 3. **Validate.** Call `validate_plan` and fix the file until `valid` is true. When an error and the reference files disagree, the error is right.
 4. **Publish.** Call `get_or_create_flow`, then `get_plan`. When the flow has an active version, activating the new one is a promotion. Call `publish_plan`, with `activate` false when the user only wants to save. A fix that changes the design goes back to step 1. A fix that only changes the document's shape goes back to step 3.
 5. **Test run.** Offer one, and follow [Running](#running).
-6. **Report.** Give the flow link, the published version ID, any run's results and the version it used (`snapshot.execution_plan_version_id`), and every platform limit that still affects the workflow. Build links from `get_workspace`. For a conversion, name every source step that isn't in the plan and why.
+6. **Report.** Give the flow link, the published version ID, any run's results from `get_run_output` and the version it used (`snapshot.execution_plan_version_id`), and every platform limit that still affects the workflow. Build links from `get_workspace`. For a conversion, name every source step that isn't in the plan and why.
 
 ## Node-splitting rule
 
@@ -43,12 +43,12 @@ Ask at these four points only, and act only on an explicit yes:
 
 1. **Design**: the summary. It also covers the first activation on a flow.
 2. **External effects**: every `start_run`. Say which outside systems the run can change. A user message that asks for the run counts, when every input value is known.
-3. **Promotion**: activating over an existing active version, including a rollback. Say what changes and which schedules will run the new version.
-4. **Recurring runs**: every schedule create, update, or delete. State the schedule in plain words with its time zone and parameters.
+3. **Promotion**: activating over an existing active version, including a rollback. Say what changes, and which schedules from `list_schedules` will run the new version.
+4. **Recurring runs**: every schedule create, update, or delete. State the schedule in plain words with its time zone and parameters, reading an existing one with `get_schedule` first.
 
 ## Running
 
-Read the active plan with `get_plan` before asking for the external-effects approval. A run always uses the active version, so when the new version was saved without activating or failed to activate, tell the user which version the test would run. Create one idempotency key per run the user approved, and reuse it when a `start_run` call fails without a clear result. Watch with `get_run` and `wait_seconds` of 30 until the status is `completed`, `failed`, `cancelled`, or `blocked`.
+Read the active plan with `get_plan`, collect a value for each required plan input, and include them in the external-effects approval. A run always uses the active version, so when the new version was saved without activating or failed to activate, tell the user which version the test would run. Create one idempotency key per run the user approved, and reuse it when a `start_run` call fails without a clear result. Watch with `get_run` and `wait_seconds` of 30 until the status is `completed`, `failed`, `cancelled`, or `blocked`.
 
 The user answers every human-input form: show it in plain words and submit only their answer. When they ask to leave it unanswered, for example to test its expiry, submit nothing, stop watching, and tell them to come back after the form's `deadline_at`.
 
@@ -59,5 +59,5 @@ A plan references a credential by a Secret block's ID from `list_secret_blocks`.
 ## Later changes
 
 - **Edit:** start from the plan file, or from `get_plan` when it's missing, and run the pipeline from step 1 with a summary of what changes.
-- **Roll back:** pick a version with `list_plan_versions`, compare it with the active plan, get the promotion approval, and call `activate_plan_version`.
+- **Roll back:** pick a version with `list_plan_versions`, compare it with the active plan using `get_plan` with and without its `version_id`, get the promotion approval, and call `activate_plan_version`.
 - **Schedule:** get the recurring-runs approval, then use the schedule tools. A schedule runs whatever version is active when it fires.
