@@ -19,7 +19,9 @@ from pydantic import Field
 
 from prefect_agentic_workflows_mcp.tools import tool
 from prefect_agentic_workflows_mcp.workspace_api import (
+    NO_BUCKET_DETAIL,
     HttpMethod,
+    RequestTimedOutError,
     WorkspaceApi,
     read_json,
     response_detail,
@@ -37,8 +39,18 @@ FlowRunId = Annotated[
 
 MAX_WAIT_SECONDS = 30
 POLL_INTERVAL_SECONDS = 2.0
-FINISHED_RUN_STATUSES = frozenset({"completed", "failed", "cancelled"})
+# `get_run` returns at once for these: the run either can't change on its own
+# or needs someone to act before it can.
+STOP_WAITING_STATUSES = frozenset({"completed", "failed", "cancelled", "blocked"})
 FINAL_OUTPUT_STATUSES = frozenset({"failed", "skipped", "unavailable"})
+
+
+def awaits_input(run: dict[str, Any]) -> bool:
+    """Return whether any node is waiting for a person to answer a form."""
+    return any(
+        (node.get("wait") or {}).get("kind") == "human_input"
+        for node in run.get("nodes") or []
+    )
 
 
 def progress(run: dict[str, Any]) -> tuple[Any, ...]:
@@ -180,9 +192,15 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             "flow_run": flow_run,
         }
 
-    async def read_run(flow_run_id: UUID) -> dict[str, Any]:
+    async def read_run(
+        flow_run_id: UUID, timeout: float | None = None
+    ) -> dict[str, Any]:
         path = f"/flow_runs/{flow_run_id}/execution-plan"
-        return read_json_with_retry_hint(await api.request("GET", path), "GET", path)
+        if timeout is None:
+            response = await api.request("GET", path)
+        else:
+            response = await api.request("GET", path, timeout=timeout)
+        return read_json_with_retry_hint(response, "GET", path)
 
     @tool(mcp, read_only=True)
     async def get_run(
@@ -215,7 +233,8 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
 
         With `wait_seconds`, the tool checks the run every few seconds and
         returns as soon as the run's status or any node's status changes,
-        when the run finishes, or when the wait runs out. `wait` then reports
+        when the run finishes or is blocked, when a node is already waiting
+        for human input, or when the wait runs out. `wait` then reports
         `seconds_waited` and `status_changed`. Without `wait_seconds`, `wait`
         is null.
 
@@ -230,12 +249,22 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         deadline = started + min(wait_seconds, MAX_WAIT_SECONDS)
         before = progress(run)
         changed = False
-        while run["status"] not in FINISHED_RUN_STATUSES:
+        while run["status"] not in STOP_WAITING_STATUSES and not awaits_input(run):
             remaining = deadline - monotonic()
             if remaining <= 0:
                 break
             await sleep(min(POLL_INTERVAL_SECONDS, remaining))
-            run = await read_run(flow_run_id)
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                break
+            # Bound the read by the time left, so a slow response can't stretch
+            # the call past the wait the caller asked for.
+            try:
+                run = await read_run(flow_run_id, timeout=remaining)
+            except RequestTimedOutError:
+                # The wait ran out while Cloud was answering, which is the
+                # same as a wait with no change. Return the last observation.
+                break
             if progress(run) != before:
                 changed = True
                 break
@@ -253,6 +282,9 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         output_name: Annotated[
             str,
             Field(
+                # The plan identifier pattern. The name goes into the request
+                # path, and this pattern rules out `/`, `?`, `.`, and `..`.
+                pattern=r"^[A-Za-z_][A-Za-z0-9_.-]*$",
                 description=(
                     "Name of a plan output, or of a node output when you pass "
                     "`activation_id`."
@@ -292,6 +324,12 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             path = f"{run_path}/activations/{activation_id}/outputs/{output_name}"
         response = await api.request("GET", path)
 
+        if response.status_code == 409 and NO_BUCKET_DETAIL in response_detail(
+            response
+        ):
+            # A missing bucket is a workspace problem, not an output that can
+            # still arrive, so raise the message that says how to fix it.
+            read_json(response, "GET", path)
         if response.status_code in (202, 409, 503):
             try:
                 body = response.json()
@@ -309,7 +347,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         value = read_json_with_retry_hint(response, "GET", path)
         return output_result(available=True, value=value, output_status="available")
 
-    @tool(mcp, read_only=False)
+    @tool(mcp, read_only=False, destructive=True)
     async def submit_human_input(
         flow_run_id: FlowRunId,
         activation_id: Annotated[

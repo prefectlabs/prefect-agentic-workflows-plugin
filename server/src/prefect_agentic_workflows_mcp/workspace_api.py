@@ -7,7 +7,8 @@ only fails the tool call and never stops the server from starting.
 Before the first request, `WorkspaceApi` runs a preflight check. The check
 confirms that the profile points at a Cloud workspace and that the workspace
 can use execution plans, and it turns each known failure into a message that
-says how to fix it. A passing check is cached for the API URL it ran against.
+says how to fix it. A passing check is cached for the API URL and key it ran
+with, so a new key gets checked too.
 A failing check is not cached, so the next tool call runs it again after the
 user fixes the problem.
 
@@ -16,11 +17,13 @@ because Cloud only rejects requests that write to the bucket. `read_json`
 turns that rejection into a message that names the missing bucket.
 """
 
+import hashlib
+import os
 from typing import Any, Literal
 
 import httpx
 from fastmcp.exceptions import ToolError
-from prefect.settings import get_current_settings
+from prefect.settings import Settings
 
 HttpMethod = Literal["GET", "POST", "PATCH", "DELETE"]
 
@@ -32,18 +35,18 @@ NO_API_URL_MESSAGE = (
     "workspace, then call this tool again."
 )
 NOT_CLOUD_MESSAGE = (
-    "The active Prefect profile points at {api_url}, which is not a Prefect "
-    "Cloud workspace URL. Execution plans are only available in Prefect Cloud. "
-    "Run `prefect cloud login` and pick a workspace, or switch to a Cloud "
-    "profile with `prefect profile use <name>`, then call this tool again."
+    "The Prefect API URL is {api_url}, which is not a Prefect Cloud workspace "
+    "URL. Execution plans are only available in Prefect Cloud. Run "
+    "`prefect cloud login` and pick a workspace, or switch to a Cloud profile "
+    "with `prefect profile use <name>`, then call this tool again."
 )
 NO_API_KEY_MESSAGE = (
     "The active Prefect profile has no API key. Run `prefect cloud login` to "
     "set one, then call this tool again."
 )
 UNAUTHORIZED_MESSAGE = (
-    "Prefect Cloud rejected the API key in the active Prefect profile "
-    "(HTTP 401). Run `prefect cloud login` to refresh it, then call this tool "
+    "Prefect Cloud rejected the API key (HTTP 401). Run `prefect cloud login` "
+    "to refresh the key in the active Prefect profile, then call this tool "
     "again."
 )
 FORBIDDEN_MESSAGE = (
@@ -53,10 +56,20 @@ FORBIDDEN_MESSAGE = (
     "`prefect cloud login` with a different key, then call this tool again."
 )
 FEATURE_NOT_ENABLED_MESSAGE = (
-    "Execution plans are not enabled for this workspace's account. Prefect "
-    "Cloud returned 404 for the execution-plan API. Ask your Prefect contact "
-    "to turn on the `execution-plans` feature for the account, then call this "
-    "tool again."
+    "Prefect Cloud returned 404 for the execution-plan API at {api_url}. "
+    "Either the account and workspace in the active Prefect profile don't "
+    "exist, or execution plans are not enabled for the account. Check the "
+    "workspace with `prefect cloud workspace ls` and switch with "
+    "`prefect cloud workspace set`. If the workspace is right, ask your "
+    "Prefect contact to turn on the `execution-plans` feature for the "
+    "account. Then call this tool again."
+)
+# Settings in the MCP server's own configuration override the profile, so the
+# profile fixes above don't change them. Every setup error ends with this note.
+OVERRIDE_NOTE = (
+    " If the MCP server's configuration sets `PREFECT_API_URL` or "
+    "`PREFECT_API_KEY`, those values are used instead of the profile: update "
+    "or remove them there and restart the server."
 )
 NO_BUCKET_DETAIL = "object storage bucket has not been provisioned"
 NO_BUCKET_MESSAGE = (
@@ -66,6 +79,12 @@ NO_BUCKET_MESSAGE = (
     "again."
 )
 UNREACHABLE_MESSAGE = "Could not reach Prefect Cloud at {api_url}: {error}"
+
+
+class RequestTimedOutError(ToolError):
+    """Prefect Cloud didn't answer a request within its timeout."""
+
+
 PREFLIGHT_FAILED_MESSAGE = (
     "Prefect Cloud returned HTTP {status_code} while checking that execution "
     "plans are available: {detail}"
@@ -80,9 +99,32 @@ REQUEST_FAILED_MESSAGE = (
 )
 
 
+CLOUD_DOMAIN = "prefect.cloud"
+LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+# Lets a test harness point the server at a fake Cloud API on this machine. It
+# is off unless set, so a real API key never goes to a local port by accident.
+ALLOW_LOOPBACK_VARIABLE = "PREFECT_AGENTIC_WORKFLOWS_ALLOW_LOOPBACK_FOR_TESTS"
+
+
 def is_cloud_workspace_api_url(api_url: str) -> bool:
-    """Return whether an API URL points at a Prefect Cloud workspace."""
-    return "/accounts/" in api_url and "/workspaces/" in api_url
+    """Return whether an API URL points at a Prefect Cloud workspace.
+
+    The URL must use HTTPS on `prefect.cloud` or one of its subdomains, so the
+    API key is never sent to another host or over plain HTTP. A loopback host
+    is accepted only when `PREFECT_AGENTIC_WORKFLOWS_ALLOW_LOOPBACK_FOR_TESTS`
+    is `1`, so a test harness can serve a fake Cloud API on this machine.
+    """
+    try:
+        url = httpx.URL(api_url)
+    except httpx.InvalidURL:
+        return False
+    if "/accounts/" not in url.path or "/workspaces/" not in url.path:
+        return False
+    host = url.host
+    if host in LOOPBACK_HOSTS:
+        return os.environ.get(ALLOW_LOOPBACK_VARIABLE) == "1"
+    is_cloud_host = host == CLOUD_DOMAIN or host.endswith(f".{CLOUD_DOMAIN}")
+    return url.scheme == "https" and is_cloud_host
 
 
 def response_detail(response: httpx.Response) -> str:
@@ -137,7 +179,7 @@ class WorkspaceApi:
     """
 
     def __init__(self) -> None:
-        self._verified_api_url: str | None = None
+        self._verified: tuple[str, str] | None = None
 
     async def request(
         self,
@@ -164,11 +206,17 @@ class WorkspaceApi:
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=timeout,
         ) as client:
-            if self._verified_api_url != api_url:
+            # Keep a digest of the key rather than the key itself.
+            checked = (api_url, hashlib.sha256(api_key.encode()).hexdigest())
+            if self._verified != checked:
                 await self._preflight(client, api_url)
-                self._verified_api_url = api_url
+                self._verified = checked
             try:
                 return await client.request(method, path, json=json, params=params)
+            except httpx.TimeoutException as exc:
+                raise RequestTimedOutError(
+                    UNREACHABLE_MESSAGE.format(api_url=api_url, error=exc)
+                ) from exc
             except httpx.HTTPError as exc:
                 raise ToolError(
                     UNREACHABLE_MESSAGE.format(api_url=api_url, error=exc)
@@ -193,15 +241,27 @@ class WorkspaceApi:
         )
         return read_json(response, method, path)
 
+    def current_api_url(self) -> str:
+        """Return the workspace API URL from the current Prefect settings.
+
+        Raises `ToolError` with a fix-it message when the settings have no
+        Cloud workspace URL or no API key.
+        """
+        api_url, _ = self._read_profile()
+        return api_url
+
     def _read_profile(self) -> tuple[str, str]:
-        settings = get_current_settings()
+        # Load settings fresh on every call. Prefect's current-settings context
+        # is fixed when the process starts, so it would miss a user switching
+        # profiles or logging in to another workspace while the server runs.
+        settings = Settings()
         api_url = settings.api.url
         if not api_url:
-            raise ToolError(NO_API_URL_MESSAGE)
+            raise ToolError(NO_API_URL_MESSAGE + OVERRIDE_NOTE)
         if not is_cloud_workspace_api_url(api_url):
-            raise ToolError(NOT_CLOUD_MESSAGE.format(api_url=api_url))
+            raise ToolError(NOT_CLOUD_MESSAGE.format(api_url=api_url) + OVERRIDE_NOTE)
         if settings.api.key is None or not settings.api.key.get_secret_value():
-            raise ToolError(NO_API_KEY_MESSAGE)
+            raise ToolError(NO_API_KEY_MESSAGE + OVERRIDE_NOTE)
         return api_url, settings.api.key.get_secret_value()
 
     async def _preflight(self, client: httpx.AsyncClient, api_url: str) -> None:
@@ -216,11 +276,13 @@ class WorkspaceApi:
             ) from exc
 
         if response.status_code == 404:
-            raise ToolError(FEATURE_NOT_ENABLED_MESSAGE)
+            raise ToolError(
+                FEATURE_NOT_ENABLED_MESSAGE.format(api_url=api_url) + OVERRIDE_NOTE
+            )
         if response.status_code == 401:
-            raise ToolError(UNAUTHORIZED_MESSAGE)
+            raise ToolError(UNAUTHORIZED_MESSAGE + OVERRIDE_NOTE)
         if response.status_code == 403:
-            raise ToolError(FORBIDDEN_MESSAGE)
+            raise ToolError(FORBIDDEN_MESSAGE + OVERRIDE_NOTE)
         if response.is_error:
             raise ToolError(
                 PREFLIGHT_FAILED_MESSAGE.format(

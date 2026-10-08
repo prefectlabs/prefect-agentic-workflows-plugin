@@ -293,6 +293,17 @@ async def test_tool_sends_its_request_and_returns_the_result(
             {"flow_id": FLOW_ID, "schedule_id": SCHEDULE_ID},
             "at least one",
         ),
+        (
+            "get_run_output",
+            {
+                "flow_run_id": FLOW_RUN_ID,
+                "output_name": "../../../../block_documents/x?include_secrets=true",
+            },
+            None,
+        ),
+        ("get_run_output", {"flow_run_id": FLOW_RUN_ID, "output_name": ".."}, None),
+        ("get_run_output", {"flow_run_id": FLOW_RUN_ID, "output_name": "a/b"}, None),
+        ("get_flow", {"name": ".."}, "valid flow name"),
     ],
 )
 async def test_invalid_arguments_are_rejected_before_any_request(

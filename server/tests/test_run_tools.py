@@ -101,8 +101,8 @@ async def test_get_run_waits_as_asked_but_never_past_the_cap(
     assert result["wait"] == {"seconds_waited": waited, "status_changed": False}
 
 
-@pytest.mark.parametrize("status", ["completed", "failed", "cancelled"])
-async def test_get_run_does_not_wait_on_a_finished_run(
+@pytest.mark.parametrize("status", ["completed", "failed", "cancelled", "blocked"])
+async def test_get_run_does_not_wait_on_a_finished_or_blocked_run(
     mcp_client: Client[Any], cloud_api: respx.MockRouter, clock: FakeClock, status: str
 ):
     route = cloud_api.get(RUN_PATH).respond(200, json=run_observation(status))
@@ -112,6 +112,77 @@ async def test_get_run_does_not_wait_on_a_finished_run(
     assert route.call_count == 1
     assert clock.sleeps == []
     assert result["wait"] == {"seconds_waited": 0.0, "status_changed": False}
+
+
+async def test_get_run_does_not_wait_while_a_form_waits_for_an_answer(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter, clock: FakeClock
+):
+    waiting = node_observation(
+        "suspended",
+        node="approve",
+        kind="HumanInputNode",
+        wait={"kind": "human_input", "activation_id": ACTIVATION_ID},
+    )
+    observation = run_observation("awaiting_external_progress", [waiting])
+    route = cloud_api.get(RUN_PATH).respond(200, json=observation)
+
+    result = await get_run(mcp_client, 30)
+
+    assert route.call_count == 1
+    assert clock.sleeps == []
+    assert result["wait"] == {"seconds_waited": 0.0, "status_changed": False}
+
+
+async def test_get_run_bounds_each_read_by_the_time_left(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter, clock: FakeClock
+):
+    read_timeouts: list[float] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        read_timeouts.append(request.extensions["timeout"]["read"])
+        return httpx.Response(200, json=run_observation("running"))
+
+    cloud_api.get(RUN_PATH).mock(side_effect=respond)
+
+    await get_run(mcp_client, 5)
+
+    # The first read happens before the wait starts. Each later read gets only
+    # the seconds left before the 5-second deadline, and none starts after it.
+    assert read_timeouts[1:] == [3.0, 1.0]
+
+
+async def test_get_run_returns_the_last_observation_when_a_poll_times_out(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter, clock: FakeClock
+):
+    observation = run_observation("running")
+    cloud_api.get(RUN_PATH).mock(
+        side_effect=[
+            httpx.Response(200, json=observation),
+            httpx.ReadTimeout("Cloud took too long"),
+        ]
+    )
+
+    result = await get_run(mcp_client, 5)
+
+    assert result["status"] == "running"
+    assert result["wait"]["status_changed"] is False
+
+
+async def test_get_run_output_reports_a_missing_bucket_as_an_error(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    cloud_api.get(f"{RUN_PATH}/outputs/result").respond(
+        409,
+        json={"detail": "Workspace object storage bucket has not been provisioned."},
+    )
+
+    result = await mcp_client.call_tool(
+        "get_run_output",
+        {"flow_run_id": FLOW_RUN_ID, "output_name": "result"},
+        raise_on_error=False,
+    )
+
+    assert "no object storage bucket" in error_text(result)
 
 
 def problem(output_status: str) -> dict[str, Any]:

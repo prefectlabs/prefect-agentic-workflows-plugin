@@ -26,8 +26,20 @@ def block_document(
     }
 
 
+REGION_SCHEMA = {
+    "type": "object",
+    "properties": {"region": {"type": "string", "enum": ["us", "eu"]}},
+    "required": ["region"],
+}
+
+
 def deployment(
-    deployment_id: str, name: str, flow_id: str, description: str | None = None
+    deployment_id: str,
+    name: str,
+    flow_id: str,
+    description: str | None = None,
+    parameters: dict[str, Any] | None = None,
+    parameter_openapi_schema: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return a deployment in the shape `/deployments/filter` returns."""
     return {
@@ -35,6 +47,8 @@ def deployment(
         "name": name,
         "flow_id": flow_id,
         "description": description,
+        "parameters": parameters or {},
+        "parameter_openapi_schema": parameter_openapi_schema,
     }
 
 
@@ -94,7 +108,16 @@ async def test_list_deployments_returns_ids_names_and_flow_names(
     first_page = [
         deployment(f"eeeeeeee-0000-0000-0000-{i:012d}", f"d-{i:03d}", LOAD_FLOW_ID)
         for i in range(199)
-    ] + [deployment(GITHUB_ID, "nightly", LOAD_FLOW_ID, "Loads orders")]
+    ] + [
+        deployment(
+            GITHUB_ID,
+            "nightly",
+            LOAD_FLOW_ID,
+            "Loads orders",
+            parameters={"region": "us"},
+            parameter_openapi_schema=REGION_SCHEMA,
+        )
+    ]
     last_page = [deployment(SLACK_TOKEN_ID, "weekly", REPORT_FLOW_ID)]
     deployments_route = cloud_api.post("/deployments/filter").mock(
         side_effect=pages(first_page, last_page)
@@ -141,3 +164,33 @@ async def test_list_deployments_skips_the_flow_lookup_when_there_are_none(
 
     assert result.structured_content == {"deployments": []}
     assert not flows_route.called
+
+
+async def test_get_deployment_returns_its_parameters_and_schema(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    cloud_api.get(f"/deployments/{GITHUB_ID}").respond(
+        200,
+        json=deployment(
+            GITHUB_ID,
+            "nightly",
+            LOAD_FLOW_ID,
+            "Loads orders",
+            parameters={"region": "us"},
+            parameter_openapi_schema=REGION_SCHEMA,
+        ),
+    )
+    cloud_api.get(f"/flows/{LOAD_FLOW_ID}").respond(
+        200, json={"id": LOAD_FLOW_ID, "name": "load-orders"}
+    )
+
+    result = await mcp_client.call_tool("get_deployment", {"deployment_id": GITHUB_ID})
+
+    assert result.structured_content == {
+        "id": GITHUB_ID,
+        "name": "nightly",
+        "flow_name": "load-orders",
+        "description": "Loads orders",
+        "parameters": {"region": "us"},
+        "parameter_openapi_schema": REGION_SCHEMA,
+    }

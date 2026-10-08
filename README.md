@@ -134,9 +134,10 @@ When the run completes, click **Finish the reply**. Under **Outputs**, click
 unchanged. Click `revised_reply` if the manager rejected it. The other output
 shows **Not selected**.
 
-You can also ask your agent: "Show me the reply and the category from the last
-customer-feedback-reply run." It reads the run's `reply` and `category`
-results.
+You can also ask your agent for the results. Paste the run's URL from the
+Prefect UI, and ask: "Show me the reply and the category from this run." The
+agent needs the run's URL or ID, because it can't look up runs you start in the
+UI.
 
 The `category` result holds the draft as well as the category, because a
 workflow result takes a whole step output.
@@ -301,8 +302,9 @@ All three ways continue with the same steps:
 
 1. The agent writes a plain-language summary of the plan and waits for you to
    confirm it.
-2. It drafts the plan in `workflows/<flow-name>.plan.json` in your working
-   directory.
+2. It drafts the plan in `workflows/<file-name>.plan.json` in your working
+   directory, where the file name is the flow name with unusual characters
+   replaced by `-`.
 3. It validates the plan against the live schema and fixes errors until the
    plan passes.
 4. It publishes the plan to a flow, which it creates if needed.
@@ -326,12 +328,15 @@ your agent can ask before a tool writes.
 | Tools | What they do |
 |---|---|
 | `get_schema`, `validate_plan` | Read the current plan schema and validate a plan without publishing it |
+| `get_flow` | Find an existing flow by name |
 | `get_or_create_flow` | Find a flow by name, or create it |
 | `publish_plan`, `get_plan`, `list_plan_versions`, `activate_plan_version` | Publish a plan as a new version, read versions, and activate one, for example to roll back |
 | `start_run`, `get_run`, `get_run_output`, `submit_human_input` | Start a run of the active plan, watch its status, read outputs, and answer human-input forms |
 | `create_schedule`, `list_schedules`, `get_schedule`, `update_schedule`, `delete_schedule` | Manage a flow's plan schedules |
 | `list_secret_blocks` | List Secret block names and IDs, never their values |
 | `list_deployments` | List deployment names and IDs, for Deployment nodes |
+| `get_deployment` | Read one deployment's parameters and their schema |
+| `get_workspace` | Show the workspace the server uses, with its Prefect Cloud UI address |
 
 ## Development
 

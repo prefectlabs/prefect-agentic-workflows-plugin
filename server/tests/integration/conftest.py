@@ -15,7 +15,7 @@ from typing import Any
 
 import pytest
 from fastmcp import Client
-from prefect.settings import get_current_settings
+from prefect.settings import Settings
 
 from prefect_agentic_workflows_mcp.server import build_server
 from prefect_agentic_workflows_mcp.workspace_api import is_cloud_workspace_api_url
@@ -35,7 +35,7 @@ def cloud_profile() -> Iterator[None]:
     if os.environ.get(OPT_IN_VARIABLE) != "1":
         pytest.skip(f"set {OPT_IN_VARIABLE}=1 to run integration tests")
 
-    settings = get_current_settings()
+    settings = Settings()
     api_url = settings.api.url or ""
     if not is_cloud_workspace_api_url(api_url) or settings.api.key is None:
         pytest.skip("the active Prefect profile has no Cloud workspace credentials")
