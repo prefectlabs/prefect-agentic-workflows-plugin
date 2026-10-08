@@ -14,6 +14,8 @@ Expected results:
 - a version of the flow is saved, and no run is started
 """
 
+import re
+
 from evals import assertions, graph
 from evals.assertions import Check
 from evals.runner import REPO_ROOT
@@ -84,18 +86,35 @@ def conversion_report(outcome: Outcome) -> str:
     )
 
 
+# An objective that spells out two passes, such as "two review passes" or
+# "2 rounds of review and revision".
+TWO_PASSES = re.compile(
+    r"\b(two|2)\b[^.]{0,40}\b(pass|passes|round|rounds|times)\b", re.I
+)
+
+
 def check_two_review_passes(outcome: Outcome) -> Check:
-    """Check that the plan has the two review passes the user chose."""
-    reviews = [
-        node_id
+    """Check that the plan carries out the two review passes the user chose.
+
+    The passes can be separate agent nodes, or one node whose objective spells
+    them out, since the skill keeps work with the same tools in one node.
+    """
+    agents = {
+        node_id: str(node.get("objective", ""))
         for node_id, node in graph.nodes(outcome.plan).items()
         if node.get("kind") == "AgentNode"
-        and "review" in f"{node_id} {node.get('objective', '')}".lower()
+    }
+    reviews = [
+        node_id
+        for node_id, objective in agents.items()
+        if "review" in f"{node_id} {objective}".lower()
     ]
+    in_one_node = [node_id for node_id in reviews if TWO_PASSES.search(agents[node_id])]
+    passed = len(reviews) >= 2 or bool(in_one_node)
     return Check(
         "the plan has two review passes",
-        len(reviews) >= 2,
-        "" if len(reviews) >= 2 else f"found review nodes {reviews}",
+        passed,
+        "" if passed else f"found review nodes {reviews}, none naming two passes",
     )
 
 
