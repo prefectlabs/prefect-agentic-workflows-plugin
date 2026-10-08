@@ -5,7 +5,7 @@ Find out what the workflow can use before the user spends time on its design. An
 Many users don't know what MCP is. Write for that reader.
 
 1. Call `list_secret_blocks` and `list_deployments`. When a call fails with an error about the Prefect profile or workspace, relay it and stop.
-2. Ask which business tools the workflow needs and whether each has a remote MCP server. Send this question as a message of its own, and wait for the answer: the design questions, the summary, and any conversion report come after it. Use wording like:
+2. Ask which business tools the workflow needs and whether each has a remote MCP server. Send this question as a message of its own, and wait for the answer: the design questions, the summary, and any conversion report come after it. When you don't know yet what the workflow does, first ask the user to describe it in a sentence or two, so you know which systems to ask about. Use wording like:
 
    > A step that an AI agent runs in Prefect Cloud can only use a business tool, such as Slack or your helpdesk, through a *remote MCP server*: a web address that lets the agent use that tool. Many services offer one; search their help pages for "MCP server". It has to be reachable over the internet, and if it needs a sign-in, it has to accept an API key or token rather than a browser sign-in. For each tool this workflow needs, do you have that address? If you're not sure, I'll plan as if you don't.
 
