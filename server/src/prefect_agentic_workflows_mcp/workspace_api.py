@@ -35,10 +35,12 @@ NO_API_URL_MESSAGE = (
     "workspace, then call this tool again."
 )
 NOT_CLOUD_MESSAGE = (
-    "The active Prefect profile points at {api_url}, which is not a Prefect "
-    "Cloud workspace URL. Execution plans are only available in Prefect Cloud. "
-    "Run `prefect cloud login` and pick a workspace, or switch to a Cloud "
-    "profile with `prefect profile use <name>`, then call this tool again."
+    "The Prefect API URL is {api_url}, which is not a Prefect Cloud workspace "
+    "URL. Execution plans are only available in Prefect Cloud. Run "
+    "`prefect cloud login` and pick a workspace, or switch to a Cloud profile "
+    "with `prefect profile use <name>`, then call this tool again. If the MCP "
+    "server's configuration sets `PREFECT_API_URL`, that URL is used instead: "
+    "update or remove it there and restart the server."
 )
 NO_API_KEY_MESSAGE = (
     "The active Prefect profile has no API key. Run `prefect cloud login` to "

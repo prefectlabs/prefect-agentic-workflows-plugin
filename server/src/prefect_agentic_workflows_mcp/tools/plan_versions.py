@@ -107,6 +107,16 @@ def create_errors(response: httpx.Response) -> list[dict[str, Any]]:
 def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
     """Add the plan version tools to `mcp`."""
 
+    async def active_state_if(flow_id: UUID, version_id: str) -> dict[str, Any] | None:
+        """Return the flow's active state when `version_id` is the active version.
+
+        An activation can succeed in Cloud even when its response is lost, so
+        a failed activation call checks this before reporting a failure.
+        """
+        active_state = await api.call("GET", f"/flows/{flow_id}/execution-plan")
+        active = (active_state or {}).get("active_version") or {}
+        return active_state if str(active.get("id")) == version_id else None
+
     @tool(mcp, read_only=False, destructive=True)
     async def publish_plan(
         flow_id: FlowId,
@@ -158,11 +168,8 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                 "POST", f"{versions_path}/{version['id']}/activate"
             )
         except ToolError as exc:
-            # Cloud may have activated the version before the connection
-            # failed, so read the active version before reporting a failure.
-            active_state = await api.call("GET", f"/flows/{flow_id}/execution-plan")
-            active = (active_state or {}).get("active_version") or {}
-            if active.get("id") != version["id"]:
+            active_state = await active_state_if(flow_id, version["id"])
+            if active_state is None:
                 return publish_result(version=version, activation_error=str(exc))
         return publish_result(version=version, active_state=active_state)
 
@@ -239,7 +246,13 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
 
         Returns `active_version`, the flow's active version after the change.
         """
-        return await api.call(
-            "POST",
-            f"/flows/{flow_id}/execution-plan/versions/{version_id}/activate",
-        )
+        try:
+            return await api.call(
+                "POST",
+                f"/flows/{flow_id}/execution-plan/versions/{version_id}/activate",
+            )
+        except ToolError:
+            active_state = await active_state_if(flow_id, str(version_id))
+            if active_state is None:
+                raise
+            return active_state

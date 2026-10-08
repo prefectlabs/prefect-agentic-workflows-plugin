@@ -218,3 +218,16 @@ async def test_publish_plan_reports_an_activation_whose_connection_failed(
     assert result.structured_content is not None
     assert result.structured_content["activated"] is True
     assert result.structured_content["activation_error"] is None
+
+
+async def test_activate_plan_version_reports_an_activation_whose_connection_failed(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    cloud_api.post(ACTIVATE_PATH).mock(side_effect=httpx.ReadError("closed"))
+    cloud_api.get(PLAN_PATH).respond(200, json=active_state_response())
+
+    result = await mcp_client.call_tool(
+        "activate_plan_version", {"flow_id": FLOW_ID, "version_id": VERSION_ID}
+    )
+
+    assert result.structured_content == active_state_response()
