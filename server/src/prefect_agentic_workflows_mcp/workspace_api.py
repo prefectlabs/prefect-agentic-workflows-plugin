@@ -105,7 +105,10 @@ def is_cloud_workspace_api_url(api_url: str) -> bool:
     is accepted only when `PREFECT_AGENTIC_WORKFLOWS_ALLOW_LOOPBACK_FOR_TESTS`
     is `1`, so a test harness can serve a fake Cloud API on this machine.
     """
-    url = httpx.URL(api_url)
+    try:
+        url = httpx.URL(api_url)
+    except httpx.InvalidURL:
+        return False
     if "/accounts/" not in url.path or "/workspaces/" not in url.path:
         return False
     host = url.host

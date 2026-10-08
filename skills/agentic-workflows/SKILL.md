@@ -61,6 +61,6 @@ A plan references a credential by a Secret block's ID from `list_secret_blocks`.
 Find a published workflow with `get_flow`, which never creates one.
 
 
-- **Edit:** start from the plan file, or from `get_plan` when it's missing, and run the pipeline from step 1 with a summary of what changes.
+- **Edit:** start from the active plan from `get_plan`. When the local plan file differs from it, ask the user which to build on. Then run the pipeline from step 1 with a summary of what changes.
 - **Roll back:** pick a version with `list_plan_versions`, compare it with the active plan using `get_plan` with and without its `version_id`, get the promotion approval, and call `activate_plan_version`.
 - **Schedule:** collect a value for each required input of the active plan, get the recurring-runs approval with those parameters, then use the schedule tools. A schedule runs whatever version is active when it fires.

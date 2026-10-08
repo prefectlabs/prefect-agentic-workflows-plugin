@@ -41,8 +41,9 @@ async def test_server_starts_and_lists_tools_without_a_cloud_profile(
         "http://api.prefect.cloud/api/accounts/a/workspaces/w",
         "https://api.prefect.cloud.example.com/api/accounts/a/workspaces/w",
         "https://example.com/api/accounts/a/workspaces/w",
+        "https://api.prefect.cloud:bad/api/accounts/a/workspaces/w",
     ],
-    ids=["plain-http", "lookalike-host", "other-host"],
+    ids=["plain-http", "lookalike-host", "other-host", "malformed"],
 )
 async def test_the_api_key_is_only_sent_to_prefect_cloud_over_https(
     monkeypatch: pytest.MonkeyPatch, cloud_api: respx.MockRouter, api_url: str
