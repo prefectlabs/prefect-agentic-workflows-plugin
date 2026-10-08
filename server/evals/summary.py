@@ -70,12 +70,19 @@ def all_passed(report: Report) -> bool:
     return not report.failures and all(run_passed(case) for case in report.cases)
 
 
-def markdown(report: Report, rendered: str, *, agent_model: str | None) -> str:
+def markdown(
+    report: Report,
+    rendered: str,
+    *,
+    agent_model: str | None,
+    judge_model: str | None = None,
+) -> str:
     """Return the pass rates, the problems, and the rendered report as Markdown."""
+    judges = f"`{judge_model}`" if judge_model else "off"
     lines = [
         "## Behavioral evaluations",
         "",
-        f"Agent model: `{agent_model or 'default'}`",
+        f"Agent model: `{agent_model or 'default'}`. LLM judges: {judges}.",
         "",
         "| Case | Passed | Runs | Pass rate |",
         "|---|---|---|---|",

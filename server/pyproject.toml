@@ -24,6 +24,7 @@ packages = ["src/prefect_agentic_workflows_mcp"]
 [dependency-groups]
 dev = [
     "claude-agent-sdk>=0.2.161",
+    "pydantic-ai-slim[anthropic]>=2.54.0",
     "pydantic-evals>=2.54.0",
     "pytest>=8",
     "pytest-asyncio>=0.24",

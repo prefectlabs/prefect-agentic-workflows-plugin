@@ -8,7 +8,8 @@ between the agent and a simulated user. Its output is the outcome of that
 conversation: the transcript, the plan files the agent wrote, and the state
 of the run's flows in the sandbox. The evaluators check that outcome: the
 plan, the tools the agent called in order and with which arguments, and the
-flows it left in the workspace.
+flows it left in the workspace. For three cases, an LLM judge also answers
+one question that a regular expression can't.
 
 Each run starts Claude Code through the Claude Agent SDK, so it costs money,
 and the same case can pass once and fail the next time. `uv run pytest` runs
@@ -23,8 +24,9 @@ needs execution plans enabled and an object storage bucket. Use a sandbox
 workspace: the cases create flows and a Secret block there.
 
 The Claude Agent SDK includes its own copy of Claude Code. It uses
-`ANTHROPIC_API_KEY` when it's set, and your Claude Code login otherwise. Run
-from `server/`:
+`ANTHROPIC_API_KEY` when it's set, and your Claude Code login otherwise. The
+LLM judges need `ANTHROPIC_API_KEY`, and the command stops before any agent
+starts when the judges are on and it's missing. Run from `server/`:
 
 ```sh
 export PREFECT_API_URL=https://api.prefect.cloud/api/accounts/<id>/workspaces/<id>
@@ -35,6 +37,7 @@ uv run python -m evals --case scheduled_edit              # one case
 uv run python -m evals --case scheduled_edit --repeat 5   # a pass rate
 uv run python -m evals --model claude-sonnet-5            # pick the agent's model
 uv run python -m evals --summary report.md                # also write the report as Markdown
+uv run python -m evals --no-judge                         # only the deterministic checks
 ```
 
 | Option | What it does |
@@ -42,6 +45,8 @@ uv run python -m evals --summary report.md                # also write the repor
 | `--case NAME ...` | Runs only these cases. Pass it more than once, or with several names. |
 | `--repeat N` | Runs each case `N` times. The summary has each case's pass rate. |
 | `--model M` | The agent's model. The default is the Claude Agent SDK's. |
+| `--judge-model M` | The LLM judges' model, as a Pydantic AI model name. The default is `anthropic:claude-haiku-5-5`. |
+| `--no-judge` | Skips the LLM judges. |
 | `--max-concurrency N` | The most runs at the same time. The default is 3. |
 | `--summary PATH` | Also writes the pass rates, the failed checks, and the report to `PATH` as Markdown. |
 | `--output-dir PATH` | Where each run's directory goes. The default is a new temporary directory. |
@@ -50,7 +55,7 @@ The command prints the Pydantic Evals report, with a column of assertions for
 each run, then one `FAILED` line for each failed check with the reason. It
 exits with 1 when a check failed, when a run or an evaluator raised, or when
 the harness couldn't delete a run's flows, and with 2 when the sandbox
-settings are missing.
+settings, or the judges' API key, are missing.
 
 Each run has a directory in `<output-dir>/<session prefix>/`, such as
 `eval-3f9a1c/2-scheduled_edit/`. It has `transcript.json`, with every tool
@@ -111,17 +116,41 @@ missing and never deletes it.
    finished without error, every flow it created has the run's prefix, and
    it never called `start_run`. `ScenarioChecks` runs the case's own checks.
    Each check is one assertion in the report, with its detail as the reason.
+   When the judges are on, a `Judge` asks each of the case's judgements.
 6. `SandboxLifecycle.teardown` deletes the run's flows.
 
 The report also has two metrics for each run: `agent_cost_usd`, the cost the
 SDK reported, and `agent_turns`.
+
+## LLM judges
+
+Some expectations need judgment, so a regular expression on the agent's text
+can't check them. `Judge` in `evaluators.py` asks a Pydantic AI `LLMJudge`
+whether a rubric is true of the evidence, and adds one assertion whose name
+starts with `judge:`, with the judge's reason. The judge reads only the
+evidence the case's `Judgement` returns, never the case's inputs or the whole
+transcript. When the outcome has no evidence, such as no plan, the assertion
+fails without a call to the judge.
+
+| Case | The judge reads | The rubric |
+|---|---|---|
+| `rejected_approval` | The published plan. | The node after the rejection revises the earlier draft with the manager's notes. |
+| `release_notes_conversion` | The fixture's `SKILL.md`, the conversion report, and the published plan. | Each numbered step of the skill is in the plan, or the report explains why it was dropped or what replaced it. |
+| `no_infrastructure` | The request, the user's reply that no tool is reachable, and the agent's messages after it. | The agent offers a version of the workflow that runs without Zendesk and Slack tools. |
+
+The judges use `anthropic:claude-haiku-5-5` by default. Each judge call sends
+the rubric and the evidence once, a few thousand tokens at most, so the
+judges cost much less than the agent's runs. Pick another model with
+`--judge-model`, such as `anthropic:claude-sonnet-5`. A judge can be wrong,
+so read its reason before you change the skill for a failed judge assertion.
 
 ## CI
 
 `.github/workflows/evals.yml` runs every case once with `claude-haiku-5-5` on
 each pull request that changes `skills/` or `server/`. It uses the
 `PREFECT_API_URL`, `PREFECT_API_KEY`, and `ANTHROPIC_API_KEY` repository
-secrets, so it skips pull requests from forks. The job can fail without
+secrets, so it skips pull requests from forks. The LLM judges run with their
+default model. The job can fail without
 blocking the pull request. Its summary has the pass rates, the failed checks,
 and the report. Its `eval-transcripts` artifact has each run's transcript and
 plan files. Run the workflow by hand to pick another model.
@@ -150,13 +179,18 @@ and reports a run that the same key already started.
    Start from `scenarios/release_notes_conversion.py`. The module defines the
    prompt, the simulated user's rules in `USER`, a `checks` function that
    takes the `Outcome` and returns a list of `Check`, and `SCENARIO`, a
-   `Scenario` with the case name, the `ScenarioInputs`, and `checks`.
+   `Scenario` with the case name, the `ScenarioInputs`, and `checks`. For an
+   expectation that needs judgment, add a `Judgement` to `judgements`, with
+   a rubric and a function that returns the evidence. Wrap each part of the
+   evidence with `section` from `scenario.py`, and give the judge only what
+   the rubric needs.
 2. Add `SCENARIO` to `SCENARIOS` in `dataset.py`.
 3. Add tests in `tests/eval_harness/` that run the scenario's `checks` on a
    hand-written `Outcome`, with `FlowState` values for its flows: one that
    passes, and one for each way the agent can fail.
    `test_behavior_scenarios.py` has examples. These tests run in CI and catch
-   a check that can never fail.
+   a check that can never fail. Test each evidence function the same way, as
+   in `test_judges.py`. Those tests replace the judge with a `FunctionModel`.
 4. Run the case a few times with `--case <name> --repeat 3` and read the
    transcripts of the failures.
 

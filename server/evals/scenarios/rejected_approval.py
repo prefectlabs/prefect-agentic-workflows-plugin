@@ -11,17 +11,23 @@ Expected results:
 - the plan has the `reply` and `category` outputs
 - `publish_plan` is called only after `validate_plan` passes on the same plan
 - a version of the flow is saved, and no run is started
+- an LLM judge reads the plan and finds that the node after the rejection
+  revises the draft with the manager's notes
 """
+
+import json
 
 from evals import assertions, graph
 from evals.assertions import Check
 from evals.scenario import (
     DECLINE_TEST_RUN,
     FLOW_PREFIX,
+    Judgement,
     Outcome,
     Rule,
     Scenario,
     ScenarioInputs,
+    section,
 )
 
 FLOW_NAME = "customer-feedback-reply"
@@ -99,6 +105,31 @@ def checks(outcome: Outcome) -> list[Check]:
     ]
 
 
+REVISION_RUBRIC = """\
+The plan is a workflow in which an agent drafts a reply to customer feedback
+and a manager approves the draft or rejects it with notes. When the manager
+rejects the draft, the plan sends it to an agent node that revises it once.
+That node receives both the earlier draft and the manager's notes through
+its inputs, and its objective tells the agent to change the earlier draft so
+it follows the notes. A node that only copies the draft, or that writes a
+new reply without the notes, does not pass.
+"""
+
+
+def plan_evidence(outcome: Outcome) -> str:
+    plan = outcome.published_plan(FLOW_NAME)
+    return section("Plan", json.dumps(plan, indent=2)) if plan else ""
+
+
 SCENARIO = Scenario(
-    "rejected_approval", ScenarioInputs(prompt=PROMPT, user=USER), checks
+    "rejected_approval",
+    ScenarioInputs(prompt=PROMPT, user=USER),
+    checks,
+    judgements=[
+        Judgement(
+            "judge: the revision uses the manager's notes",
+            REVISION_RUBRIC,
+            plan_evidence,
+        )
+    ],
 )

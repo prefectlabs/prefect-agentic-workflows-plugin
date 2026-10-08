@@ -18,7 +18,12 @@ Expected results:
 - the approval step is a human-input node
 - `publish_plan` is called only after `validate_plan` passes on the same plan
 - a version of the flow is saved, and no run is started
+- an LLM judge reads the skill, the report, and the published plan, and
+  finds that each step of the skill is in the plan or the report explains
+  why it was dropped
 """
+
+import json
 
 from evals import assertions
 from evals.assertions import Check
@@ -27,10 +32,12 @@ from evals.sandbox import SandboxApi
 from evals.scenario import (
     DECLINE_TEST_RUN,
     FLOW_PREFIX,
+    Judgement,
     Outcome,
     Rule,
     Scenario,
     ScenarioInputs,
+    section,
 )
 
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "skills" / "release-notes"
@@ -133,10 +140,42 @@ def checks(outcome: Outcome) -> list[Check]:
     ]
 
 
+STEPS_RUBRIC = """\
+<SourceSkill> is a skill with numbered steps. <Plan> is the workflow that
+was converted from it and published, and <ConversionReport> is the agent's
+report of the conversion. For every numbered step of the skill, either a
+node of the plan does that step's work, or the report explains the decision
+to drop the step or what replaced it. A step that the plan changes, such as
+a script that became a tool call, a repeat-until-done loop that became a
+fixed number of passes, or an approval that became a human-input node,
+counts as kept.
+"""
+
+
+def steps_evidence(outcome: Outcome) -> str:
+    plan = outcome.published_plan(FLOW_NAME)
+    if not plan:
+        return ""
+    return "\n\n".join(
+        [
+            section("SourceSkill", (FIXTURE / "SKILL.md").read_text()),
+            section("ConversionReport", conversion_report(outcome) or "(none)"),
+            section("Plan", json.dumps(plan, indent=2)),
+        ]
+    )
+
+
 SCENARIO = Scenario(
     "release_notes_conversion",
     ScenarioInputs(
         prompt=PROMPT, user=USER, files={"release-notes": FIXTURE}, setup=setup
     ),
     checks,
+    judgements=[
+        Judgement(
+            "judge: every step of the skill is kept or explained",
+            STEPS_RUBRIC,
+            steps_evidence,
+        )
+    ],
 )

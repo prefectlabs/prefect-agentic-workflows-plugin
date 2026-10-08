@@ -22,6 +22,15 @@ def test_parse_args_defaults():
     assert args.max_concurrency == cli.DEFAULT_MAX_CONCURRENCY
     assert args.cases is None
     assert args.summary is None
+    assert args.judge is True
+    assert args.judge_model == "anthropic:claude-haiku-5-5"
+    assert cli.judge_model(args) == "anthropic:claude-haiku-5-5"
+
+
+def test_parse_args_judge_options():
+    assert cli.judge_model(cli.parse_args(["--no-judge"])) is None
+    args = cli.parse_args(["--judge-model", "anthropic:claude-sonnet-5"])
+    assert cli.judge_model(args) == "anthropic:claude-sonnet-5"
 
 
 def test_parse_args_takes_several_cases():
@@ -67,6 +76,17 @@ def test_main_refuses_to_start_without_the_sandbox(
     assert "PREFECT_API_URL" in capsys.readouterr().err
 
 
+def test_main_refuses_to_start_the_judges_without_an_anthropic_key(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    monkeypatch.setenv("PREFECT_API_URL", WORKSPACE_API_URL)
+    monkeypatch.setenv("PREFECT_API_KEY", API_KEY)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    assert cli.main([]) == cli.USAGE_ERROR
+    assert "--no-judge" in capsys.readouterr().err
+
+
 class StubSandbox(SandboxApi):
     instances: ClassVar[list["StubSandbox"]] = []
 
@@ -108,6 +128,7 @@ def test_main_writes_the_summary_and_fails_when_a_check_fails(
             "no_infrastructure",
             "--repeat",
             "2",
+            "--no-judge",
             "--summary",
             str(summary),
             "--output-dir",
@@ -119,6 +140,7 @@ def test_main_writes_the_summary_and_fails_when_a_check_fails(
     assert code == 1
     text = summary.read_text()
     assert "| `no_infrastructure` | 0 | 2 | 0% |" in text
+    assert "LLM judges: off." in text
     assert "the agent's first question is the infrastructure check" in text
     sandbox = StubSandbox.instances[-1]
     session_prefix = sandbox.deleted_prefixes[-1]

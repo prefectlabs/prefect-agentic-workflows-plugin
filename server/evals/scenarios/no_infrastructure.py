@@ -12,13 +12,22 @@ Expected results:
 - after the user says they have no remote MCP servers, the agent says which
   steps that affects and offers a version without those tools
 - nothing is validated or published
+- an LLM judge reads the agent's answer and finds a version of the workflow
+  that works without Zendesk and Slack tools
 """
 
 import re
 
 from evals import assertions
 from evals.assertions import Check
-from evals.scenario import Outcome, Rule, Scenario, ScenarioInputs
+from evals.scenario import (
+    Judgement,
+    Outcome,
+    Rule,
+    Scenario,
+    ScenarioInputs,
+    section,
+)
 
 PROMPT = """\
 Use the agentic-workflows skill to build a Prefect workflow that reads our
@@ -84,6 +93,45 @@ def checks(outcome: Outcome) -> list[Check]:
     ]
 
 
+FALLBACK_RUBRIC = """\
+In <Request>, the user asks for a workflow that reads new Zendesk tickets
+every morning, summarizes them, and posts the summary to Slack. In
+<UserReply>, the user says no tool for Zendesk or Slack is reachable. In
+<AgentReply>, the agent offers a version of the workflow that can run
+without Zendesk and Slack tools, such as one where a person pastes the
+tickets in and posts the summary, and it says which steps change. The offer
+is concrete enough that the user could accept it and the agent could build
+it. A reply that only says the workflow can't be built, or only asks the
+user to set up the tools, does not pass.
+"""
+
+
+def fallback_evidence(outcome: Outcome) -> str:
+    transcript = outcome.transcript
+    answer = transcript.first_reply("no-remote-servers")
+    if answer is None:
+        return ""
+    replies = transcript.turn_results[answer.turn :]
+    if not replies:
+        return ""
+    return "\n\n".join(
+        [
+            section("Request", PROMPT),
+            section("UserReply", answer.text),
+            section("AgentReply", "\n\n".join(replies)),
+        ]
+    )
+
+
 SCENARIO = Scenario(
-    "no_infrastructure", ScenarioInputs(prompt=PROMPT, user=USER), checks
+    "no_infrastructure",
+    ScenarioInputs(prompt=PROMPT, user=USER),
+    checks,
+    judgements=[
+        Judgement(
+            "judge: the agent offers a version without the tools",
+            FALLBACK_RUBRIC,
+            fallback_evidence,
+        )
+    ],
 )

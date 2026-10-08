@@ -92,6 +92,11 @@ class Outcome:
         plan = next(iter(self.plans.values()))
         return plan if isinstance(plan, dict) else {}
 
+    def published_plan(self, flow_name: str) -> dict[str, Any]:
+        """Return the active plan of the flow in the sandbox, or `plan` without one."""
+        flow = self.flows.get(flow_name)
+        return (flow.active_plan if flow else None) or self.plan
+
 
 @dataclass
 class ScenarioInputs:
@@ -118,14 +123,38 @@ class ScenarioInputs:
         return self.prompt.replace(FLOW_PREFIX, flow_prefix)
 
 
+@dataclass(frozen=True)
+class Judgement:
+    """One question an LLM judge answers about a case's outcome.
+
+    `name` is the assertion's name in the report. `rubric` is the statement
+    the judge checks against the evidence. `evidence` returns the only text
+    the judge reads, such as the plan and the agent's report, or an empty
+    string when the outcome has nothing to judge, which fails the assertion
+    without calling the judge.
+    """
+
+    name: str
+    rubric: str
+    evidence: Callable[[Outcome], str]
+
+
+def section(tag: str, text: str) -> str:
+    """Return the text between `<tag>` and `</tag>`, for a judge's evidence."""
+    return f"<{tag}>\n{text.strip()}\n</{tag}>"
+
+
 @dataclass
 class Scenario:
     """One case of the dataset, and the checks that run on its outcome.
 
     `name` is the case name in the report and for `--case`. `checks`
     returns one `Check` for each thing the scenario expects of the agent.
+    `judgements` are the questions an LLM judge answers about the outcome,
+    when the judges are on.
     """
 
     name: str
     inputs: ScenarioInputs
     checks: Callable[[Outcome], list[Check]]
+    judgements: list[Judgement] = field(default_factory=list)
