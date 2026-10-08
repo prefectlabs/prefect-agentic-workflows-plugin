@@ -463,6 +463,7 @@ class FakeCloud:
             ("GET", r"/flows/name/(?P<name>[^/]+)", self.read_flow_by_name),
             ("POST", r"/flows/", self.create_flow),
             ("POST", r"/flows/filter", self.filter_flows),
+            ("GET", r"/flows/(?P<flow_id>[^/]+)", self.read_flow),
             ("GET", PLAN, self.read_active),
             ("GET", f"{PLAN}/versions", self.list_versions),
             ("POST", f"{PLAN}/versions", self.create_version),
@@ -470,12 +471,14 @@ class FakeCloud:
             ("POST", f"{VERSION}/activate", self.activate_version),
             ("POST", f"{PLAN}/runs", self.start_run),
             ("GET", f"{PLAN}/schedules", self.list_schedules),
+            ("GET", rf"{PLAN}/schedules/(?P<schedule_id>[^/]+)", self.read_schedule),
             ("GET", RUN, self.read_run),
             ("GET", rf"{RUN}/outputs/(?P<name>[^/]+)", self.read_plan_output),
             ("GET", rf"{ACTIVATION}/outputs/(?P<name>[^/]+)", self.read_node_output),
             ("POST", f"{ACTIVATION}/human-input/responses", self.submit_human_input),
             ("POST", r"/block_documents/filter", self.filter_block_documents),
             ("POST", r"/deployments/filter", self.filter_deployments),
+            ("GET", r"/deployments/(?P<deployment_id>[^/]+)", self.read_deployment),
         ]
         self.routes = [
             (method, re.compile(f"^{pattern}$"), handler)
@@ -622,6 +625,10 @@ class FakeCloud:
                 return json_response(200, flow)
         return error(404, "Flow not found.")
 
+    def read_flow(self, *, flow_id: str, **_: Any) -> httpx.Response:
+        flow = self.flows.get(flow_id)
+        return json_response(200, flow) if flow else error(404, "Flow not found.")
+
     def create_flow(self, *, body: Json, **_: Any) -> httpx.Response:
         return json_response(201, self.add_flow(body["name"], body.get("tags")))
 
@@ -692,6 +699,14 @@ class FakeCloud:
         schedules = list(self.schedules.get(flow_id, {}).values())
         return json_response(200, {"schedules": schedules})
 
+    def read_schedule(
+        self, *, flow_id: str, schedule_id: str, **_: Any
+    ) -> httpx.Response:
+        schedule = self.schedules.get(flow_id, {}).get(schedule_id)
+        if schedule is None:
+            return error(404, "Schedule not found.")
+        return json_response(200, schedule)
+
     def read_run(self, *, run_id: str, **_: Any) -> httpx.Response:
         run = self.runs[run_id]
         run.advance()
@@ -727,3 +742,9 @@ class FakeCloud:
 
     def filter_deployments(self, **_: Any) -> httpx.Response:
         return json_response(200, sorted(self.deployments, key=lambda d: d["name"]))
+
+    def read_deployment(self, *, deployment_id: str, **_: Any) -> httpx.Response:
+        for deployment in self.deployments:
+            if deployment["id"] == deployment_id:
+                return json_response(200, deployment)
+        return error(404, "Deployment not found.")

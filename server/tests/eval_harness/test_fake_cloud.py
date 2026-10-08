@@ -196,3 +196,23 @@ async def test_a_scripted_expiry_selects_the_expiry_output(
         {"output": "rejected", "status": "skipped"},
         {"output": "expired", "status": "available"},
     ]
+
+
+async def test_the_fake_serves_the_single_item_reads_the_skill_uses(
+    fake_cloud: FakeCloud, client: Client[Any]
+):
+    flow = fake_cloud.add_flow("nightly-load")
+    deployment = fake_cloud.add_deployment(flow["id"], "nightly")
+    schedule = fake_cloud.add_schedule(
+        flow["id"], "mornings", {"cron": "0 9 * * *", "timezone": "UTC"}
+    )
+
+    found = await call(client, "get_flow", name="nightly-load")
+    read = await call(client, "get_deployment", deployment_id=deployment["id"])
+    one = await call(
+        client, "get_schedule", flow_id=flow["id"], schedule_id=schedule["id"]
+    )
+
+    assert found["flow"]["id"] == flow["id"]
+    assert read["flow_name"] == "nightly-load"
+    assert one["id"] == schedule["id"]

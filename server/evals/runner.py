@@ -38,6 +38,7 @@ from evals.fake_cloud import FakeCloud
 from evals.record import Reply, ToolCall, Transcript, read_plan_files
 from evals.scenario import Outcome, Rule, next_rule
 from prefect_agentic_workflows_mcp.server import SERVER_NAME
+from prefect_agentic_workflows_mcp.workspace_api import ALLOW_LOOPBACK_VARIABLE
 
 SERVER_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = SERVER_DIR.parent
@@ -119,6 +120,8 @@ def prefect_environment(api_url: str, prefect_home: Path) -> dict[str, str]:
         "PREFECT_API_KEY": FAKE_API_KEY,
         "PREFECT_HOME": str(prefect_home),
         "PREFECT_PROFILES_PATH": str(prefect_home / "profiles.toml"),
+        # The server only accepts a loopback API URL when this is set.
+        ALLOW_LOOPBACK_VARIABLE: "1",
     }
 
 
