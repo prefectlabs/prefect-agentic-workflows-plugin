@@ -1,0 +1,222 @@
+{
+  "kind": "ExecutionPlan",
+  "schema_version": "0.2",
+  "inputs": {
+    "feedback": {
+      "schema": {
+        "type": "string",
+        "title": "Customer feedback",
+        "description": "The text of one piece of customer feedback, pasted as the customer wrote it.",
+        "minLength": 1
+      },
+      "required": true
+    }
+  },
+  "nodes": {
+    "draft_reply": {
+      "kind": "AgentNode",
+      "label": "Sort the feedback and draft a reply",
+      "objective": "Read the customer feedback in the `feedback` input. Sort it into one category: `bug` when something doesn't work as expected, `feature_request` when the customer asks for something new, `praise` when the customer is happy, or `complaint` when the customer is unhappy for any other reason. Then write a reply to the customer in under 150 words. Thank them, answer what they raised, and make no promise about dates or refunds. Select the `drafted` output with `category` and `draft`, the reply text.",
+      "inputs": {
+        "feedback": {
+          "schema": {"type": "string"},
+          "expects": {"cardinality": "exactly_one", "shape": "value"}
+        }
+      },
+      "outputs": {
+        "drafted": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "category": {
+                "type": "string",
+                "enum": ["bug", "feature_request", "praise", "complaint"]
+              },
+              "draft": {"type": "string"}
+            },
+            "required": ["category", "draft"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "orchestration": {
+        "output_selection": "exactly_one",
+        "evaluate_when": "all_required_inputs_produced",
+        "on_failure": {"retry": {"max_attempts": 2, "delay_seconds": 10}}
+      }
+    },
+    "review_reply": {
+      "kind": "HumanInputNode",
+      "label": "Manager review",
+      "human_input": {
+        "form_schema": {
+          "type": "object",
+          "title": "Send this reply?",
+          "description": "Read the category and the draft in the output of the step before this one. Approve the draft, or reject it and write what to change.",
+          "properties": {
+            "decision": {
+              "type": "string",
+              "enum": ["approved", "rejected"],
+              "title": "Decision"
+            },
+            "notes": {
+              "type": "string",
+              "title": "Notes",
+              "description": "When you reject the draft, say what the reply should change."
+            }
+          },
+          "required": ["decision"]
+        }
+      },
+      "inputs": {
+        "draft": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "category": {"type": "string"},
+              "draft": {"type": "string"}
+            },
+            "required": ["category", "draft"]
+          },
+          "expects": {"cardinality": "exactly_one", "shape": "value"}
+        }
+      },
+      "outputs": {
+        "approved": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "decision": {"type": "string"},
+              "notes": {"type": "string"}
+            },
+            "required": ["decision"]
+          }
+        },
+        "rejected": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "decision": {"type": "string"},
+              "notes": {"type": "string"}
+            },
+            "required": ["decision"]
+          }
+        }
+      },
+      "orchestration": {
+        "output_selection": "exactly_one",
+        "evaluate_when": "all_required_inputs_produced"
+      }
+    },
+    "finish_reply": {
+      "kind": "AgentNode",
+      "label": "Finish the reply",
+      "objective": "Read the manager's answer in the `review` input and the draft in the `draft` input. When `review.decision` is `approved`, select the `approved_reply` output with the value of `draft.draft`, copied word for word. When `review.decision` is `rejected`, rewrite the draft once so it follows the manager's `review.notes`. Keep what the draft says about the customer's feedback, keep it under 150 words, and make no promise about dates or refunds. When the notes are empty, make the reply clearer and warmer. Select the `revised_reply` output with the new reply text.",
+      "inputs": {
+        "draft": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "category": {"type": "string"},
+              "draft": {"type": "string"}
+            },
+            "required": ["category", "draft"]
+          },
+          "expects": {"cardinality": "exactly_one", "shape": "value"}
+        },
+        "review": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "decision": {"type": "string"},
+              "notes": {"type": "string"}
+            },
+            "required": ["decision"]
+          },
+          "expects": {"cardinality": "exactly_one", "shape": "value"}
+        }
+      },
+      "outputs": {
+        "approved_reply": {
+          "schema": {"type": "string"}
+        },
+        "revised_reply": {
+          "schema": {"type": "string"}
+        }
+      },
+      "orchestration": {
+        "output_selection": "exactly_one",
+        "evaluate_when": "all_required_inputs_produced",
+        "on_failure": {"retry": {"max_attempts": 2, "delay_seconds": 10}}
+      }
+    }
+  },
+  "edges": [
+    {
+      "id": "feedback-to-draft_reply",
+      "from": {"type": "plan_input", "input": "feedback"},
+      "to": {"node": "draft_reply", "input": "feedback"}
+    },
+    {
+      "id": "drafted-to-review_reply",
+      "from": {"type": "node_output", "node": "draft_reply", "output": "drafted"},
+      "to": {"node": "review_reply", "input": "draft"}
+    },
+    {
+      "id": "drafted-to-finish_reply",
+      "from": {"type": "node_output", "node": "draft_reply", "output": "drafted"},
+      "to": {"node": "finish_reply", "input": "draft"}
+    },
+    {
+      "id": "approved-to-finish_reply",
+      "from": {"type": "node_output", "node": "review_reply", "output": "approved"},
+      "to": {"node": "finish_reply", "input": "review"}
+    },
+    {
+      "id": "rejected-to-finish_reply",
+      "from": {"type": "node_output", "node": "review_reply", "output": "rejected"},
+      "to": {"node": "finish_reply", "input": "review"}
+    }
+  ],
+  "outputs": {
+    "reply": {
+      "fields": {
+        "reply": {
+          "schema": {"type": "string"},
+          "source": {
+            "type": "one_of",
+            "one_of": [
+              {"type": "node_output", "node": "finish_reply", "output": "approved_reply"},
+              {"type": "node_output", "node": "finish_reply", "output": "revised_reply"}
+            ]
+          }
+        }
+      },
+      "required": ["reply"]
+    },
+    "category": {
+      "fields": {
+        "category": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "category": {
+                "type": "string",
+                "enum": ["bug", "feature_request", "praise", "complaint"]
+              },
+              "draft": {"type": "string"}
+            },
+            "required": ["category", "draft"],
+            "additionalProperties": false
+          },
+          "source": {
+            "type": "node_output",
+            "node": "draft_reply",
+            "output": "drafted"
+          }
+        }
+      },
+      "required": ["category"]
+    }
+  }
+}
