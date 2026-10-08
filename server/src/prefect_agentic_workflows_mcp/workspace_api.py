@@ -45,9 +45,10 @@ NO_API_KEY_MESSAGE = (
     "set one, then call this tool again."
 )
 UNAUTHORIZED_MESSAGE = (
-    "Prefect Cloud rejected the API key in the active Prefect profile "
-    "(HTTP 401). Run `prefect cloud login` to refresh it, then call this tool "
-    "again."
+    "Prefect Cloud rejected the API key (HTTP 401). Run `prefect cloud login` "
+    "to refresh the key in the active Prefect profile, then call this tool "
+    "again. If the MCP server's configuration sets `PREFECT_API_KEY`, that key "
+    "is used instead: update it there and restart the server."
 )
 FORBIDDEN_MESSAGE = (
     "Prefect Cloud refused the request to the execution-plan API (HTTP 403). "

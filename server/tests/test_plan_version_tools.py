@@ -85,6 +85,7 @@ async def test_publish_plan_returns_the_saved_version_when_activation_fails(
     cloud_api.post(ACTIVATE_PATH).respond(
         422, json={"detail": "Manual evaluation can't be activated yet."}
     )
+    cloud_api.get(PLAN_PATH).respond(200, json=active_state_response(None))
 
     result = await publish(mcp_client)
 
@@ -203,11 +204,11 @@ async def test_list_plan_versions_marks_the_active_version(
 
 
 @pytest.mark.usefixtures("validate")
-async def test_publish_plan_reports_an_activation_whose_response_was_lost(
+async def test_publish_plan_reports_an_activation_whose_connection_failed(
     mcp_client: Client[Any], cloud_api: respx.MockRouter
 ):
     cloud_api.post(VERSIONS_PATH).respond(201, json=version_response())
-    cloud_api.post(ACTIVATE_PATH).mock(side_effect=httpx.ReadTimeout("lost"))
+    cloud_api.post(ACTIVATE_PATH).mock(side_effect=httpx.ReadError("closed"))
     cloud_api.get(PLAN_PATH).respond(200, json=active_state_response())
 
     result = await mcp_client.call_tool(
