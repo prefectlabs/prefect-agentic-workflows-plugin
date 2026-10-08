@@ -45,7 +45,12 @@ def outcome(
 def published(plan: dict[str, Any], turn: int = 1) -> list[ToolCall]:
     return [
         ToolCall("validate_plan", {"plan": plan}, VALID, turn=turn),
-        ToolCall("publish_plan", {"plan": plan}, {"activated": True}, turn=turn),
+        ToolCall(
+            "publish_plan",
+            {"plan": plan},
+            {"published": True, "activated": True},
+            turn=turn,
+        ),
     ]
 
 
@@ -119,8 +124,29 @@ def expired(broken: bool) -> Outcome:
     return outcome(Transcript(tool_calls=calls, turn_results=[final]), plan, fake)
 
 
+def with_review_passes(plan: dict[str, Any]) -> dict[str, Any]:
+    """Add the two review passes the user chooses in the loop scenario."""
+    for number in (1, 2):
+        plan["nodes"][f"review_{number}"] = {
+            "kind": "AgentNode",
+            "objective": f"Review pass {number}: check the draft and revise it.",
+            "inputs": {},
+            "outputs": {},
+        }
+    return plan
+
+
+def mention_action_items(plan: dict[str, Any]) -> dict[str, Any]:
+    """Make an agent node end the digest with action items."""
+    for node in plan["nodes"].values():
+        if node.get("kind") == "AgentNode":
+            node["objective"] += " End with a short list of action items."
+            break
+    return plan
+
+
 def loop(broken: bool) -> Outcome:
-    plan = cyclic_plan() if broken else approval_plan()
+    plan = cyclic_plan() if broken else with_review_passes(approval_plan())
     report = (
         "## Conversion report\n\n| S3 | Review and revise until the reviewer is "
         "happy | A plan can't have a cycle | Two fixed review-and-revise passes |"
@@ -136,7 +162,7 @@ def loop(broken: bool) -> Outcome:
 
 
 def scheduled(broken: bool) -> Outcome:
-    plan = approval_plan()
+    plan = mention_action_items(approval_plan())
     fake = FakeCloud(API_URL)
     scheduled_edit.setup(fake)
     flow_id = scheduled_edit.seeded_flow_id(fake) or ""
@@ -248,6 +274,7 @@ SCENARIOS = {
             "the user decided on the loop",
             "nothing published before the user decided",
             "plan has no cycle",
+            "the plan has two review passes",
         ],
     ),
     "scheduled_edit": (
@@ -258,6 +285,7 @@ SCENARIOS = {
             "the activation question names the schedule",
             "activation only after the user's yes",
             "the new version is active",
+            "the active plan adds the action items",
             "update_schedule never called",
             "the schedule is unchanged",
         ],

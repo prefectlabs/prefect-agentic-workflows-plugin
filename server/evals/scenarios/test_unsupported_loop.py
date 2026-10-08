@@ -13,7 +13,7 @@ Expected results:
 - nothing is published before the user decides
 """
 
-from evals import assertions
+from evals import assertions, graph
 from evals.assertions import Check
 from evals.runner import REPO_ROOT
 from evals.scenario import Outcome, Rule, RunScenario, assert_passed
@@ -71,6 +71,21 @@ def conversion_report(outcome: Outcome) -> str:
     )
 
 
+def check_two_review_passes(outcome: Outcome) -> Check:
+    """Check that the plan has the two review passes the user chose."""
+    reviews = [
+        node_id
+        for node_id, node in graph.nodes(outcome.plan).items()
+        if node.get("kind") == "AgentNode"
+        and "review" in f"{node_id} {node.get('objective', '')}".lower()
+    ]
+    return Check(
+        "the plan has two review passes",
+        len(reviews) >= 2,
+        "" if len(reviews) >= 2 else f"found review nodes {reviews}",
+    )
+
+
 def checks(outcome: Outcome) -> list[Check]:
     calls = outcome.transcript.tool_calls
     report = conversion_report(outcome)
@@ -95,7 +110,8 @@ def checks(outcome: Outcome) -> list[Check]:
             decision,
         ),
         assertions.check_no_cycle(outcome.plan),
-        assertions.check_called(calls, "publish_plan"),
+        check_two_review_passes(outcome),
+        assertions.check_publish_succeeded(calls),
         assertions.check_published_only_after_valid(calls),
     ]
 

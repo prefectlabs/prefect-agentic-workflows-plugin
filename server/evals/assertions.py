@@ -146,6 +146,23 @@ def check_called(
     return Check(label, passed, "" if passed else f"called {len(matching)} times")
 
 
+def check_publish_succeeded(calls: list[ToolCall]) -> Check:
+    """Check that at least one `publish_plan` call saved a version."""
+    saved = [
+        call
+        for call in calls_to(calls, "publish_plan")
+        if not call.is_error
+        and isinstance(call.result, dict)
+        and call.result.get("published") is True
+    ]
+    tried = len(calls_to(calls, "publish_plan"))
+    return Check(
+        "publish_plan saved a version",
+        bool(saved),
+        "" if saved else f"{tried} publish_plan calls, none saved a version",
+    )
+
+
 def check_never_called(calls: list[ToolCall], name: str) -> Check:
     count = len(calls_to(calls, name))
     return Check(

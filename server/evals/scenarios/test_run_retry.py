@@ -85,8 +85,15 @@ def check_retry_reused_the_key(outcome: Outcome) -> Check:
 
 def checks(outcome: Outcome) -> list[Check]:
     runs = len(outcome.fake.runs)
+    starts = assertions.calls_to(outcome.transcript.tool_calls, "start_run")
+    retried = len(starts) > 1 and not starts[1].is_error
     return [
         check_retry_reused_the_key(outcome),
+        Check(
+            "the retry returned the run",
+            retried,
+            "" if retried else "the second start_run failed or never happened",
+        ),
         Check("only one run exists", runs == 1, f"found {runs} runs"),
     ]
 

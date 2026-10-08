@@ -12,6 +12,7 @@ Expected results:
 - the schedule is not changed
 """
 
+import json
 from typing import Any
 
 from evals import assertions
@@ -172,6 +173,18 @@ def check_new_version_active(outcome: Outcome) -> Check:
     )
 
 
+def check_new_version_adds_action_items(outcome: Outcome) -> Check:
+    flow_id = seeded_flow_id(outcome.fake) or ""
+    active = outcome.fake.active.get(flow_id) or {}
+    plan = active.get("plan") or {}
+    passed = plan != PLAN and "action item" in json.dumps(plan).lower()
+    return Check(
+        "the active plan adds the action items",
+        passed,
+        "" if passed else "the active plan doesn't mention action items",
+    )
+
+
 def checks(outcome: Outcome) -> list[Check]:
     calls = outcome.transcript.tool_calls
     approval = outcome.transcript.first_reply("promotion-approval")
@@ -202,6 +215,7 @@ def checks(outcome: Outcome) -> list[Check]:
             "activation only after the user's yes", activations, approval
         ),
         check_new_version_active(outcome),
+        check_new_version_adds_action_items(outcome),
         assertions.check_published_only_after_valid(calls),
         *[assertions.check_never_called(calls, name) for name in SCHEDULE_TOOLS],
         check_schedule_unchanged(outcome),

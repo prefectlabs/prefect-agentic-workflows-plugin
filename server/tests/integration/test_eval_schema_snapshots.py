@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 from fastmcp import Client
 
-from evals.fake_cloud import SCHEMAS_DIR
+from evals.fake_cloud import CURRENT_SCHEMA_VERSION, SCHEMAS_DIR
 
 SNAPSHOT_VERSIONS = sorted(path.stem for path in SCHEMAS_DIR.glob("*.json"))
 
@@ -37,4 +37,15 @@ async def test_every_supported_version_has_a_schema_copy(mcp_client: Client[Any]
     missing = sorted(set(body["supported_schema_versions"]) - set(SNAPSHOT_VERSIONS))
     assert not missing, (
         f"Cloud supports schema versions with no copy in evals/schemas/: {missing}"
+    )
+
+
+async def test_the_fake_reports_cloud_current_schema_version(mcp_client: Client[Any]):
+    result = await mcp_client.call_tool("get_schema", {})
+
+    body = result.structured_content
+    assert body is not None
+    assert body["current_schema_version"] == CURRENT_SCHEMA_VERSION, (
+        "Cloud's current schema version changed. Update CURRENT_SCHEMA_VERSION "
+        "in evals/fake_cloud.py."
     )

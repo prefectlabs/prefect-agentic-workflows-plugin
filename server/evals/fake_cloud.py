@@ -127,6 +127,22 @@ def reference_errors(plan: graph.Plan) -> list[str]:
     ]
 
 
+def unbound_input_errors(plan: graph.Plan) -> list[str]:
+    """Return a message for each required node input that no edge feeds."""
+    fed = {
+        (str(graph.edge_target(edge).get("node")), graph.edge_target(edge).get("input"))
+        for edge in graph.edges(plan)
+    }
+    return [
+        f"Nothing feeds the required input {node_id}.{name}."
+        for node_id, node in graph.nodes(plan).items()
+        for name, port in (node.get("inputs") or {}).items()
+        if ((port or {}).get("expects") or {}).get("cardinality")
+        in ("exactly_one", "one_or_more")
+        and (node_id, name) not in fed
+    ]
+
+
 def decision_errors(plan: graph.Plan) -> list[str]:
     """Return a message for each approval whose `decision` enum can't select outputs."""
     errors = []
@@ -158,7 +174,11 @@ def validate(plan: Json) -> list[dict[str, Any]]:
             }
             for problem in shape
         ]
-    messages = [*reference_errors(plan), *decision_errors(plan)]
+    messages = [
+        *reference_errors(plan),
+        *unbound_input_errors(plan),
+        *decision_errors(plan),
+    ]
     if cycle := graph.find_cycle(plan):
         messages.append(f"The edges between nodes {cycle!r} form a cycle.")
     return [

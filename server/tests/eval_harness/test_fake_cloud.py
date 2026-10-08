@@ -70,7 +70,14 @@ def no_decision_enum() -> dict[str, Any]:
     [
         (approval_plan, []),
         (cyclic_plan, ["cycle"]),
-        (broken_references, ["input approve.text.", "output writer.drafted."]),
+        (
+            broken_references,
+            [
+                "input approve.text.",
+                "output writer.drafted.",
+                "Nothing feeds the required input approve.",
+            ],
+        ),
         (no_decision_enum, ["decision"]),
     ],
 )

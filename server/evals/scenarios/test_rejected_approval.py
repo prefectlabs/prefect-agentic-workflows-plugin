@@ -139,7 +139,7 @@ def checks(outcome: Outcome) -> list[Check]:
     return [
         assertions.check_has_node_kind(outcome.plan, "HumanInputNode"),
         check_rejection_leads_to_revision(outcome.plan),
-        assertions.check_plan_outputs(outcome.plan, {"reply"}),
+        assertions.check_plan_outputs(outcome.plan, {"reply", "category"}),
         assertions.check_published_only_after_valid(outcome.transcript.tool_calls),
         check_answer_passed_on(outcome),
         check_run_finished_with_reply(outcome),

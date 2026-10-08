@@ -48,7 +48,9 @@ server in the skill runs only on my machine. Nothing else is reachable.
 
 REPORT_PARTS = {
     "local script": r"collect_changes",
-    "stdio MCP server": r"stdio|docker run",
+    # When the tools check already settled the remote replacement, the report
+    # can name the replacement instead of the stdio server.
+    "stdio MCP server": r"stdio|docker run|GitHub MCP server|githubcopilot",
     "repeat-until-done loop": r"loop|repeat|cycle",
     "human approval": r"approv",
 }
@@ -124,7 +126,7 @@ def checks(outcome: Outcome) -> list[Check]:
         ),
         assertions.check_no_cycle(outcome.plan),
         assertions.check_has_node_kind(outcome.plan, "HumanInputNode"),
-        assertions.check_called(calls, "publish_plan"),
+        assertions.check_publish_succeeded(calls),
         assertions.check_published_only_after_valid(calls),
     ]
 
