@@ -1,6 +1,9 @@
 """Tests for the simulated user's rules and the runner's conversation loop."""
 
+import json
 from collections.abc import AsyncIterator, Sequence
+from pathlib import Path
+from typing import Any
 
 import pytest
 from claude_agent_sdk import (
@@ -13,8 +16,10 @@ from claude_agent_sdk import (
     UserMessage,
 )
 
-from evals.record import Reply, ToolCall, Transcript
-from evals.runner import talk
+from evals import runner
+from evals.record import FlowState, Reply, ToolCall, Transcript
+from evals.runner import converse, talk
+from evals.sandbox import Credentials, SandboxApi
 from evals.scenario import Rule, next_rule
 from evals.scenarios import test_release_notes_conversion as release_notes
 
@@ -27,7 +32,9 @@ INFRASTRUCTURE_QUESTION = (
     ("message", "tools", "replies", "expected"),
     [
         ("Want a test run?", [], [], "go-ahead"),
-        ("Want a test run?", ["publish_plan"], [], "test-run-approval"),
+        ("Want a test run?", ["publish_plan"], [], "decline-test-run"),
+        ("Want a test run?", ["publish_plan"], ["decline-test-run"], "end"),
+        ("Published. Anything else?", ["publish_plan"], [], "end"),
         ("Do you approve?", [], [], "design-approval"),
         ("Do you approve?", ["validate_plan"], [], "go-ahead"),
         ("Anything else?", [], ["go-ahead"] * 3, None),
@@ -119,3 +126,65 @@ async def test_talk_records_tool_calls_and_answers_from_the_rules():
     ]
     assert transcript.replies == [Reply(1, "approve", "Yes.")]
     assert transcript.errors == []
+
+
+class StubSandbox(SandboxApi):
+    """Records the setup calls and returns a fixed snapshot."""
+
+    def __init__(self) -> None:
+        super().__init__(Credentials("https://api.prefect.cloud/api/x", "pnu_key"))
+        self.created: list[str] = []
+        self.snapshot_prefixes: list[str] = []
+
+    def create_flow(self, name: str) -> dict[str, Any]:
+        self.created.append(name)
+        return {"id": "flow-1", "name": name}
+
+    def snapshot(self, prefix: str) -> dict[str, FlowState]:
+        self.snapshot_prefixes.append(prefix)
+        return {"digest": FlowState("flow-1", f"{prefix}digest")}
+
+
+async def test_converse_seeds_the_sandbox_and_snapshots_the_run_prefix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    clients: list[Any] = []
+
+    class StubClient(ScriptedAgent):
+        def __init__(self, options: Any) -> None:
+            super().__init__([result("Done.")])
+            self.options = options
+            clients.append(self)
+
+        async def __aenter__(self) -> "StubClient":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            pass
+
+    monkeypatch.setattr(runner, "ClaudeSDKClient", StubClient)
+    sandbox = StubSandbox()
+
+    def setup(api: SandboxApi, prefix: str) -> None:
+        api.create_flow(f"{prefix}digest")
+
+    outcome = await converse(
+        tmp_path,
+        "Build it.",
+        [Rule(label="end", reply=None)],
+        sandbox=sandbox,
+        flow_prefix="eval-abc123-1-",
+        setup=setup,
+    )
+
+    assert sandbox.created == ["eval-abc123-1-digest"]
+    assert sandbox.snapshot_prefixes == ["eval-abc123-1-"]
+    assert list(outcome.flows) == ["digest"]
+    assert outcome.flow_prefix == "eval-abc123-1-"
+    env = clients[0].options.env
+    assert env["PREFECT_API_URL"] == "https://api.prefect.cloud/api/x"
+    assert env["PREFECT_API_KEY"] == "pnu_key"
+    assert env["PREFECT_HOME"] == str(tmp_path / "prefect-home")
+    assert not any("LOOPBACK" in name for name in env)
+    transcript = json.loads((tmp_path / "transcript.json").read_text())
+    assert transcript["turn_results"] == ["Done."]

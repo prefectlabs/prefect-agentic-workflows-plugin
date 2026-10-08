@@ -1,15 +1,17 @@
 """Change a workflow that already has an active version and a schedule.
 
-The fake starts with the `weekly-digest` flow, an active plan version, and
-one schedule, `monday-digest`. The user asks for a change to the plan, and
-the plan file isn't in the working directory.
+Before the agent starts, the harness creates the `weekly-digest` flow in the
+sandbox, with an active plan version and one schedule, `monday-digest`. The
+schedule is inactive, so it never starts a run. The user asks for a change
+to the plan, and the plan file isn't in the working directory. The user turns
+down the test run.
 
 Expected results:
 
 - the agent calls `list_schedules` and names `monday-digest` before it asks to
   activate the new version
 - the new version is activated only after the user's yes
-- the schedule is not changed
+- the schedule is not changed, and no run is started
 """
 
 import json
@@ -17,8 +19,15 @@ from typing import Any
 
 from evals import assertions
 from evals.assertions import Check
-from evals.fake_cloud import FakeCloud
-from evals.scenario import Outcome, Rule, RunScenario, assert_passed
+from evals.record import FlowState
+from evals.sandbox import SandboxApi
+from evals.scenario import (
+    DECLINE_TEST_RUN,
+    Outcome,
+    Rule,
+    RunScenario,
+    assert_passed,
+)
 
 FLOW_NAME = "weekly-digest"
 SCHEDULE_NAME = "monday-digest"
@@ -92,11 +101,14 @@ PLAN: dict[str, Any] = {
     },
 }
 
-PROMPT = f"""\
-My `{FLOW_NAME}` workflow in Prefect Cloud runs every Monday morning. Change it
-so the digest ends with a short list of action items for the week. The
-workflow file isn't in this folder.
+
+def prompt(flow_prefix: str) -> str:
+    return f"""\
+My `{flow_prefix}{FLOW_NAME}` workflow in Prefect Cloud runs every Monday
+morning. Change it so the digest ends with a short list of action items for
+the week. The workflow file isn't in this folder.
 """
+
 
 USER = [
     Rule(
@@ -106,6 +118,7 @@ USER = [
         reply="Yes, activate the new version.",
         max_uses=1,
     ),
+    DECLINE_TEST_RUN,
     Rule(label="end", after_tool="publish_plan", reply=None),
     Rule(
         label="reachable-systems",
@@ -124,34 +137,35 @@ USER = [
 ]
 
 
-def setup(fake: FakeCloud) -> None:
-    flow = fake.add_flow(FLOW_NAME)
-    fake.add_version(flow["id"], PLAN)
-    fake.add_schedule(
-        flow["id"], SCHEDULE_NAME, SCHEDULE, parameters=SCHEDULE_PARAMETERS
-    )
+def setup(sandbox: SandboxApi, flow_prefix: str) -> None:
+    flow = sandbox.create_flow(f"{flow_prefix}{FLOW_NAME}")
+    sandbox.publish_version(flow["id"], PLAN)
+    sandbox.create_schedule(flow["id"], SCHEDULE_NAME, SCHEDULE, SCHEDULE_PARAMETERS)
 
 
-def seeded_flow_id(fake: FakeCloud) -> str | None:
-    return next(
-        (flow["id"] for flow in fake.flows.values() if flow["name"] == FLOW_NAME),
-        None,
-    )
+def seeded_flow(outcome: Outcome) -> FlowState:
+    return outcome.flows.get(FLOW_NAME) or FlowState(id="", name=FLOW_NAME)
 
 
 def check_schedule_unchanged(outcome: Outcome) -> Check:
-    flow_id = seeded_flow_id(outcome.fake)
-    schedules = list(outcome.fake.schedules.get(flow_id or "", {}).values())
     found = [
-        {key: item.get(key) for key in ("name", "schedule", "parameters", "active")}
-        for item in schedules
+        {
+            "name": item.get("name"),
+            # Cloud can add fields it defaults, such as `day_or`.
+            "schedule": {
+                key: (item.get("schedule") or {}).get(key) for key in SCHEDULE
+            },
+            "parameters": item.get("parameters"),
+            "active": item.get("active"),
+        }
+        for item in seeded_flow(outcome).schedules
     ]
     expected = [
         {
             "name": SCHEDULE_NAME,
             "schedule": SCHEDULE,
             "parameters": SCHEDULE_PARAMETERS,
-            "active": True,
+            "active": False,
         }
     ]
     return Check(
@@ -162,22 +176,21 @@ def check_schedule_unchanged(outcome: Outcome) -> Check:
 
 
 def check_new_version_active(outcome: Outcome) -> Check:
-    flow_id = seeded_flow_id(outcome.fake) or ""
-    versions = outcome.fake.versions.get(flow_id, [])
-    active = outcome.fake.active.get(flow_id) or {}
-    passed = len(versions) > 1 and active.get("id") == versions[-1]["id"]
+    flow = seeded_flow(outcome)
+    versions = flow.version_ids
+    passed = len(versions) > 1 and flow.active_version_id == versions[-1]
     return Check(
         "the new version is active",
         passed,
-        "" if passed else f"{len(versions)} versions; active is {active.get('id')}",
+        ""
+        if passed
+        else f"{len(versions)} versions; active is {flow.active_version_id}",
     )
 
 
 def check_new_version_adds_action_items(outcome: Outcome) -> Check:
-    flow_id = seeded_flow_id(outcome.fake) or ""
-    active = outcome.fake.active.get(flow_id) or {}
-    plan = active.get("plan") or {}
-    passed = plan != PLAN and "action item" in json.dumps(plan).lower()
+    plan = seeded_flow(outcome).active_plan or {}
+    passed = "action item" in json.dumps(plan).lower()
     return Check(
         "the active plan adds the action items",
         passed,
@@ -219,9 +232,10 @@ def checks(outcome: Outcome) -> list[Check]:
         assertions.check_published_only_after_valid(calls),
         *[assertions.check_never_called(calls, name) for name in SCHEDULE_TOOLS],
         check_schedule_unchanged(outcome),
+        assertions.check_never_called(calls, "start_run"),
     ]
 
 
-async def test_scheduled_edit(run_scenario: RunScenario) -> None:
-    outcome = await run_scenario(PROMPT, USER, setup=setup)
+async def test_scheduled_edit(run_scenario: RunScenario, flow_prefix: str) -> None:
+    outcome = await run_scenario(prompt(flow_prefix), USER, setup=setup)
     assert_passed(outcome, checks(outcome))

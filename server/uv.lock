@@ -1873,7 +1873,6 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "claude-agent-sdk" },
-    { name = "jsonschema" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-repeat" },
@@ -1892,7 +1891,6 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "claude-agent-sdk", specifier = ">=0.2.161" },
-    { name = "jsonschema", specifier = ">=4.18" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "pytest-repeat", specifier = ">=0.9.4" },

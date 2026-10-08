@@ -1,4 +1,4 @@
-"""Convert the `release-notes` fixture skill into a workflow, publish it, and test it.
+"""Convert the `release-notes` fixture skill into a workflow and publish it.
 
 The fixture skill has one part for each case of the conversion report: a local
 script whose output later steps read, a stdio MCP server, a repeat-until-done
@@ -7,6 +7,8 @@ loop, and a human approval. See `tests/fixtures/skills/README.md`.
 When the infrastructure check asks which business tools an agent can reach,
 the simulated user names the GitHub server and a tools server that needs no
 credentials, and says the Docker-based server runs only on their machine.
+The GitHub token is the sandbox's `eval-github-token` Secret block, which
+holds a placeholder value. The user turns down the test run.
 
 Expected results:
 
@@ -15,35 +17,50 @@ Expected results:
 - the plan has no cycle
 - the approval step is a human-input node
 - `publish_plan` is called only after `validate_plan` passes on the same plan
+- a version of the flow is saved, and no run is started
 """
 
 from evals import assertions
 from evals.assertions import Check
-from evals.fake_cloud import FakeCloud
 from evals.runner import REPO_ROOT
-from evals.scenario import Outcome, Rule, RunScenario, assert_passed
+from evals.sandbox import SandboxApi
+from evals.scenario import (
+    DECLINE_TEST_RUN,
+    Outcome,
+    Rule,
+    RunScenario,
+    assert_passed,
+)
 
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "skills" / "release-notes"
+FLOW_NAME = "release-notes"
+SECRET_BLOCK = "eval-github-token"
+# Cloud checks that every MCP server's hostname resolves when it saves a plan,
+# so the tools server is on a hostname that resolves.
+TOOLS_SERVER = "https://example.com/mcp"
 
-PROMPT = """\
+
+def prompt(flow_prefix: str) -> str:
+    return f"""\
 Convert the skill in ./release-notes into a Prefect Cloud workflow. Name the
-flow `release-notes`. Our GitHub MCP server is hosted at
+flow `{flow_prefix}{FLOW_NAME}`. Our GitHub MCP server is hosted at
 https://api.githubcopilot.com/mcp/, and its token is in the Secret block
-`github-token`.
+`{SECRET_BLOCK}`.
 """
 
-DESIGN_APPROVAL = """\
+
+DESIGN_APPROVAL = f"""\
 I accept every proposed substitute in the report, and the summary is right.
 For the check loop, use two check-and-fix passes. The changes script is
 available as the `collect_changes` tool on our remote MCP server at
-https://tools.example.com/mcp, which needs no credentials. Go ahead.
+{TOOLS_SERVER}, which needs no credentials. Go ahead.
 """
 
-REACHABLE_SYSTEMS = """\
+REACHABLE_SYSTEMS = f"""\
 GitHub is reachable through https://api.githubcopilot.com/mcp/ with the token
-in the Secret block `github-token`. We also host a remote MCP server at
-https://tools.example.com/mcp that needs no credentials. The Docker-based
-server in the skill runs only on my machine. Nothing else is reachable.
+in the Secret block `{SECRET_BLOCK}`. We also host a remote MCP server at
+{TOOLS_SERVER} that needs no credentials. The Docker-based server in the
+skill runs only on my machine. Nothing else is reachable.
 """
 
 REPORT_PARTS = {
@@ -56,24 +73,8 @@ REPORT_PARTS = {
 }
 
 USER = [
-    Rule(
-        label="test-run-approval",
-        after_tool="publish_plan",
-        before_tool="start_run",
-        pattern=r"test run|start (a|the) run|run it",
-        reply=(
-            "Yes, start the test run. Use v1.4.0 for the tag, and acme/widgets "
-            "for the repository if the plan asks for one."
-        ),
-    ),
-    Rule(
-        label="form-answer",
-        after_tool="start_run",
-        pattern=r"approv|decision|form",
-        reply="I approve the draft.",
-        max_uses=1,
-    ),
-    Rule(label="end", after_tool="start_run", reply=None),
+    DECLINE_TEST_RUN,
+    Rule(label="end", after_tool="publish_plan", reply=None),
     Rule(
         label="reachable-systems",
         before_tool="validate_plan",
@@ -91,8 +92,8 @@ USER = [
 ]
 
 
-def setup(fake: FakeCloud) -> None:
-    fake.add_secret_block("github-token")
+def setup(sandbox: SandboxApi, flow_prefix: str) -> None:
+    sandbox.ensure_secret_block(SECRET_BLOCK)
 
 
 def conversion_report(outcome: Outcome) -> str:
@@ -128,11 +129,15 @@ def checks(outcome: Outcome) -> list[Check]:
         assertions.check_has_node_kind(outcome.plan, "HumanInputNode"),
         assertions.check_publish_succeeded(calls),
         assertions.check_published_only_after_valid(calls),
+        assertions.check_flow_saved(outcome.flows, FLOW_NAME),
+        assertions.check_never_called(calls, "start_run"),
     ]
 
 
-async def test_release_notes_conversion(run_scenario: RunScenario) -> None:
+async def test_release_notes_conversion(
+    run_scenario: RunScenario, flow_prefix: str
+) -> None:
     outcome = await run_scenario(
-        PROMPT, USER, files={"release-notes": FIXTURE}, setup=setup
+        prompt(flow_prefix), USER, files={"release-notes": FIXTURE}, setup=setup
     )
     assert_passed(outcome, checks(outcome))

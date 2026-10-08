@@ -13,7 +13,7 @@ from typing import Any
 
 from fastmcp import Client
 
-from evals import fake_cloud, graph
+from evals import graph
 
 SKILL_DIR = Path(__file__).resolve().parents[2] / "skills" / "agentic-workflows"
 
@@ -86,11 +86,11 @@ def test_example_plans_are_plan_documents_without_a_layout():
         assert "layout" not in plan, path.name
 
 
-def test_example_plans_pass_the_offline_graph_checks():
+def test_example_plans_have_no_cycle():
     for path in example_plans():
         plan = json.loads(path.read_text())
 
-        assert fake_cloud.validate(plan) == [], path.name
+        assert graph.find_cycle(plan) == [], path.name
 
 
 def test_feedback_reply_example_needs_no_tools_and_revises_a_rejected_draft():

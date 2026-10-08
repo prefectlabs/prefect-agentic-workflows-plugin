@@ -1,3 +1,2 @@
 # Generated files. GitHub collapses their diffs in pull requests.
 server/uv.lock linguist-generated=true
-server/evals/schemas/*.json linguist-generated=true

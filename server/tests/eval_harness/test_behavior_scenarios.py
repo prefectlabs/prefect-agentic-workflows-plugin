@@ -10,21 +10,18 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from harness_plans import approval_plan, cyclic_plan, from_node
+from harness_plans import approval_plan, cyclic_plan
 
-from evals.fake_cloud import FakeCloud, NodeScript
-from evals.record import Reply, ToolCall, Transcript
+from evals.record import FlowState, Reply, ToolCall, Transcript
 from evals.runner import SKILL_DIR
 from evals.scenario import Outcome
-from evals.scenarios import test_expired_approval as expired_approval
 from evals.scenarios import test_no_infrastructure as no_infrastructure
 from evals.scenarios import test_rejected_approval as rejected_approval
 from evals.scenarios import test_release_notes_conversion as release_notes
-from evals.scenarios import test_run_retry as run_retry
 from evals.scenarios import test_scheduled_edit as scheduled_edit
 from evals.scenarios import test_unsupported_loop as unsupported_loop
 
-API_URL = "http://127.0.0.1/api"
+PREFIX = "eval-abc123-1-"
 VALID = {"valid": True, "errors": []}
 FEEDBACK_PLAN = SKILL_DIR / "references/examples/customer-feedback-reply.plan.json"
 
@@ -36,14 +33,27 @@ def feedback_plan() -> dict[str, Any]:
 def outcome(
     transcript: Transcript,
     plan: dict[str, Any] | None = None,
-    fake: FakeCloud | None = None,
+    flows: list[FlowState] | None = None,
 ) -> Outcome:
     plans = {"workflow.plan.json": plan} if plan is not None else {}
-    return Outcome(transcript, plans, fake or FakeCloud(API_URL), Path("."))
+    by_name = {flow.name.removeprefix(PREFIX): flow for flow in flows or []}
+    return Outcome(transcript, plans, by_name, Path("."), PREFIX)
 
 
-def published(plan: dict[str, Any], turn: int = 1) -> list[ToolCall]:
+def saved_flow(name: str, plan: dict[str, Any]) -> FlowState:
+    """Return a flow with one saved and active version of the plan."""
+    return FlowState(
+        id="flow-1",
+        name=f"{PREFIX}{name}",
+        active_version_id="version-1",
+        active_plan=plan,
+        version_ids=["version-1"],
+    )
+
+
+def published(plan: dict[str, Any], flow: str, turn: int = 1) -> list[ToolCall]:
     return [
+        ToolCall("get_or_create_flow", {"name": f"{PREFIX}{flow}"}, turn=turn),
         ToolCall("validate_plan", {"plan": plan}, VALID, turn=turn),
         ToolCall(
             "publish_plan",
@@ -54,74 +64,17 @@ def published(plan: dict[str, Any], turn: int = 1) -> list[ToolCall]:
     ]
 
 
-def run_plan(
-    plan: dict[str, Any],
-    parameters: dict[str, Any],
-    answer: dict[str, Any] | None = None,
-    scripts: dict[str, NodeScript] | None = None,
-) -> FakeCloud:
-    """Run a plan in a new fake until it can't move, answering each form."""
-    fake = FakeCloud(API_URL, scripts=scripts)
-    flow = fake.add_flow("flow")
-    fake.add_version(flow["id"], plan)
-    response = fake.start_run(flow_id=flow["id"], body={"parameters": parameters})
-    run = fake.runs[response.json()["id"]]
-    for _ in range(20):
-        run.advance()
-        for state in run.nodes.values():
-            if state.status == "suspended" and answer is not None:
-                run.answer(str(state.activation_id), answer)
-    return fake
-
-
 def rejected(broken: bool) -> Outcome:
-    rejection = {"decision": "rejected", "notes": rejected_approval.NOTES}
     plan = feedback_plan()
-    fake = run_plan(plan, {"feedback": rejected_approval.FEEDBACK}, rejection)
-    response = rejection
+    flow = rejected_approval.FLOW_NAME
+    calls = published(plan, flow)
+    flows = [saved_flow(flow, plan)]
     if broken:
         plan["edges"] = [item for item in plan["edges"] if "rejected" not in item["id"]]
-        response = {"decision": "rejected", "notes": "Apologize and mention the fix."}
-        fake = FakeCloud(API_URL)
-    calls = [
-        *published(plan),
-        ToolCall("start_run", {}, turn=2),
-        ToolCall("submit_human_input", {"response": response}, turn=3),
-    ]
-    return outcome(Transcript(tool_calls=calls), plan, fake)
-
-
-def expiry_plan() -> dict[str, Any]:
-    """Return the approval plan with a deadline whose output is a plan output."""
-    plan = approval_plan()
-    approve = plan["nodes"]["approve"]
-    approve["outputs"]["expired"] = {"schema": {"type": "object"}}
-    approve["human_input"]["deadline"] = {
-        "after": "P1D",
-        "on_expiry": {"output": "expired", "value": {"reviewed": False}},
-    }
-    source = from_node("approve", "expired")
-    plan["outputs"]["unreviewed"] = {
-        "fields": {"status": {"schema": {}, "source": source}}
-    }
-    return plan
-
-
-def expired(broken: bool) -> Outcome:
-    plan, run = expiry_plan(), expiry_plan()
-    reads = 3
-    final = "Nobody answered before the deadline, so the run took the expiry path."
-    calls = published(plan)
-    if broken:
-        del plan["outputs"]["unreviewed"]
-        del run["nodes"]["approve"]["human_input"]["deadline"]["on_expiry"]
-        reads = expired_approval.MOST_RUN_READS + 1
-        final = "The run finished. The draft is ready."
-        calls.append(ToolCall("submit_human_input", {"response": {}}, turn=3))
-    calls += [ToolCall("get_run", {}, turn=2) for _ in range(reads)]
-    scripts = {"HumanInputNode": NodeScript(expire=True)}
-    fake = run_plan(run, {"topic": "weekly notes"}, scripts=scripts)
-    return outcome(Transcript(tool_calls=calls, turn_results=[final]), plan, fake)
+        del plan["outputs"]["category"]
+        calls.append(ToolCall("start_run", {}, turn=2))
+        flows = []
+    return outcome(Transcript(tool_calls=calls), plan, flows)
 
 
 def with_review_passes(plan: dict[str, Any]) -> dict[str, Any]:
@@ -147,35 +100,56 @@ def mention_action_items(plan: dict[str, Any]) -> dict[str, Any]:
 
 def loop(broken: bool) -> Outcome:
     plan = cyclic_plan() if broken else with_review_passes(approval_plan())
+    flow = unsupported_loop.FLOW_NAME
     report = (
         "## Conversion report\n\n| S3 | Review and revise until the reviewer is "
         "happy | A plan can't have a cycle | Two fixed review-and-revise passes |"
     )
     replies = [Reply(1, "reachable-systems", ""), Reply(2, "loop-decision", "")]
+    calls = published(plan, flow, turn=3)
     if broken:
         report = "## Conversion report\n\n| S3 | The review loop | Not supported |"
         replies = replies[:1]
-    transcript = Transcript(
-        tool_calls=published(plan, turn=3), agent_text=[report], replies=replies
-    )
-    return outcome(transcript, plan)
+        calls.append(ToolCall("start_run", {}, turn=4))
+    transcript = Transcript(tool_calls=calls, agent_text=[report], replies=replies)
+    return outcome(transcript, plan, [saved_flow(flow, plan)])
 
 
 def scheduled(broken: bool) -> Outcome:
     plan = mention_action_items(approval_plan())
-    fake = FakeCloud(API_URL)
-    scheduled_edit.setup(fake)
-    flow_id = scheduled_edit.seeded_flow_id(fake) or ""
-    fake.add_version(flow_id, plan, activate=not broken)
+    schedule = {
+        "id": "schedule-1",
+        "name": scheduled_edit.SCHEDULE_NAME,
+        "active": False,
+        # Cloud adds the fields it defaults.
+        "schedule": {**scheduled_edit.SCHEDULE, "day_or": True},
+        "parameters": scheduled_edit.SCHEDULE_PARAMETERS,
+        "next_scheduled_time": None,
+    }
+    flow = FlowState(
+        id="flow-1",
+        name=f"{PREFIX}{scheduled_edit.FLOW_NAME}",
+        active_version_id="version-2",
+        active_plan=plan,
+        version_ids=["version-1", "version-2"],
+        schedules=[schedule],
+    )
     question = "Activate it? The schedule `monday-digest` will run the new version."
     list_turn, publish_turn = 3, 4
     calls = [ToolCall("validate_plan", {"plan": plan}, VALID, turn=3)]
     if broken:
         question = "The flow has an active version. Activate?"
         list_turn, publish_turn = 4, 3
-        calls.append(ToolCall("update_schedule", {"active": False}, turn=4))
-        for schedule in fake.schedules[flow_id].values():
-            schedule["active"] = False
+        calls.append(ToolCall("update_schedule", {"active": True}, turn=4))
+        calls.append(ToolCall("start_run", {}, turn=5))
+        flow = FlowState(
+            id=flow.id,
+            name=flow.name,
+            active_version_id="version-1",
+            active_plan=scheduled_edit.PLAN,
+            version_ids=flow.version_ids,
+            schedules=[{**schedule, "active": True}],
+        )
     calls += [
         ToolCall("list_schedules", {}, turn=list_turn),
         ToolCall("publish_plan", {"plan": plan}, turn=publish_turn),
@@ -185,21 +159,7 @@ def scheduled(broken: bool) -> Outcome:
         replies=[Reply(1, "design-approval", ""), Reply(3, "promotion-approval", "")],
         turn_results=["Summary.", "Validated.", question, "Done."],
     )
-    return outcome(transcript, plan, fake)
-
-
-def retry(broken: bool) -> Outcome:
-    fake = FakeCloud(API_URL)
-    flow = fake.add_flow("customer-feedback-reply")
-    fake.add_version(flow["id"], feedback_plan())
-    for key in ["run-1", "run-2"] if broken else ["run-1"]:
-        fake.start_run(flow_id=flow["id"], body={"idempotency_key": key})
-    keys = ["key-1", "key-2" if broken else "key-1"]
-    calls = [
-        ToolCall("start_run", {"parameters": {}, "idempotency_key": key}, turn=2)
-        for key in keys
-    ]
-    return outcome(Transcript(tool_calls=calls), fake=fake)
+    return outcome(transcript, plan, [flow])
 
 
 def no_infra(broken: bool) -> Outcome:
@@ -225,6 +185,7 @@ def no_infra(broken: bool) -> Outcome:
 
 def release(broken: bool) -> Outcome:
     plan = approval_plan()
+    flow = release_notes.FLOW_NAME
     report = (
         "## Conversion report: release-notes\n\n"
         "| 1 | Runs `scripts/collect_changes.py` | S1 | No shell |\n"
@@ -233,16 +194,17 @@ def release(broken: bool) -> Outcome:
         "| 4 | Human approval | S5 | Converts as a human-input node |\n"
     )
     approvals = 1
+    calls = published(plan, flow)
     if broken:
         plan["nodes"]["approve"]["kind"] = "AgentNode"
         report = report.replace("stdio MCP server", "")
         approvals = 2
     transcript = Transcript(
-        tool_calls=published(plan),
+        tool_calls=calls,
         agent_text=[report],
         replies=[Reply(1, "design-approval", "")] * approvals,
     )
-    return outcome(transcript, plan)
+    return outcome(transcript, plan, [] if broken else [saved_flow(flow, plan)])
 
 
 SCENARIOS = {
@@ -251,19 +213,9 @@ SCENARIOS = {
         rejected,
         [
             "the rejected output leads to an agent node that revises the draft",
-            "submit_human_input got the user's decision and notes unchanged",
-            "a run finished with its reply output",
-        ],
-    ),
-    "expired_approval": (
-        expired_approval,
-        expired,
-        [
-            "the approval's on_expiry output leads to a node or a plan output",
-            "submit_human_input never called",
-            "a run finished on the expiry path",
-            f"get_run called at most {expired_approval.MOST_RUN_READS} times",
-            "the final message reports the expiry",
+            "plan outputs include ['category', 'reply']",
+            "the flow 'customer-feedback-reply' has a saved plan version",
+            "start_run never called",
         ],
     ),
     "unsupported_loop": (
@@ -275,6 +227,7 @@ SCENARIOS = {
             "nothing published before the user decided",
             "plan has no cycle",
             "the plan has two review passes",
+            "start_run never called",
         ],
     ),
     "scheduled_edit": (
@@ -288,14 +241,7 @@ SCENARIOS = {
             "the active plan adds the action items",
             "update_schedule never called",
             "the schedule is unchanged",
-        ],
-    ),
-    "run_retry": (
-        run_retry,
-        retry,
-        [
-            "the second start_run reused the first one's idempotency key",
-            "only one run exists",
+            "start_run never called",
         ],
     ),
     "no_infrastructure": (
@@ -315,6 +261,7 @@ SCENARIOS = {
             "conversion report lists every unsupported part",
             "design approved once",
             "plan has at least 1 HumanInputNode",
+            "the flow 'release-notes' has a saved plan version",
         ],
     ),
 }

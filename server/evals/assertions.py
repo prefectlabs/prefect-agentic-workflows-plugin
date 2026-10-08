@@ -1,4 +1,4 @@
-"""Checks a scenario runs on the plan the agent wrote and the tools it called.
+"""Checks a scenario runs on the plan the agent wrote, its tool calls, and its flows.
 
 Each `check_*` function returns a `Check`, with a detail that says what was
 found when the check fails, so the runner can list every result in its table
@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from evals import graph
-from evals.record import Reply, ToolCall
+from evals.record import FlowState, Reply, ToolCall
 
 Plan = graph.Plan
 
@@ -239,6 +239,38 @@ def check_published_only_after_valid(calls: list[ToolCall]) -> Check:
                 "validate_plan call checked",
             )
     return Check("publish_plan only after validate_plan passed", True)
+
+
+def check_flows_named_with_prefix(calls: list[ToolCall], prefix: str) -> Check:
+    """Check that every flow the agent created has a name that starts with `prefix`.
+
+    The harness deletes only the flows with the prefix, so a flow without it
+    stays in the sandbox after the session.
+    """
+    names = [
+        str(call.arguments.get("name"))
+        for call in calls_to(calls, "get_or_create_flow")
+    ]
+    wrong = sorted({name for name in names if not name.startswith(prefix)})
+    return Check(
+        f"every flow the agent created starts with {prefix!r}",
+        not wrong,
+        f"get_or_create_flow called with {wrong}" if wrong else "",
+    )
+
+
+# Checks on the flows in the sandbox after the conversation.
+
+
+def check_flow_saved(flows: Mapping[str, FlowState], name: str) -> Check:
+    """Check that the flow exists in the sandbox and has at least one plan version."""
+    flow = flows.get(name)
+    passed = flow is not None and bool(flow.version_ids)
+    if flow is None:
+        detail = f"no flow {name!r}; found {sorted(flows) or 'none'}"
+    else:
+        detail = "" if passed else f"the flow {name!r} has no plan version"
+    return Check(f"the flow {name!r} has a saved plan version", passed, detail)
 
 
 # Checks on what the agent said.

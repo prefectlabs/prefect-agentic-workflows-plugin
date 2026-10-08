@@ -1,4 +1,4 @@
-"""The record of one evaluation: what the agent said and which tools it called."""
+"""The record of one evaluation: what the agent said and did, and the flows it left."""
 
 import json
 from dataclasses import dataclass, field
@@ -53,6 +53,23 @@ class Transcript:
         if 1 <= turn <= len(self.turn_results):
             return self.turn_results[turn - 1]
         return ""
+
+
+@dataclass(frozen=True)
+class FlowState:
+    """One flow in the sandbox workspace, read after the conversation ended.
+
+    `active_plan` is the plan document of the active version, or None when
+    no version is active. `version_ids` lists the flow's plan versions from
+    oldest to newest. `schedules` has each schedule as the API returned it.
+    """
+
+    id: str
+    name: str
+    active_version_id: str | None = None
+    active_plan: dict[str, Any] | None = None
+    version_ids: list[str] = field(default_factory=list)
+    schedules: list[dict[str, Any]] = field(default_factory=list)
 
 
 def read_plan_files(workspace: Path) -> dict[str, Any]:

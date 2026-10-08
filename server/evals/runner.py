@@ -1,26 +1,21 @@
-"""Run a conversation between the agent and the simulated user against the fake Cloud.
+"""Run a conversation between the agent and the simulated user in the sandbox.
 
 The agent is Claude Code, driven with the Claude Agent SDK. Each run gets a
 working directory with the `agentic-workflows` skill in `.claude/skills/` and
 the scenario's files. The agent loads only project settings, that skill, and
 the `prefect-agentic-workflows` server from this checkout. The server and the
-agent get a Prefect profile that points at the fake, which listens on
-127.0.0.1, so no request from a run reaches Prefect Cloud.
+agent get the sandbox workspace's API URL and key, and an empty Prefect home,
+so no profile on the machine is used.
 """
 
 import asyncio
 import json
 import shutil
-import threading
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable
 from dataclasses import asdict
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Protocol
-from urllib.parse import urlsplit
 
-import httpx
 from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
@@ -34,22 +29,15 @@ from claude_agent_sdk import (
 )
 from claude_agent_sdk.types import McpStdioServerConfig
 
-from evals.fake_cloud import FakeCloud
 from evals.record import Reply, ToolCall, Transcript, read_plan_files
+from evals.sandbox import Credentials, SandboxApi
 from evals.scenario import Outcome, Rule, next_rule
 from prefect_agentic_workflows_mcp.server import SERVER_NAME
-from prefect_agentic_workflows_mcp.workspace_api import ALLOW_LOOPBACK_VARIABLE
 
 SERVER_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = SERVER_DIR.parent
 SKILL_NAME = "agentic-workflows"
 SKILL_DIR = REPO_ROOT / "skills" / SKILL_NAME
-
-ACCOUNT_ID = "eeeeeeee-0000-4000-8000-000000000001"
-WORKSPACE_ID = "eeeeeeee-0000-4000-8000-000000000002"
-WORKSPACE_PATH = f"/api/accounts/{ACCOUNT_ID}/workspaces/{WORKSPACE_ID}"
-FAKE_API_KEY = "pnu_eval_fake_key"
-LOCAL_HOST = "127.0.0.1"
 SERVER_TOOL_PREFIX = f"mcp__{SERVER_NAME}__"
 
 ALLOWED_TOOLS = [
@@ -70,58 +58,13 @@ AGENT_TURN_LIMIT = 80
 AGENT_TURN_TIMEOUT_SECONDS = 900
 
 
-@contextmanager
-def serve(fake: FakeCloud) -> Iterator[str]:
-    """Serve the fake on a free port of 127.0.0.1 and yield its workspace API URL."""
-
-    class Handler(BaseHTTPRequestHandler):
-        def answer(self) -> None:
-            length = int(self.headers.get("Content-Length") or 0)
-            request = httpx.Request(
-                self.command,
-                f"http://{LOCAL_HOST}{self.path}",
-                headers=dict(self.headers),
-                content=self.rfile.read(length),
-            )
-            response = fake.handle(request)
-            self.send_response(response.status_code)
-            for key, value in response.headers.items():
-                if key.lower() != "content-length":
-                    self.send_header(key, value)
-            self.send_header("Content-Length", str(len(response.content)))
-            self.end_headers()
-            self.wfile.write(response.content)
-
-        do_GET = do_POST = do_PATCH = do_DELETE = answer
-
-        def log_message(self, format: str, *args: Any) -> None:
-            pass
-
-    server = ThreadingHTTPServer((LOCAL_HOST, 0), Handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield f"http://{LOCAL_HOST}:{server.server_port}{WORKSPACE_PATH}"
-    finally:
-        server.shutdown()
-        server.server_close()
-
-
-def prefect_environment(api_url: str, prefect_home: Path) -> dict[str, str]:
-    """Return the Prefect settings that point the server and the agent at the fake.
-
-    Raises `ValueError` for an API URL that isn't on 127.0.0.1, so a run
-    can't send requests to a real workspace.
-    """
-    if urlsplit(api_url).hostname != LOCAL_HOST:
-        raise ValueError(f"Evaluations only run against a local fake, not {api_url}.")
+def prefect_environment(credentials: Credentials, prefect_home: Path) -> dict[str, str]:
+    """Return the Prefect settings that point the server and agent at the sandbox."""
     return {
-        "PREFECT_API_URL": api_url,
-        "PREFECT_API_KEY": FAKE_API_KEY,
+        "PREFECT_API_URL": credentials.api_url,
+        "PREFECT_API_KEY": credentials.api_key,
         "PREFECT_HOME": str(prefect_home),
         "PREFECT_PROFILES_PATH": str(prefect_home / "profiles.toml"),
-        # The server only accepts a loopback API URL when this is set.
-        ALLOW_LOOPBACK_VARIABLE: "1",
     }
 
 
@@ -254,32 +197,40 @@ async def converse(
     prompt: str,
     user: list[Rule],
     *,
+    sandbox: SandboxApi,
+    flow_prefix: str,
     files: dict[str, Path] | None = None,
-    setup: Callable[[FakeCloud], None] | None = None,
+    setup: Callable[[SandboxApi, str], None] | None = None,
     max_turns: int = 12,
     model: str | None = None,
 ) -> Outcome:
-    """Run the conversation in `workspace` against a new fake Cloud.
+    """Run the conversation in `workspace` against the sandbox.
 
     `workspace` must be an empty directory. The agent works in
     `workspace/agent`, and its Prefect home is `workspace/prefect-home`. The
-    transcript is saved to `workspace/transcript.json`.
+    transcript is saved to `workspace/transcript.json`. After the
+    conversation, the state of each flow whose name starts with
+    `flow_prefix` is read into the outcome.
     """
     agent_dir = workspace / "agent"
     prefect_home = workspace / "prefect-home"
     prefect_home.mkdir(parents=True)
     prepare_workspace(agent_dir, files or {})
-    fake = FakeCloud(f"http://{LOCAL_HOST}{WORKSPACE_PATH}")
     if setup is not None:
-        setup(fake)
+        setup(sandbox, flow_prefix)
     transcript = Transcript()
-    with serve(fake) as api_url:
-        options = agent_options(
-            agent_dir, prefect_environment(api_url, prefect_home), model
-        )
-        async with ClaudeSDKClient(options) as client:
-            await talk(client, transcript, prompt, user, max_turns)
+    options = agent_options(
+        agent_dir, prefect_environment(sandbox.credentials, prefect_home), model
+    )
+    async with ClaudeSDKClient(options) as client:
+        await talk(client, transcript, prompt, user, max_turns)
     (workspace / "transcript.json").write_text(
         json.dumps(asdict(transcript), indent=2, default=str)
     )
-    return Outcome(transcript, read_plan_files(agent_dir), fake, agent_dir)
+    return Outcome(
+        transcript,
+        read_plan_files(agent_dir),
+        sandbox.snapshot(flow_prefix),
+        agent_dir,
+        flow_prefix,
+    )

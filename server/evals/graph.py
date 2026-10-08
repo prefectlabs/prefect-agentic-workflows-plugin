@@ -1,9 +1,8 @@
 """Read the graph of an execution-plan document.
 
-The fake Cloud API uses these functions to validate plans and to run them, and
-the assertion helpers use them to check the plan an agent wrote. They take the
-plan as the JSON object in the plan file and never raise on a malformed plan:
-a missing or wrong-typed part reads as empty.
+The assertion helpers use these functions to check the plan an agent wrote.
+They take the plan as the JSON object in the plan file and never raise on a
+malformed plan: a missing or wrong-typed part reads as empty.
 """
 
 from typing import Any
@@ -89,35 +88,6 @@ def find_cycle(plan: Plan) -> list[str]:
     return sorted(left_over)
 
 
-def human_input_expiry_output(node: dict[str, Any]) -> str | None:
-    """Return the output a human-input node selects when its deadline passes."""
-    human_input = node.get("human_input")
-    if not isinstance(human_input, dict):
-        return None
-    deadline = human_input.get("deadline")
-    if not isinstance(deadline, dict):
-        return None
-    on_expiry = deadline.get("on_expiry")
-    if not isinstance(on_expiry, dict):
-        return None
-    output = on_expiry.get("output")
-    return output if isinstance(output, str) else None
-
-
 def output_names(node: dict[str, Any]) -> list[str]:
     outputs = node.get("outputs")
     return list(outputs) if isinstance(outputs, dict) else []
-
-
-def input_names(node: dict[str, Any]) -> list[str]:
-    inputs = node.get("inputs")
-    return list(inputs) if isinstance(inputs, dict) else []
-
-
-def response_outputs(node: dict[str, Any]) -> list[str]:
-    """Return the outputs a person's answer to a human-input node can select.
-
-    These are all of the node's outputs except the one its deadline selects.
-    """
-    expiry = human_input_expiry_output(node)
-    return [name for name in output_names(node) if name != expiry]

@@ -1,9 +1,9 @@
 """Ask for a workflow that needs remote MCP servers the user doesn't have.
 
 The user wants a daily summary of new Zendesk tickets posted to Slack, and has
-no remote MCP server for either one. The workspace has no Secret blocks and no
-deployments. The conversation ends after the agent answers the user's reply
-to the infrastructure check.
+no remote MCP server for either one. The sandbox's Secret blocks and
+deployments have nothing for Zendesk or Slack. The conversation ends after
+the agent answers the user's reply to the infrastructure check.
 
 Expected results:
 

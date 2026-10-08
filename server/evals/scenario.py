@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from evals.assertions import Check
-from evals.fake_cloud import FakeCloud
-from evals.record import Transcript
+from evals.assertions import Check, check_flows_named_with_prefix
+from evals.record import FlowState, Transcript
+from evals.sandbox import SandboxApi
 
 
 @dataclass
@@ -52,18 +52,35 @@ def next_rule(rules: list[Rule], message: str, transcript: Transcript) -> Rule |
     return next((rule for rule in rules if rule.applies(message, transcript)), None)
 
 
+TEST_RUN_OFFER = r"test run|start (a|the) run|run it"
+
+# Scenarios only check authoring, so the simulated user turns down the test
+# run the skill offers after publishing.
+DECLINE_TEST_RUN = Rule(
+    label="decline-test-run",
+    after_tool="publish_plan",
+    before_tool="start_run",
+    pattern=TEST_RUN_OFFER,
+    reply="No test run for now.",
+    max_uses=1,
+)
+
+
 @dataclass
 class Outcome:
     """Everything a scenario's checks can read after the conversation ends.
 
     `plans` has each `workflows/*.plan.json` file the agent wrote, by file
-    name. `fake` is the fake Cloud API with the state the agent left.
+    name. `flows` has the state of each flow in the sandbox whose name starts
+    with `flow_prefix`, read after the conversation, by the flow name without
+    the prefix. `workspace` is the agent's working directory.
     """
 
     transcript: Transcript
     plans: dict[str, Any]
-    fake: FakeCloud
+    flows: dict[str, FlowState]
     workspace: Path
+    flow_prefix: str = ""
 
     @property
     def plan(self) -> dict[str, Any]:
@@ -78,9 +95,11 @@ class RunScenario(Protocol):
     """The `run_scenario` fixture: run a conversation and return its outcome.
 
     `files` copies files or directories into the agent's working directory,
-    by the relative path they get there. `setup` adds state to the fake Cloud
-    API, such as Secret blocks or node scripts, before the agent starts.
-    `max_turns` caps the number of agent turns in the conversation.
+    by the relative path they get there. `setup` adds state to the sandbox
+    before the agent starts, such as a flow or a Secret block. It gets the
+    `SandboxApi` and the run's flow prefix, and must name every flow it
+    creates with that prefix. `max_turns` caps the number of agent turns in
+    the conversation.
     """
 
     async def __call__(
@@ -89,7 +108,7 @@ class RunScenario(Protocol):
         user: list[Rule],
         *,
         files: dict[str, Path] | None = None,
-        setup: Callable[[FakeCloud], None] | None = None,
+        setup: Callable[[SandboxApi, str], None] | None = None,
         max_turns: int = 12,
     ) -> Outcome: ...
 
@@ -101,6 +120,9 @@ def assert_passed(outcome: Outcome, checks: list[Check]) -> None:
             "agent turns finished without error",
             not outcome.transcript.errors,
             "; ".join(outcome.transcript.errors),
+        ),
+        check_flows_named_with_prefix(
+            outcome.transcript.tool_calls, outcome.flow_prefix
         ),
         *checks,
     ]
