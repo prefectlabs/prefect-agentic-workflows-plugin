@@ -29,7 +29,7 @@ Last verified: 2026-09-25, against the Prefect Cloud API. When an error from `va
 - No cycles and no mapping: a loop becomes a fixed number of steps or a human checkpoint, and a list is handled inside one node or by a fixed fan-out.
 - Timer nodes and `evaluate_when` set to `manual` can't be activated. A root node can't use `any_upstream_terminal`.
 - Human-input and Deployment nodes use `output_selection` `exactly_one`. Human-input nodes can't retry.
-- A Deployment node passes on only the child run's ID and state.
+- A Deployment node passes on only the child run's ID and state. The user who publishes and runs the plan needs permission to run the deployment, which seeing it doesn't prove, so name this in the summary.
 - Publishing checks that MCP hostnames resolve and that the publisher can see every referenced Secret block, so a plan that validates can still fail to publish.
 - At most 32 plan outputs, with 256 fields across them.
 - Another user can activate a different version between your check and your activation or run.

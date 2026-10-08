@@ -63,4 +63,4 @@ Find a published workflow with `get_flow`, which never creates one.
 
 - **Edit:** start from the active plan from `get_plan`. When the local plan file differs from it, ask the user which to build on. Then run the pipeline from step 1 with a summary of what changes.
 - **Roll back:** pick a version with `list_plan_versions`, compare it with the active plan using `get_plan` with and without its `version_id`, get the promotion approval, and call `activate_plan_version`.
-- **Schedule:** when creating a schedule or replacing its parameters, collect a value for each required input of the active plan. Get the recurring-runs approval, then use the schedule tools. A schedule runs whatever version is active when it fires.
+- **Schedule:** when creating a schedule or replacing its parameters, collect a value for each required input of the active plan. Get the recurring-runs approval, then use the schedule tools. When `create_schedule` fails without a clear result, check `list_schedules` before trying again, so the schedule isn't created twice. A schedule runs whatever version is active when it fires.
