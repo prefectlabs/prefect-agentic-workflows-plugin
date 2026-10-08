@@ -7,7 +7,8 @@ only fails the tool call and never stops the server from starting.
 Before the first request, `WorkspaceApi` runs a preflight check. The check
 confirms that the profile points at a Cloud workspace and that the workspace
 can use execution plans, and it turns each known failure into a message that
-says how to fix it. A passing check is cached for the API URL it ran against.
+says how to fix it. A passing check is cached for the API URL and key it ran
+with, so a new key gets checked too.
 A failing check is not cached, so the next tool call runs it again after the
 user fixes the problem.
 
@@ -16,6 +17,7 @@ because Cloud only rejects requests that write to the bucket. `read_json`
 turns that rejection into a message that names the missing bucket.
 """
 
+import hashlib
 import os
 from typing import Any, Literal
 
@@ -170,7 +172,7 @@ class WorkspaceApi:
     """
 
     def __init__(self) -> None:
-        self._verified_api_url: str | None = None
+        self._verified: tuple[str, str] | None = None
 
     async def request(
         self,
@@ -197,9 +199,11 @@ class WorkspaceApi:
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=timeout,
         ) as client:
-            if self._verified_api_url != api_url:
+            # Keep a digest of the key rather than the key itself.
+            checked = (api_url, hashlib.sha256(api_key.encode()).hexdigest())
+            if self._verified != checked:
                 await self._preflight(client, api_url)
-                self._verified_api_url = api_url
+                self._verified = checked
             try:
                 return await client.request(method, path, json=json, params=params)
             except httpx.TimeoutException as exc:

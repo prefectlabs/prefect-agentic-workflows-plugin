@@ -150,6 +150,23 @@ async def test_a_passing_preflight_runs_once(
     assert cloud_api.routes["schema"].call_count == 1
 
 
+async def test_a_new_api_key_runs_the_preflight_again(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_client: Client[Any],
+    cloud_api: respx.MockRouter,
+):
+    cloud_api.post("/execution-plans/validate").respond(200, json=VALID)
+    await mcp_client.call_tool("validate_plan", {"plan": PLAN})
+
+    set_profile(monkeypatch, {"PREFECT_API_KEY": "pnu_refreshed"})
+    cloud_api.routes["schema"].respond(401)
+    result = await mcp_client.call_tool(
+        "validate_plan", {"plan": PLAN}, raise_on_error=False
+    )
+
+    assert "prefect cloud login" in error_text(result)
+
+
 async def test_a_failing_preflight_runs_again_on_the_next_call(
     mcp_client: Client[Any], cloud_api: respx.MockRouter
 ):

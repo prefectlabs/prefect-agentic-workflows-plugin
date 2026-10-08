@@ -302,6 +302,7 @@ async def test_tool_sends_its_request_and_returns_the_result(
             None,
         ),
         ("get_run_output", {"flow_run_id": FLOW_RUN_ID, "output_name": ".."}, None),
+        ("get_run_output", {"flow_run_id": FLOW_RUN_ID, "output_name": "a/b"}, None),
         ("get_flow", {"name": ".."}, "valid flow name"),
     ],
 )
