@@ -23,7 +23,7 @@ For a join after a fan-out, set `orchestration.evaluate_when` to `all_reachable_
 Last verified: 2026-09-25, against the Prefect Cloud API. When an error from `validate_plan` or `publish_plan` disagrees with this list, follow the error and tell the user this file may be out of date.
 
 - Plans run only in Prefect Cloud. The account needs execution plans enabled and the workspace needs an object storage bucket. Versions are immutable.
-- An agent node has 60 seconds. Prefect Cloud chooses the model.
+- Prefect Cloud chooses an agent node's model.
 - Tools come only from remote MCP servers over Streamable HTTP (`"type": "http"`), not stdio and not `/sse` URLs. A server URL has no credentials, query string, fragment, or `;` parameters.
 - A sensitive header or query value, such as `Authorization` or any name containing `token`, `secret`, `password`, or `apikey`, must be `{"$ref": {"block_document_id": "<id>"}}`.
 - No cycles and no mapping: a loop becomes a fixed number of steps or a human checkpoint, and a list is handled inside one node or by a fixed fan-out.
