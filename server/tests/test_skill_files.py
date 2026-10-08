@@ -54,7 +54,7 @@ def test_skill_links_point_at_existing_files():
 
 
 def test_platform_limits_say_when_they_were_last_verified():
-    text = (SKILL_DIR / "references" / "platform-limits.md").read_text()
+    text = (SKILL_DIR / "references" / "design-guidance.md").read_text()
 
     assert re.search(r"^Last verified: \d{4}-\d{2}-\d{2}", text, re.MULTILINE)
 
@@ -66,7 +66,7 @@ def example_plans() -> list[Path]:
 
 
 def test_example_plans_are_linked_from_the_examples_reference():
-    text = (SKILL_DIR / "references" / "example-plans.md").read_text()
+    text = (SKILL_DIR / "references" / "design-guidance.md").read_text()
     linked = set(MARKDOWN_LINK.findall(text))
 
     unlinked = [

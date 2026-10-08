@@ -5,74 +5,59 @@ description: Build a Prefect Cloud agentic workflow (an execution plan) and publ
 
 # Agentic workflows
 
-An execution plan is a JSON graph of agent, human-input, and deployment nodes attached to a Prefect Cloud flow. You build one with the user, save it as `workflows/<file-name>.plan.json` in their working directory, and publish it with the `prefect-agentic-workflows` MCP server tools. This skill is alpha, like the server.
+An execution plan is a JSON graph of agent, human-input, and deployment nodes attached to a Prefect Cloud flow. You design one with the user, save it as `workflows/<file-name>.plan.json` in their working directory, and publish it with the `prefect-agentic-workflows` MCP tools. Both are alpha.
 
-## Pick the entry path
+## Start
 
-Every path runs the infrastructure check in [references/infrastructure-check.md](references/infrastructure-check.md) before its first design question. The check tells the user which business tools the workflow can reach, and what that limits, before they spend time on the design.
+Run the [infrastructure check](references/infrastructure-check.md) first on every path. Then:
 
-- **The user hands you an existing skill to convert**, as a `SKILL.md` path, a directory, an installed skill's name, or pasted text. Follow [references/conversion.md](references/conversion.md): read the whole skill, run the infrastructure check, and write the conversion report. Then continue with the pipeline. The user decides the report's rows in the summary step.
-- **The user describes the workflow.** Run the infrastructure check. Then map the description onto the checklist below. Fill every item the description answers, and fill the rest with the recommended default when it is safe. Then ask only about the gaps: items with no answer and no safe default. Name the defaults you chose in the summary. Continue with the pipeline.
-- **The user gives you nothing to work from.** Run the infrastructure check, then the interview: ask the checklist in one message, with the recommended default beside each item, so the user can answer "defaults are fine" to most of it. Ask a second round only about answers that left gaps. When the workflow has more than one branch, more than one approval, or touches more than two systems, offer the deeper interview in [references/interview.md](references/interview.md). Continue with the pipeline.
+- **Converting an existing skill:** follow [references/conversion.md](references/conversion.md).
+- **The user describes the workflow:** fill the checklist below from the description and the defaults, and ask only about the gaps.
+- **The user gives you nothing:** ask the checklist in one message, with each default beside its item. For a workflow with several branches, approvals, or systems, also ask per step what it decides, what it reads and hands on, and what happens when it fails or nobody answers.
 
-| Checklist item | Recommended default |
+| Checklist item | Default |
 |---|---|
-| Trigger: what starts a run | Started by hand. Add a schedule after a test run works. |
-| Inputs: values each run needs | A value the user changes between runs is a plan input, such as the repository to check. A fixed instruction stays in the node objective, such as "reply in under 100 words". |
-| Steps: the work, in order | No default. Ask. |
-| Tools and systems the steps touch | The systems the infrastructure check found reachable. |
-| Human approval points | One approval before any step that writes to an outside system. |
-| Outputs: what the run produces | One plan output, `result`, taken from the last node's output. |
-| Success: how the user knows it worked | The test run completes and the final result is what the user expected. |
+| Trigger | Started by hand. Schedule it after a test run works. |
+| Inputs | A value that changes between runs is a plan input. A fixed instruction stays in the node objective. |
+| Steps | Ask. |
+| Tools | The systems the infrastructure check found reachable. |
+| Approvals | One before any step that writes to an outside system. |
+| Outputs | One plan output, `result`, from the last node. |
 
 ## Pipeline
 
-Finish each step before starting the next.
-
-1. **Summary.** Write a plain-language summary of the nodes, branches, human checkpoints, tools and Secret blocks, inputs, and outputs. Give the reason for each node boundary, using the node-splitting rule below. For a converted skill, show the conversion report with the summary, and include the step map with the proposed substitute for each row. Ask the user to decide each row and confirm the summary in the same reply. Revise the summary and the step map until they do. This is the design approval. The step is done when the user confirms the summary and every row of the step map has their decision.
-2. **Draft.** Read [references/design-guidance.md](references/design-guidance.md) and [references/platform-limits.md](references/platform-limits.md). Start from the closest plan in [references/example-plans.md](references/example-plans.md). Call `get_schema`. If its `supported_schema_versions` lists a newer version than the `schema_version` it returned, call `get_schema` again with that version. Write the plan against the newest supported version. Call `list_secret_blocks` for every credential the plan needs, and follow [references/secret-blocks.md](references/secret-blocks.md) when one is missing. Write the plan to `workflows/<file-name>.plan.json`, where `<file-name>` is the flow name with every character other than letters, digits, `-`, and `_` replaced by `-`, with no `layout`. When that file already exists and you aren't editing the flow it was written for, ask the user for another file name instead of overwriting it.
-3. **Validate.** Call `validate_plan` with the file's contents. Fix the file and validate again. The step is done when `valid` is true and `errors` is empty. When an error and the reference files disagree, the error is right.
-4. **Publish.** Call `get_or_create_flow` with the flow name, then `get_plan` for the flow. When the user wants to save the version without activating it, call `publish_plan` with `activate` false. Saving changes nothing that runs, so it needs no approval. Otherwise, when `active_version` is null, the design approval covers activation. When it isn't null, activating is a promotion: tell the user what changes from the active plan and get the promotion approval. Then call `publish_plan` with the flow ID, the file's contents, and `activate` true. When the result has `errors`, fix the file. When the fix changes the design, such as a node, a branch, a tool, or what the workflow does outside Prefect, go back to step 1 for a new design approval. Otherwise go back to step 3. When it has `activation_error`, explain it. When the error is about the plan itself, such as an unsupported node kind or orchestration mode, the saved version can never activate: fix the file and publish a new version, going back to step 1 when the fix changes the design. When the cause is outside the plan, such as a missing permission, call `activate_plan_version` for the same version once the user has fixed it. The same approval covers it.
-5. **Test run.** Offer a test run, and follow [Starting a run](#starting-a-run). The run uses the flow's active version. Watch the run with `get_run` and a `wait_seconds` of 30 until its status is `completed`, `failed`, `cancelled`, or `blocked`. When a node waits for human input, show the user its form in plain words and pass their answer to `submit_human_input`. When the run is `blocked` or fails, stop polling, read `diagnostics` and each node's `failure`, and tell the user what you found. Read results with `get_run_output`: a plan output by name, or a node's output with its `activation_id`.
-6. **Report.** Give the user the flow link, the published version ID, and every platform limit that still affects the workflow. When a test run happened, also give the run link, the run's results, and the plan version the run used, which is `snapshot.execution_plan_version_id` in the `get_run` result. Versions have IDs, not numbers, so name the version by its ID. For a converted skill, check the published plan against the step map, and name any source step that is not in the plan and the decision that left it out. Build the links from `app_url` in the `get_workspace` result: add `/flows/flow/<flow_id>` or `/runs/flow-run/<flow_run_id>`. When `app_url` is null, give the IDs.
+1. **Summary.** Describe the nodes, branches, approvals, tools, Secret blocks, inputs, and outputs in plain language, with the reason for each node boundary. For a conversion, include the conversion report. The step is done when the user confirms it: the design approval.
+2. **Draft.** Read [references/design-guidance.md](references/design-guidance.md) and start from its closest example. Call `get_schema`, and when `supported_schema_versions` lists a newer version, call it again with that version and write against it. Name the file after the flow, with every character other than letters, digits, `-`, and `_` replaced by `-`. Ask before overwriting a file that belongs to another flow.
+3. **Validate.** Call `validate_plan` and fix the file until `valid` is true. When an error and the reference files disagree, the error is right.
+4. **Publish.** Call `get_or_create_flow`, then `get_plan`. When the flow has an active version, activating the new one is a promotion. Call `publish_plan`, with `activate` false when the user only wants to save. A fix that changes the design goes back to step 1. A fix that only changes the document's shape goes back to step 3.
+5. **Test run.** Offer one, and follow [Running](#running).
+6. **Report.** Give the flow link, the published version ID, any run's results and the version it used (`snapshot.execution_plan_version_id`), and every platform limit that still affects the workflow. Build links from `get_workspace`. For a conversion, name every source step that isn't in the plan and why.
 
 ## Node-splitting rule
 
-Start a new node only at one of these points:
+Start a new node only at a branch, a human approval, a change of tools or credentials, a deterministic step (a Deployment node), or a split forced by the 60-second agent limit. Everything else stays in one agent node.
 
-- a branch point, where a decision leads to different next steps
-- a human approval
-- a change of tool set or credentials
-- a deterministic step, which becomes a Deployment node
-- a split forced by the 60-second agent node limit
+## Approvals
 
-Everything else stays in one agent node.
+Ask at these four points only, and act only on an explicit yes:
 
-## Approval points
+1. **Design**: the summary. It also covers the first activation on a flow.
+2. **External effects**: every `start_run`. Say which outside systems the run can change. A user message that asks for the run counts, when every input value is known.
+3. **Promotion**: activating over an existing active version, including a rollback. Say what changes and which schedules will run the new version.
+4. **Recurring runs**: every schedule create, update, or delete. State the schedule in plain words with its time zone and parameters.
 
-Ask for the user's approval at these four points, and at no others. Act only on an explicit yes. Each yes covers the one action you described.
+## Running
 
-1. **Design.** The user confirms the summary in pipeline step 1. This also covers activating a version on a flow with no active version, whether through `publish_plan` or `activate_plan_version`.
-2. **External effects.** Every `start_run`, including a test run, because agent and deployment nodes can act on outside systems. Say which outside systems the run can change, and give the parameters. When the user's own message already asks you to start the run, such as "start a test run", that request is the approval, as long as you already have every input value. Otherwise ask.
-3. **Promotion.** Activating a version on a flow that already has an active version: `publish_plan` with `activate` true, or `activate_plan_version`, including a rollback. First call `list_schedules`, and tell the user which schedules will start runs of the new version.
-4. **Recurring runs.** Every `create_schedule`, `update_schedule`, and `delete_schedule`. First state the schedule in plain words, its time zone, and the parameters. For a change or a deletion, read the current schedule with `get_schedule` and state it too, including its `next_scheduled_time`. After a create or an update, tell the user the `next_scheduled_time` from the result. Cloud computes it, so don't promise an exact time before then.
+Read the active plan with `get_plan` before asking for the external-effects approval. A run always uses the active version. Create one idempotency key per run the user approved, and reuse it when a `start_run` call fails without a clear result. Watch with `get_run` and `wait_seconds` of 30 until the status is `completed`, `failed`, `cancelled`, or `blocked`.
 
-## Starting a run
+The user answers every human-input form: show it in plain words and submit only their answer. When they ask to leave it unanswered, for example to test its expiry, submit nothing and keep watching.
 
-A run always uses the flow's active version. When the user saved the new version without activating it, tell them the test runs the active version and not the new one, and name the active version. When the flow has no active version, `start_run` fails, so activate a version first.
+## Credentials
 
-1. Call `get_plan` for the flow, and tell the user which outside systems its active version can change. Ask for any input values, then get the external-effects approval with those values.
-2. Create an idempotency key for this run, such as a new UUID, and keep it until the run has started.
-3. Call `start_run` with the key.
-4. When the call fails with no clear result, such as a timeout or a lost response, call `start_run` again with the same key and the same parameters. Use a new key only for a new run the user approved. A result with `created` false means the first call had already started the run, and `flow_run_id` is that run.
+A plan references a credential by a Secret block's ID from `list_secret_blocks`. When the block is missing, ask the user to create a **Secret** block in the Prefect Cloud UI under **Blocks**, or with `prefect block create secret`, then list the blocks again. Never ask the user to type a secret value. If they paste one, keep it out of the plan and tell them to store it in a block and rotate it.
 
-## Rules
+## Later changes
 
-- **The user answers every human-input form.** Relay the form, wait, and submit only the answer the user gives, even in a test run. When the user asks to leave a form unanswered, for example to test its expiry path, don't submit anything. Tell them when the deadline passes, and keep watching the run with `get_run` after it.
-- **Credentials are Secret block references.** A plan refers to a credential by the block's ID from `list_secret_blocks`. Never ask the user to type or paste a secret value: the user creates the Secret block, and the plan references it.
-
-## After the first publish
-
-- To edit a workflow, start from `workflows/<file-name>.plan.json`. When the edit adds or changes a system the workflow uses, run the infrastructure check for that system first. Then run the pipeline from step 1, with a summary of what changes, so the user approves the new design. When the file isn't there, write it from the `plan` that `get_plan` returns. Plan versions are immutable, so each publish creates a new version.
-- To roll back, call `list_plan_versions`. Read the target plan with `get_plan` and its `version_id`, and the active plan with `get_plan` and no `version_id`. Tell the user how they differ, get the promotion approval, and call `activate_plan_version`.
-- To schedule a workflow, get the recurring-runs approval, then use `create_schedule`. Read schedules with `list_schedules` and `get_schedule`, and change or pause one with `update_schedule`. A schedule runs the version that is active when it fires.
+- **Edit:** start from the plan file, or from `get_plan` when it's missing, and run the pipeline from step 1 with a summary of what changes.
+- **Roll back:** pick a version with `list_plan_versions`, compare it with the active plan, get the promotion approval, and call `activate_plan_version`.
+- **Schedule:** get the recurring-runs approval, then use the schedule tools. A schedule runs whatever version is active when it fires.

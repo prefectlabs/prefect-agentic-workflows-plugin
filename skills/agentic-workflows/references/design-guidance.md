@@ -1,49 +1,42 @@
 # Design guidance
 
-Read this before you draft a plan. `get_schema` is the source of truth for field names and shapes. This file explains how to use them well, and [example-plans.md](example-plans.md) has complete plans that use them.
+`get_schema` is the source of truth for field names and shapes. This file covers how to use them well and what the platform allows.
 
 ## A plan is a graph of outcomes
 
-Each node makes one scoped decision and selects a named output. Edges leave from a named output, so the output a node selects decides which nodes run next. A branch is a node with one output per outcome, for example `needs_review` and `ok`, and one edge from each.
+Each node makes one scoped decision and selects a named output, and edges leave from named outputs, so the selected output decides what runs next. Name outputs for the outcome they mean (`approved`, `summary_ready`), and keep the names: edges, plan outputs, and run history refer to them.
 
-Name each output for the outcome it means (`approved`, `rejected`, `summary_ready`), not for how the node reached it.
-
-## Document shape
-
-- `inputs`: the values a caller passes to each run, each with a JSON Schema and `required`.
-- `nodes`: a map from node ID to node. Every node has `kind`, `inputs`, `outputs`, and `orchestration`.
-- `edges`: each edge has an `id`, a `from` (a plan input, or a node's named output), and a `to` (a node's named input).
-- `outputs`: named plan outputs, built from node outputs. Only schema versions that declare `outputs` accept them.
-- Leave out `layout`. Plans in this workflow never set node coordinates.
-
-## Typed outputs are the contract between nodes
-
-Every output port and input port has a JSON Schema. The downstream input schema must accept what the upstream output schema allows. `validate_plan` does not check this for edges between nodes. It checks it only for plan outputs, so compare the two schemas yourself for every edge. Use small object schemas with `required` fields, so each node states exactly what it hands on and the next node's objective can name those fields.
-
-## Output names are durable
-
-Edges, plan outputs, and run history refer to outputs by name. Renaming an output breaks routes and makes old runs harder to compare, so choose names you can keep, and add a new output instead of renaming an old one.
+Every port has a JSON Schema. `validate_plan` checks schema compatibility only for plan outputs, so check yourself that each edge's target input accepts what its source output allows. Small object schemas with `required` fields work best. Leave out `layout`.
 
 ## Node kinds
 
-- **AgentNode.** Write the `objective` as the decision: what to read from each input, what to do with which tools, and which output to select with which fields. Give it only the MCP servers it needs. Use `output_selection` `exactly_one` for a branch, and `one_or_more` or `zero_or_more` for a fan-out where several next steps can run.
-- **HumanInputNode.** Put the question in `human_input.form_schema`. With one output, the form is a plain answer. With more than one output, the form needs a required top-level `decision` property whose string choices match the names of the outputs a person can choose, which excludes the expiry output. A `deadline` with `on_expiry` selects an output when nobody answers in time. The expiry output must not be one of the `decision` choices.
-- **DeploymentNode.** Runs an existing Prefect deployment by `deployment.id`, the `id` from `list_deployments`, with `wait` set to `{"for": "child_flow_run", "until": "terminal"}`. Pass run parameters through an input named `parameters`, whose object is merged over the deployment's default parameters. Call `get_deployment` to see the deployment's parameters, their schema, and their defaults. Declare an output named after each end state you want to route on, such as `completed` or `failed`. The selected output carries the child run's ID and state only.
+- **AgentNode.** Write the `objective` as the decision: what to read, which tools to use, and which output to select with which fields. Give it only the MCP servers it needs. Use `output_selection` `exactly_one` for a branch.
+- **HumanInputNode.** Put the question in `human_input.form_schema`. With several outputs, the form needs a required `decision` property whose choices are the output names. A `deadline` with `on_expiry` selects an output when nobody answers, and that output isn't a `decision` choice.
+- **DeploymentNode.** Runs a deployment by `deployment.id`, with `wait` set to `{"for": "child_flow_run", "until": "terminal"}`. Pass run parameters through an input named `parameters`. `get_deployment` shows the parameters and their defaults. Declare an output per end state to route on, such as `completed` or `failed`.
 
-## Use deployments for deterministic work
+Use a Deployment node for work that must run the same way every time. When a later node needs that work's result, not only whether it succeeded, expose the work as a tool on a remote MCP server instead.
 
-Work that must run the same way every time, like a script, a data load, or a build, belongs in a Deployment node. An agent node costs a model call, has a 60-second limit, and can vary between runs. When a later node needs the result of deterministic work, and not only its success or failure, expose that work as a tool on a remote MCP server and call it from an agent node.
+For a join after a fan-out, set `orchestration.evaluate_when` to `all_reachable_terminal` and take the branch results through a `list` or `source_map` input.
 
-## Readiness and joins
+## Platform limits
 
-`orchestration.evaluate_when` sets when a node is ready. Check the schema for the current values. In practice:
+Last verified: 2026-09-25, against the Prefect Cloud API. When an error from `validate_plan` or `publish_plan` disagrees with this list, follow the error and tell the user this file may be out of date.
 
-- `all_required_inputs_produced` fits most nodes in a chain.
-- A join after a fan-out waits for every branch that can still run, with `all_reachable_terminal`, and takes the branch results through a `list` or `source_map` input.
-- `any_upstream_terminal` needs at least one incoming edge, so a root node can't use it.
+- Plans run only in Prefect Cloud. The account needs execution plans enabled and the workspace needs an object storage bucket. Versions are immutable.
+- An agent node has 60 seconds. Prefect Cloud chooses the model.
+- Tools come only from remote MCP servers over Streamable HTTP (`"type": "http"`), not stdio and not `/sse` URLs. A server URL has no credentials, query string, fragment, or `;` parameters.
+- A sensitive header or query value, such as `Authorization` or any name containing `token`, `secret`, `password`, or `apikey`, must be `{"$ref": {"block_document_id": "<id>"}}`.
+- No cycles and no mapping: a loop becomes a fixed number of steps or a human checkpoint, and a list is handled inside one node or by a fixed fan-out.
+- Timer nodes and `evaluate_when` set to `manual` can't be activated. A root node can't use `any_upstream_terminal`.
+- Human-input and Deployment nodes use `output_selection` `exactly_one`. Human-input nodes can't retry.
+- A Deployment node passes on only the child run's ID and state.
+- Publishing checks that MCP hostnames resolve and that the publisher can see every referenced Secret block, so a plan that validates can still fail to publish.
+- At most 32 plan outputs, with 256 fields across them.
+- Another user can activate a different version between your check and your activation or run.
 
-`orchestration.on_upstream` sets whether a failed, crashed, cancelled, or timed-out upstream node blocks this node or lets it run. `orchestration.on_failure.retry` retries an agent or deployment node.
+## Examples
 
-## Keep the graph small
+Both use schema version 0.2, which adds plan `outputs`. Replace all-zero placeholder IDs before publishing.
 
-Every node boundary needs a reason from the node-splitting rule in `SKILL.md`. Two steps that use the same tools and credentials, with no decision or approval between them, belong in one agent node.
+- [examples/customer-feedback-reply.plan.json](examples/customer-feedback-reply.plan.json): an agent drafts a reply, a person approves or rejects it with notes, and a rejection gets one revision. No MCP server, Secret block, or deployment. Start here for approvals and branches.
+- [examples/single-agent-with-mcp.plan.json](examples/single-agent-with-mcp.plan.json): one agent node uses a remote MCP server whose `Authorization` header references a Secret block, and retries once on failure. Start here for tools and credentials.
