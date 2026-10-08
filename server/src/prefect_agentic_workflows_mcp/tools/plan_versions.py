@@ -20,7 +20,11 @@ from pydantic import Field
 
 from prefect_agentic_workflows_mcp.parameters import PlanDocument
 from prefect_agentic_workflows_mcp.tools import tool
-from prefect_agentic_workflows_mcp.workspace_api import WorkspaceApi, read_json
+from prefect_agentic_workflows_mcp.workspace_api import (
+    RequestTimedOutError,
+    WorkspaceApi,
+    read_json,
+)
 
 FlowId = Annotated[
     UUID,
@@ -154,6 +158,13 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             active_state = await api.call(
                 "POST", f"{versions_path}/{version['id']}/activate"
             )
+        except RequestTimedOutError as exc:
+            # Cloud may have activated the version before the response was
+            # lost, so read the active version before reporting a failure.
+            active_state = await api.call("GET", f"/flows/{flow_id}/execution-plan")
+            active = (active_state or {}).get("active_version") or {}
+            if active.get("id") != version["id"]:
+                return publish_result(version=version, activation_error=str(exc))
         except ToolError as exc:
             return publish_result(version=version, activation_error=str(exc))
         return publish_result(version=version, active_state=active_state)

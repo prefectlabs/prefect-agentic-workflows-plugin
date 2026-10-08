@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import httpx
 import pytest
 import respx
 from fastmcp import Client
@@ -199,3 +200,20 @@ async def test_list_plan_versions_marks_the_active_version(
         "active_version_id": active_version_id,
     }
     assert versions.calls.last.request.url.params["page"] == str(page)
+
+
+@pytest.mark.usefixtures("validate")
+async def test_publish_plan_reports_an_activation_whose_response_was_lost(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    cloud_api.post(VERSIONS_PATH).respond(201, json=version_response())
+    cloud_api.post(ACTIVATE_PATH).mock(side_effect=httpx.ReadTimeout("lost"))
+    cloud_api.get(PLAN_PATH).respond(200, json=active_state_response())
+
+    result = await mcp_client.call_tool(
+        "publish_plan", {"flow_id": FLOW_ID, "plan": PLAN}
+    )
+
+    assert result.structured_content is not None
+    assert result.structured_content["activated"] is True
+    assert result.structured_content["activation_error"] is None
