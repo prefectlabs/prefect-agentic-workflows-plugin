@@ -26,6 +26,8 @@ When building a workflow, or editing one to use a new system, run the [infrastru
 
 ## Pipeline
 
+A design has two stops, where you end your turn and wait for the user's answer: after the infrastructure check's tools question, and after the summary. Draft nothing before the summary is approved.
+
 1. **Summary.** Once the user has answered the infrastructure check, describe the nodes, branches, approvals, tools, Secret blocks, inputs, and outputs in plain language, with the reason for each node boundary. For a conversion, start this message with the conversion report, in the template from the conversion guide, and put the summary after it. The step is done when the user confirms it: the design approval. Only a yes to the summary itself counts. An answer to another question, such as the tools question, doesn't.
 2. **Draft.** Read [references/design-guidance.md](references/design-guidance.md) and start from its closest example. Call `get_schema`, and when `supported_schema_versions` lists a newer version, call it again with that version and write against it. Name the file after the flow, with every character other than letters, digits, `-`, and `_` replaced by `-`. Ask before overwriting an existing file, unless you're editing the flow it was written for.
 3. **Validate.** Call `validate_plan` with `plan_path` set to the plan file's absolute path, and fix the file until `valid` is true. When an error and the reference files disagree, the error is right.
