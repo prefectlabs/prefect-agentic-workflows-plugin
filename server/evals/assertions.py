@@ -218,6 +218,13 @@ def check_called_in_order(calls: list[ToolCall], names: list[str]) -> Check:
     )
 
 
+def plan_argument(call: ToolCall) -> Any:
+    """Return what a call passed as the plan: the document, or its file path."""
+    if "plan_path" in call.arguments:
+        return ("plan_path", call.arguments["plan_path"])
+    return call.arguments.get("plan")
+
+
 def check_published_only_after_valid(calls: list[ToolCall]) -> Check:
     """Check that each `publish_plan` follows a passing `validate_plan` of its plan.
 
@@ -228,10 +235,8 @@ def check_published_only_after_valid(calls: list[ToolCall]) -> Check:
         if call.name == "validate_plan":
             result = call.result if isinstance(call.result, dict) else {}
             if not call.is_error and result.get("valid") is True:
-                validated.append(call.arguments.get("plan"))
-        elif (
-            call.name == "publish_plan" and call.arguments.get("plan") not in validated
-        ):
+                validated.append(plan_argument(call))
+        elif call.name == "publish_plan" and plan_argument(call) not in validated:
             return Check(
                 "publish_plan only after validate_plan passed",
                 False,
