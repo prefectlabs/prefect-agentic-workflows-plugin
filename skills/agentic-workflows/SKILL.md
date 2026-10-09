@@ -22,11 +22,11 @@ When building a workflow, or editing one to use a new system, run the [infrastru
 | Steps | Ask. |
 | Tools | The systems the infrastructure check found reachable. |
 | Approvals | One before any step that writes to an outside system. |
-| Outputs | One plan output, `result`, from the last node. |
+| Outputs | One plan output for each thing the user asked the run to return, named after it. Only when they didn't say: one plan output, `result`, from the last node. |
 
 ## Pipeline
 
-1. **Summary.** Once the user has answered the infrastructure check, describe the nodes, branches, approvals, tools, Secret blocks, inputs, and outputs in plain language, with the reason for each node boundary. For a conversion, include the conversion report. The step is done when the user confirms it: the design approval. Only a yes to the summary itself counts. An answer to another question, such as the tools question, doesn't.
+1. **Summary.** Once the user has answered the infrastructure check, describe the nodes, branches, approvals, tools, Secret blocks, inputs, and outputs in plain language, with the reason for each node boundary. For a conversion, start this message with the conversion report, in the template from the conversion guide, and put the summary after it. The step is done when the user confirms it: the design approval. Only a yes to the summary itself counts. An answer to another question, such as the tools question, doesn't.
 2. **Draft.** Read [references/design-guidance.md](references/design-guidance.md) and start from its closest example. Call `get_schema`, and when `supported_schema_versions` lists a newer version, call it again with that version and write against it. Name the file after the flow, with every character other than letters, digits, `-`, and `_` replaced by `-`. Ask before overwriting an existing file, unless you're editing the flow it was written for.
 3. **Validate.** Call `validate_plan` and fix the file until `valid` is true. When an error and the reference files disagree, the error is right.
 4. **Publish.** Call `get_or_create_flow`, then `get_plan`. When the flow has an active version, activating the new one is a promotion. Call `publish_plan`, with `activate` false when the user only wants to save. A fix that changes the design goes back to step 1. A fix that only changes the document's shape goes back to step 3.
