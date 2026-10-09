@@ -5,7 +5,7 @@ from typing import Annotated, Any
 from fastmcp import FastMCP
 from pydantic import Field
 
-from prefect_agentic_workflows_mcp.parameters import PlanDocument
+from prefect_agentic_workflows_mcp.parameters import PlanDocument, PlanPath, load_plan
 from prefect_agentic_workflows_mcp.tools import tool
 from prefect_agentic_workflows_mcp.workspace_api import WorkspaceApi
 
@@ -36,7 +36,9 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         return await api.call("GET", "/execution-plans/schema", params=params)
 
     @tool(mcp, read_only=True)
-    async def validate_plan(plan: PlanDocument) -> dict[str, Any]:
+    async def validate_plan(
+        plan: PlanDocument = None, plan_path: PlanPath = None
+    ) -> dict[str, Any]:
         """Check an execution-plan draft without saving it.
 
         Returns `valid` and a list of `errors`. Each error has a `code`, a
@@ -46,4 +48,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         that you can see every referenced Secret block, and it checks MCP
         server hostnames again, so a DNS change between the two calls can fail.
         """
-        return await api.call("POST", "/execution-plans/validate", json={"plan": plan})
+        document = load_plan(plan, plan_path)
+        return await api.call(
+            "POST", "/execution-plans/validate", json={"plan": document}
+        )
