@@ -157,7 +157,7 @@ def test_judges_are_added_only_with_a_judge_model():
     assert set(judges(build_dataset()).values()) == {0}
     assert judges(build_dataset(judge_model="anthropic:claude-haiku-5-5")) == {
         "no_infrastructure": 1,
-        "unsupported_loop": 0,
+        "unsupported_loop": 1,
         "release_notes_conversion": 1,
         "scheduled_edit": 0,
         "rejected_approval": 1,

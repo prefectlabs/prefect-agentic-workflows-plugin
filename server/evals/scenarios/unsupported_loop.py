@@ -14,18 +14,20 @@ Expected results:
 - a version of the flow is saved, and no run is started
 """
 
-import re
+import json
 
-from evals import assertions, graph
+from evals import assertions
 from evals.assertions import Check
 from evals.runner import REPO_ROOT
 from evals.scenario import (
     DECLINE_TEST_RUN,
     FLOW_PREFIX,
+    Judgement,
     Outcome,
     Rule,
     Scenario,
     ScenarioInputs,
+    section,
 )
 
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "skills" / "post-review"
@@ -86,36 +88,16 @@ def conversion_report(outcome: Outcome) -> str:
     )
 
 
-# An objective that spells out two passes, such as "two review passes" or
-# "2 rounds of review and revision".
-TWO_PASSES = re.compile(
-    r"\b(two|2)\b[^.]{0,40}\b(pass|passes|round|rounds|times)\b", re.I
+TWO_PASSES_RUBRIC = (
+    "The plan carries out two review-and-revise passes on the draft, either as "
+    "separate agent nodes or as steps spelled out in one node's objective, and "
+    "has no open-ended loop."
 )
 
 
-def check_two_review_passes(outcome: Outcome) -> Check:
-    """Check that the plan carries out the two review passes the user chose.
-
-    The passes can be separate agent nodes, or one node whose objective spells
-    them out, since the skill keeps work with the same tools in one node.
-    """
-    agents = {
-        node_id: str(node.get("objective", ""))
-        for node_id, node in graph.nodes(outcome.plan).items()
-        if node.get("kind") == "AgentNode"
-    }
-    reviews = [
-        node_id
-        for node_id, objective in agents.items()
-        if "review" in f"{node_id} {objective}".lower()
-    ]
-    in_one_node = [node_id for node_id in reviews if TWO_PASSES.search(agents[node_id])]
-    passed = len(reviews) >= 2 or bool(in_one_node)
-    return Check(
-        "the plan has two review passes",
-        passed,
-        "" if passed else f"found review nodes {reviews}, none naming two passes",
-    )
+def plan_evidence(outcome: Outcome) -> str:
+    plan = outcome.published_plan(FLOW_NAME)
+    return section("Plan", json.dumps(plan, indent=2)) if plan else ""
 
 
 def checks(outcome: Outcome) -> list[Check]:
@@ -142,7 +124,6 @@ def checks(outcome: Outcome) -> list[Check]:
             decision,
         ),
         assertions.check_no_cycle(outcome.plan),
-        check_two_review_passes(outcome),
         assertions.check_publish_succeeded(calls),
         assertions.check_published_only_after_valid(calls),
         assertions.check_flow_saved(outcome.flows, FLOW_NAME),
@@ -153,4 +134,9 @@ SCENARIO = Scenario(
     "unsupported_loop",
     ScenarioInputs(prompt=PROMPT, user=USER, files={"post-review": FIXTURE}),
     checks,
+    [
+        Judgement(
+            "judge: the plan has two review passes", TWO_PASSES_RUBRIC, plan_evidence
+        )
+    ],
 )

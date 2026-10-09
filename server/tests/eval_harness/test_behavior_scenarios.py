@@ -227,7 +227,6 @@ SCENARIOS = {
             "the user decided on the loop",
             "nothing published before the user decided",
             "plan has no cycle",
-            "the plan has two review passes",
         ],
     ),
     "scheduled_edit": (
@@ -274,17 +273,3 @@ def test_scenario_checks(scenario: str, broken: bool):
     failed = [check.name for check in module.checks(build(broken)) if not check.passed]
 
     assert failed == (broken_checks if broken else [])
-
-
-def test_two_review_passes_can_live_in_one_node():
-    plan = approval_plan()
-    for node in plan["nodes"].values():
-        if node.get("kind") == "AgentNode":
-            node["objective"] = (
-                "Draft the post, then review and revise it in two passes."
-            )
-            break
-
-    check = unsupported_loop.check_two_review_passes(outcome(Transcript(), plan))
-
-    assert check.passed, check.detail

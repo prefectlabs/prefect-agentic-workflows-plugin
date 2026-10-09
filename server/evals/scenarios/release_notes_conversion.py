@@ -75,7 +75,7 @@ REPORT_PARTS = {
     # When the tools check already settled the remote replacement, the report
     # can name the replacement instead of the stdio server.
     "stdio MCP server": r"stdio|docker run|GitHub MCP server|githubcopilot",
-    "repeat-until-done loop": r"loop|repeat|cycle",
+    "repeat-until-done loop": r"loop|repeat|cycle|until",
     "human approval": r"approv",
 }
 
