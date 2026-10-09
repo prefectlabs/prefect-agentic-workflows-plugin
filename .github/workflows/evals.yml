@@ -60,6 +60,7 @@ jobs:
         run: >-
           uv run --locked python -m evals
           --model "$AGENT_MODEL"
+          --repeat 3
           --output-dir "$RUNNER_TEMP/evals"
           --summary "$RUNNER_TEMP/eval-report.md"
 

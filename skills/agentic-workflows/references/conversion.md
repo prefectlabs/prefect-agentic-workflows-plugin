@@ -4,7 +4,7 @@ A skill runs on the user's machine, with scripts, local files, stdio MCP servers
 
 1. **Find the skill.** A `SKILL.md` path or its directory, an installed skill's name, or pasted text. For a name, use your file search tool to find `SKILL.md` files whose `name:` matches, in the project's and the user's skill directories for the agent you're running in, such as `.claude/skills`, `~/.claude/skills`, and `~/.claude/plugins/cache` for Claude Code, or `.agents/skills` and `~/.agents/skills`. Use the newest version, and ask when several skills match. For pasted text, ask the user to paste each file it refers to.
 2. **Read the whole skill** with your file tools: `SKILL.md`, references, scripts, templates, and config. For each script, note its inputs, output, and side effects. Keep credential values found in files out of the report and the plan.
-3. **List the steps** as S1, S2, and so on, including setup, questions to the user, saved files, and self-checks. Match each step against the table below.
+3. **List the steps** as S1, S2, and so on, including setup, questions to the user, saved files, and self-checks. Then go through the table below row by row. For each row, name the source steps that match it, or write "none". The step is done when every row has an answer.
 4. **Run the infrastructure check** for every system the skill touches: each stdio MCP server, each service a script calls, and each credential.
 5. **Write the conversion report**, and take it to pipeline step 1, where the user decides every row with the summary.
 
@@ -37,4 +37,4 @@ The report has three parts:
 1. <each choice the user must make>
 ```
 
-Every unsupported part gets a decision row, and every step gets a step-map row: a node, a merge into another node, or a decision row.
+Every match gets a decision row, except reference rules and setup instructions, which convert as written. That includes a part the infrastructure check already settled: its settled choice is the proposed substitute. Every step also gets a step-map row: a node, a merge into another node, or a decision row.
