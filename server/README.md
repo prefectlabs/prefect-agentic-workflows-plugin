@@ -42,7 +42,8 @@ PREFECT_AGENTIC_WORKFLOWS_INTEGRATION=1 uv run pytest tests/integration
 The behavioral evaluations in `evals/` run a real agent with the skill and
 this server against a Prefect Cloud sandbox workspace. They cost money. The
 `Evals` workflow runs them on pull requests that change the skill or the
-server, and a failure doesn't block the merge. See
+server, and its `behavioral evals` check must pass before a pull request
+merges into `main`. See
 [`evals/README.md`](evals/README.md) to run one or add one.
 
 ### Adding a tool group
