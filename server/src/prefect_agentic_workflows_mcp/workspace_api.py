@@ -18,7 +18,6 @@ turns that rejection into a message that names the missing bucket.
 """
 
 import hashlib
-import os
 from typing import Any, Literal
 
 import httpx
@@ -36,7 +35,9 @@ NO_API_URL_MESSAGE = (
 )
 NOT_CLOUD_MESSAGE = (
     "The Prefect API URL is {api_url}, which is not a Prefect Cloud workspace "
-    "URL. Execution plans are only available in Prefect Cloud. Run "
+    "URL. A workspace URL uses HTTPS and has the form "
+    "`https://<host>/api/accounts/<account_id>/workspaces/<workspace_id>`. "
+    "Execution plans are only available in Prefect Cloud. Run "
     "`prefect cloud login` and pick a workspace, or switch to a Cloud profile "
     "with `prefect profile use <name>`, then call this tool again."
 )
@@ -99,20 +100,15 @@ REQUEST_FAILED_MESSAGE = (
 )
 
 
-CLOUD_DOMAIN = "prefect.cloud"
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
-# Lets a test harness point the server at a fake Cloud API on this machine. It
-# is off unless set, so a real API key never goes to a local port by accident.
-ALLOW_LOOPBACK_VARIABLE = "PREFECT_AGENTIC_WORKFLOWS_ALLOW_LOOPBACK_FOR_TESTS"
 
 
 def is_cloud_workspace_api_url(api_url: str) -> bool:
     """Return whether an API URL points at a Prefect Cloud workspace.
 
-    The URL must use HTTPS on `prefect.cloud` or one of its subdomains, so the
-    API key is never sent to another host or over plain HTTP. A loopback host
-    is accepted only when `PREFECT_AGENTIC_WORKFLOWS_ALLOW_LOOPBACK_FOR_TESTS`
-    is `1`, so a test harness can serve a fake Cloud API on this machine.
+    The URL path must name an account and a workspace, and any host is
+    accepted. The URL must use HTTPS so the API key is never sent over plain
+    HTTP, except on a loopback host, where the request stays on this machine.
     """
     try:
         url = httpx.URL(api_url)
@@ -120,11 +116,7 @@ def is_cloud_workspace_api_url(api_url: str) -> bool:
         return False
     if "/accounts/" not in url.path or "/workspaces/" not in url.path:
         return False
-    host = url.host
-    if host in LOOPBACK_HOSTS:
-        return os.environ.get(ALLOW_LOOPBACK_VARIABLE) == "1"
-    is_cloud_host = host == CLOUD_DOMAIN or host.endswith(f".{CLOUD_DOMAIN}")
-    return url.scheme == "https" and is_cloud_host
+    return url.scheme == "https" or url.host in LOOPBACK_HOSTS
 
 
 def response_detail(response: httpx.Response) -> str:

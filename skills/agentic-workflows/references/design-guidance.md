@@ -11,6 +11,10 @@ Every port has a JSON Schema. `validate_plan` checks schema compatibility only f
 ## Node kinds
 
 - **AgentNode.** Write the `objective` as the decision: what to read, which tools to use, and which output to select with which fields. Give it only the MCP servers it needs. Use `output_selection` `exactly_one` for a branch, and `one_or_more` or `zero_or_more` for a fan-out where several next steps run.
+
+  Give every agent node an output for when it can't do its job, such as `blocked` with a `reason`, and say in the objective when to select it. With only success outputs, an agent that hits a missing permission or bad input writes its error text into a success output, and the next node treats it as real data. An output with no outgoing edge is valid; selecting it ends that branch.
+
+  Bound every list or search in the objective: a date range, a small page size (30 or fewer), and the tool's field selector when it has one. One unbounded list call can add over 100,000 tokens to the agent's context.
 - **HumanInputNode.** Put the question in `human_input.form_schema`. With several outputs, the form needs a required `decision` property whose choices are the output names. A `deadline` with `on_expiry` selects an output when nobody answers, and that output isn't a `decision` choice.
 - **DeploymentNode.** Runs a deployment by `deployment.id`, with `wait` set to `{"for": "child_flow_run", "until": "terminal"}`. Pass run parameters through an input named `parameters`. `get_deployment` shows the parameters and their defaults. Declare an output per end state to route on, such as `completed` or `failed`.
 
@@ -20,10 +24,13 @@ For a join after a fan-out, set `orchestration.evaluate_when` to `all_reachable_
 
 ## Platform limits
 
-Last verified: 2026-09-25, against the Prefect Cloud API. When an error from `validate_plan` or `publish_plan` disagrees with this list, follow the error and tell the user this file may be out of date.
+Last verified: 2026-10-16, against the Prefect Cloud API. When an error from `validate_plan` or `publish_plan` disagrees with this list, follow the error and tell the user this file may be out of date.
 
 - Plans run only in Prefect Cloud. The account needs execution plans enabled and the workspace needs an object storage bucket. Versions are immutable.
-- Prefect Cloud chooses an agent node's model.
+- Without `model`, an agent node runs Prefect Cloud's default model. `model` selects a model through one of the workspace's provider connections, with an optional `effort`.
+- Each agent node attempt has its own sandbox, discarded when the attempt ends. The agent can run shell commands and read and write files there. `runtime.env` sets environment variables in it, and a name that looks like a credential must be a Secret block reference.
+- An agent doesn't know the current date. Pass dates as plan inputs, or tell the agent to run `date -u` in its sandbox before any date math. Otherwise it guesses a date and reads the wrong time window.
+- Don't write a JSON `null` anywhere in a plan. Publishing drops null values, and a version whose stored plan no longer validates, such as one whose `on_expiry.value` was `null`, starts runs that never progress and can't be cancelled. Use `{}` or `""`, with an output schema of the matching type.
 - Tools come only from remote MCP servers over Streamable HTTP (`"type": "http"`), not stdio and not `/sse` URLs. A server URL has no credentials, query string, fragment, or `;` parameters.
 - A sensitive header or query value, such as `Authorization` or any name containing `token`, `secret`, `password`, or `apikey`, must be `{"$ref": {"block_document_id": "<id>"}}`.
 - No cycles and no mapping: a loop becomes a fixed number of steps or a human checkpoint, and a list is handled inside one node or by a fixed fan-out.

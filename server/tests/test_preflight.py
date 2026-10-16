@@ -10,10 +10,7 @@ from fastmcp import Client
 from support import API_KEY, PLAN, WORKSPACE_API_URL, error_text
 
 from prefect_agentic_workflows_mcp.server import build_server
-from prefect_agentic_workflows_mcp.workspace_api import (
-    ALLOW_LOOPBACK_VARIABLE,
-    is_cloud_workspace_api_url,
-)
+from prefect_agentic_workflows_mcp.workspace_api import is_cloud_workspace_api_url
 
 VALID = {"valid": True, "errors": []}
 # Every setup error says how to fix a setting in the MCP server's configuration.
@@ -41,13 +38,12 @@ async def test_server_starts_and_lists_tools_without_a_cloud_profile(
     "api_url",
     [
         "http://api.prefect.cloud/api/accounts/a/workspaces/w",
-        "https://api.prefect.cloud.example.com/api/accounts/a/workspaces/w",
-        "https://example.com/api/accounts/a/workspaces/w",
+        "https://api.prefect.cloud/api",
         "https://api.prefect.cloud:bad/api/accounts/a/workspaces/w",
     ],
-    ids=["plain-http", "lookalike-host", "other-host", "malformed"],
+    ids=["plain-http", "no-workspace", "malformed"],
 )
-async def test_the_api_key_is_only_sent_to_prefect_cloud_over_https(
+async def test_the_api_key_is_only_sent_to_a_workspace_url_over_https(
     monkeypatch: pytest.MonkeyPatch, cloud_api: respx.MockRouter, api_url: str
 ):
     set_profile(monkeypatch, {"PREFECT_API_URL": api_url})
@@ -61,20 +57,18 @@ async def test_the_api_key_is_only_sent_to_prefect_cloud_over_https(
 LOOPBACK_URL = "http://127.0.0.1:4200/api/accounts/a/workspaces/w"
 
 
-def test_a_cloud_workspace_url_is_accepted():
-    assert is_cloud_workspace_api_url(
-        "https://api.prefect.cloud/api/accounts/a/workspaces/w"
-    )
-
-
-def test_a_loopback_url_is_accepted_only_when_a_test_harness_allows_it(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    monkeypatch.delenv(ALLOW_LOOPBACK_VARIABLE, raising=False)
-    assert not is_cloud_workspace_api_url(LOOPBACK_URL)
-
-    monkeypatch.setenv(ALLOW_LOOPBACK_VARIABLE, "1")
-    assert is_cloud_workspace_api_url(LOOPBACK_URL)
+@pytest.mark.parametrize(
+    "api_url",
+    [
+        "https://api.prefect.cloud/api/accounts/a/workspaces/w",
+        "https://api.stg.prefect.dev/api/accounts/a/workspaces/w",
+        "https://example.com/api/accounts/a/workspaces/w",
+        LOOPBACK_URL,
+    ],
+    ids=["production", "staging", "other-host", "loopback-over-http"],
+)
+def test_a_workspace_url_on_any_host_is_accepted(api_url: str):
+    assert is_cloud_workspace_api_url(api_url)
 
 
 @pytest.mark.parametrize(
