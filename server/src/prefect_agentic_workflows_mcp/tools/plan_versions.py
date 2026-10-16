@@ -18,7 +18,7 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from pydantic import Field
 
-from prefect_agentic_workflows_mcp.parameters import PlanDocument
+from prefect_agentic_workflows_mcp.parameters import PlanDocument, PlanPath, load_plan
 from prefect_agentic_workflows_mcp.tools import tool
 from prefect_agentic_workflows_mcp.workspace_api import (
     WorkspaceApi,
@@ -120,7 +120,8 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
     @tool(mcp, read_only=False, destructive=True)
     async def publish_plan(
         flow_id: FlowId,
-        plan: PlanDocument,
+        plan: PlanDocument = None,
+        plan_path: PlanPath = None,
         activate: Annotated[
             bool,
             Field(
@@ -148,6 +149,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         `activated` is false, and `activation_error` says why. Fix the cause,
         then call `activate_plan_version` with the returned `version_id`.
         """
+        plan = load_plan(plan, plan_path)
         validation = await api.call(
             "POST", "/execution-plans/validate", json={"plan": plan}
         )
