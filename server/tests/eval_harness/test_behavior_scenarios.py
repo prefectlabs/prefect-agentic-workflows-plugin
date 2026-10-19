@@ -105,17 +105,24 @@ def mention_action_items(plan: dict[str, Any]) -> dict[str, Any]:
 def loop(broken: bool) -> Outcome:
     plan = cyclic_plan() if broken else with_review_passes(approval_plan())
     flow = unsupported_loop.FLOW_NAME
+    # Plain prose with no report heading still flags the loop.
     report = (
-        "## Conversion report\n\n| S3 | Review and revise until the reviewer is "
-        "happy | A plan can't have a cycle | Two fixed review-and-revise passes |"
+        "The skill repeats review and revise until the reviewer is happy. A plan "
+        "can't loop, so I propose two fixed review-and-revise passes. Which do "
+        "you want?"
     )
     replies = [Reply(1, "reachable-systems", ""), Reply(2, "loop-decision", "")]
     calls = published(plan, flow, turn=3)
     if broken:
-        report = "## Conversion report\n\n| S3 | The review loop | Not supported |"
+        report = "The skill has no parts that need a decision."
         replies = replies[:1]
         calls.append(ToolCall("start_run", {}, turn=4))
-    transcript = Transcript(tool_calls=calls, agent_text=[report], replies=replies)
+    transcript = Transcript(
+        tool_calls=calls,
+        agent_text=[report],
+        replies=replies,
+        turn_results=["Which business tools does this workflow need?", report],
+    )
     return outcome(transcript, plan, [saved_flow(flow, plan)])
 
 
@@ -198,7 +205,7 @@ def release(broken: bool) -> Outcome:
         "| 4 | Human approval | S5 | Converts as a human-input node |\n"
     )
     approvals = 1
-    calls = published(plan, flow)
+    calls = published(plan, flow, turn=2)
     if broken:
         plan["nodes"]["approve"]["kind"] = "AgentNode"
         report = report.replace("stdio MCP server", "")
@@ -227,7 +234,7 @@ SCENARIOS = {
         unsupported_loop,
         loop,
         [
-            "the conversion report flags the loop and proposes a substitute",
+            "the agent flags the loop and proposes a substitute before the decision",
             "the user decided on the loop",
             "nothing published before the user decided",
             "plan has no cycle",

@@ -43,7 +43,9 @@ browser, and nobody here hosts anything.
 USER = [
     Rule(
         label="no-remote-servers",
-        pattern=r"reach|business tool|web address|remote MCP server|MCP",
+        # Reply only to a question about the user's tools or servers, not to a
+        # message that mentions MCP in passing.
+        pattern=r"(remote MCP server|MCP|web address|business tool|reach)[^?]{0,300}\?",
         reply=NO_SERVERS,
         max_uses=1,
     ),

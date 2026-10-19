@@ -7,7 +7,7 @@ two fixed review passes, and turns down the test run.
 
 Expected results:
 
-- the conversion report flags the loop and proposes a fixed number of passes
+- the agent flags the loop and proposes a fixed number of passes before the user decides
   or a human checkpoint
 - the plan has no cycle
 - nothing is published before the user decides
@@ -80,12 +80,16 @@ USER = [
 ]
 
 
-def conversion_report(outcome: Outcome) -> str:
-    return "\n\n".join(
-        text
-        for text in outcome.transcript.agent_text
-        if "conversion report" in text.lower()
-    )
+def messages_before_decision(outcome: Outcome) -> str:
+    """Return the agent's messages up to the user's decision on the loop.
+
+    The agent can flag the loop in a report with a heading or in plain prose,
+    so the check reads every message the user saw before deciding.
+    """
+    transcript = outcome.transcript
+    decision = transcript.first_reply("loop-decision")
+    turns = transcript.turn_results
+    return "\n\n".join(turns[: decision.turn] if decision else turns)
 
 
 TWO_PASSES_RUBRIC = (
@@ -113,14 +117,11 @@ def check_topic_input(outcome: Outcome) -> Check:
 
 def checks(outcome: Outcome) -> list[Check]:
     calls = outcome.transcript.tool_calls
-    report = conversion_report(outcome)
     report_check = assertions.check_text_mentions(
-        "the conversion report flags the loop and proposes a substitute",
-        report,
+        "the agent flags the loop and proposes a substitute before the decision",
+        messages_before_decision(outcome),
         REPORT_PARTS,
     )
-    if not report:
-        report_check = Check(report_check.name, False, "no conversion report found")
     decision = outcome.transcript.first_reply("loop-decision")
     return [
         report_check,

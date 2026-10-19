@@ -22,6 +22,7 @@ from evals.record import FlowState, Reply, ToolCall, Transcript
 from evals.runner import converse, scenario_task, talk
 from evals.sandbox import Credentials, SandboxApi
 from evals.scenario import Rule, ScenarioInputs, next_rule
+from evals.scenarios import no_infrastructure
 from evals.scenarios import release_notes_conversion as release_notes
 
 INFRASTRUCTURE_QUESTION = (
@@ -234,3 +235,22 @@ async def test_scenario_task_needs_a_current_run():
 
     with pytest.raises(RuntimeError, match="No run is in progress"):
         await scenario_task(None)(inputs)
+
+
+@pytest.mark.parametrize(
+    ("message", "label"),
+    [
+        ("I checked the MCP inventory and will design this next.", "end"),
+        (
+            "Which of these tools has a remote MCP server you can reach?",
+            "no-remote-servers",
+        ),
+    ],
+    ids=["mention", "question"],
+)
+def test_no_infrastructure_answers_only_a_question_about_servers(
+    message: str, label: str
+):
+    rule = next_rule(no_infrastructure.USER, message, Transcript())
+
+    assert rule is not None and rule.label == label
