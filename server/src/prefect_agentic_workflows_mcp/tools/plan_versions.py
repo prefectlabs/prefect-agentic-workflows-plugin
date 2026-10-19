@@ -35,6 +35,28 @@ VersionId = Annotated[
 ]
 
 
+# Plan-document fields that Cloud echoes back in version and active-state
+# responses. The caller already has the plan, and echoing it can make a result
+# too large for an agent to read, so the tools leave these out.
+ECHOED_PLAN_FIELDS = frozenset({"plan", "layout", "output_schemas"})
+
+
+def without_plan(version: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Return a plan version's metadata, without its plan document."""
+    if version is None:
+        return None
+    return {
+        key: value for key, value in version.items() if key not in ECHOED_PLAN_FIELDS
+    }
+
+
+def active_state_summary(state: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Return a flow's active state, with the active version's metadata only."""
+    if state is None:
+        return None
+    return {**state, "active_version": without_plan(state.get("active_version"))}
+
+
 def publish_result(
     *,
     errors: list[dict[str, Any]] | None = None,
@@ -47,8 +69,8 @@ def publish_result(
         "published": version is not None,
         "activated": active_state is not None,
         "version_id": version["id"] if version is not None else None,
-        "version": version,
-        "active_state": active_state,
+        "version": without_plan(version),
+        "active_state": active_state_summary(active_state),
         "errors": errors or [],
         "activation_error": activation_error,
     }
@@ -136,7 +158,8 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         """Validate a plan, save it as a new version of the flow, and activate it.
 
         Returns `published`, `activated`, the new `version_id` and `version`,
-        and `active_state`, the flow's active version after activation.
+        and `active_state`, the flow's active version after activation. The
+        version metadata leaves out the plan document; read it with `get_plan`.
 
         When the plan doesn't pass, nothing is saved: `published` is false
         and `errors` lists what to fix, in the same shape as `validate_plan`
@@ -246,10 +269,11 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         to activate a version published with `activate` set to false, or to
         roll back to an older version.
 
-        Returns `active_version`, the flow's active version after the change.
+        Returns `active_version`, the flow's active version after the change,
+        without its plan document. Read the plan with `get_plan`.
         """
         try:
-            return await api.call(
+            active_state = await api.call(
                 "POST",
                 f"/flows/{flow_id}/execution-plan/versions/{version_id}/activate",
             )
@@ -257,4 +281,4 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             active_state = await active_state_if(flow_id, str(version_id))
             if active_state is None:
                 raise
-            return active_state
+        return active_state_summary(active_state) or {}
