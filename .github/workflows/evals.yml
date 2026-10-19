@@ -54,7 +54,7 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           elif git diff --name-only "$BASE...$HEAD" \
-              | grep -qE '^(skills/|server/|\.github/workflows/evals\.yml$)'; then
+              | grep -qE '^(skills/|server/|tests/fixtures/skills/|\.github/workflows/evals\.yml$)'; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"

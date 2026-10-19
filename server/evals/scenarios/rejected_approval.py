@@ -102,6 +102,15 @@ def checks(outcome: Outcome) -> list[Check]:
         assertions.check_publish_succeeded(calls),
         assertions.check_published_only_after_valid(calls),
         assertions.check_flow_saved(outcome.flows, FLOW_NAME),
+        assertions.check_flow_active(outcome.flows, FLOW_NAME),
+        assertions.check_validated_only_after_approval(
+            calls, outcome.transcript.first_reply("design-approval")
+        ),
+        Check(
+            "the plan uses no MCP servers",
+            not any("mcp" in node for node in graph.nodes(outcome.plan).values()),
+            "the tool-free workflow has an MCP server",
+        ),
     ]
 
 

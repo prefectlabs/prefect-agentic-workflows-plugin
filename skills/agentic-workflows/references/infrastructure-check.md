@@ -1,6 +1,6 @@
 # Infrastructure check
 
-Find out what the workflow can use before the user spends time on its design. An agent node reaches business tools only through a remote MCP server, and credentials live in Secret blocks. Code that needs the user's systems runs in a Prefect deployment; self-contained commands can run in the agent node's sandbox.
+Find out what the workflow can use before the user spends time on its design. An agent node reaches business tools only through a remote MCP server, and credentials live in Secret blocks. Code that needs the user's systems runs in a Prefect deployment, and self-contained commands can run inside the agent node.
 
 Many users don't know what MCP is. Write for that reader.
 

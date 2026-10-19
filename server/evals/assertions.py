@@ -278,6 +278,29 @@ def check_flow_saved(flows: Mapping[str, FlowState], name: str) -> Check:
     return Check(f"the flow {name!r} has a saved plan version", passed, detail)
 
 
+def check_flow_active(flows: Mapping[str, FlowState], name: str) -> Check:
+    """Check that the flow's newest plan version is its active version."""
+    flow = flows.get(name)
+    passed = (
+        flow is not None
+        and bool(flow.version_ids)
+        and flow.active_version_id == flow.version_ids[-1]
+    )
+    detail = "" if passed else f"the flow {name!r} has no active newest version"
+    return Check(f"the flow {name!r} runs its newest version", passed, detail)
+
+
+def check_validated_only_after_approval(
+    calls: list[ToolCall], approval: Reply | None
+) -> Check:
+    """Check that the agent drafted nothing before the user approved the design."""
+    return check_only_after_reply(
+        "nothing validated before the design approval",
+        calls_to(calls, "validate_plan"),
+        approval,
+    )
+
+
 # Checks on what the agent said.
 
 

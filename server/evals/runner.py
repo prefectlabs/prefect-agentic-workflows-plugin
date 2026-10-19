@@ -160,7 +160,8 @@ async def record_turn(agent: Agent, transcript: Transcript, turn: int) -> str:
                     call.is_error = bool(block.is_error)
         elif isinstance(message, ResultMessage):
             final = message.result or ""
-            transcript.cost_usd += message.total_cost_usd or 0.0
+            # The SDK reports a running total for the session, so keep the latest.
+            transcript.cost_usd = message.total_cost_usd or transcript.cost_usd
             if message.is_error:
                 transcript.errors.append(f"turn {turn}: {final or message.subtype}")
     transcript.turn_results.append(final)

@@ -69,14 +69,16 @@ def published(plan: dict[str, Any], flow: str, turn: int = 1) -> list[ToolCall]:
 def rejected(broken: bool) -> Outcome:
     plan = feedback_plan()
     flow = rejected_approval.FLOW_NAME
-    calls = published(plan, flow)
+    calls = published(plan, flow, turn=2)
     flows = [saved_flow(flow, plan)]
+    replies = [Reply(1, "design-approval", "")]
     if broken:
         plan["edges"] = [item for item in plan["edges"] if "rejected" not in item["id"]]
         del plan["outputs"]["category"]
         calls.append(ToolCall("start_run", {}, turn=2))
         flows = []
-    return outcome(Transcript(tool_calls=calls), plan, flows)
+        replies = []
+    return outcome(Transcript(tool_calls=calls, replies=replies), plan, flows)
 
 
 def with_review_passes(plan: dict[str, Any]) -> dict[str, Any]:
@@ -217,6 +219,8 @@ SCENARIOS = {
             "the rejected output leads to an agent node that revises the draft",
             "plan outputs include ['category', 'reply']",
             "the flow 'customer-feedback-reply' has a saved plan version",
+            "the flow 'customer-feedback-reply' runs its newest version",
+            "nothing validated before the design approval",
         ],
     ),
     "unsupported_loop": (
@@ -260,6 +264,7 @@ SCENARIOS = {
             "design approved once",
             "plan has at least 1 HumanInputNode",
             "the flow 'release-notes' has a saved plan version",
+            "the flow 'release-notes' runs its newest version",
         ],
     ),
 }

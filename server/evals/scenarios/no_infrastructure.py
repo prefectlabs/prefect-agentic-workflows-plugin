@@ -81,8 +81,12 @@ def checks(outcome: Outcome) -> list[Check]:
             not re.search(DESIGN_QUESTIONS, first_question, re.IGNORECASE),
             "the first message asks about the design",
         ),
-        assertions.check_called(first_turn_calls, "list_secret_blocks"),
-        assertions.check_called(first_turn_calls, "list_deployments"),
+        assertions.check_called(
+            first_turn_calls, "list_secret_blocks", where=lambda call: not call.is_error
+        ),
+        assertions.check_called(
+            first_turn_calls, "list_deployments", where=lambda call: not call.is_error
+        ),
         assertions.check_text_mentions(
             "the agent explains the limit and offers a version without the tools",
             follow_up,

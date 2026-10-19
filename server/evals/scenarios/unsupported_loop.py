@@ -100,6 +100,17 @@ def plan_evidence(outcome: Outcome) -> str:
     return section("Plan", json.dumps(plan, indent=2)) if plan else ""
 
 
+def check_topic_input(outcome: Outcome) -> Check:
+    """Check that each run takes the post's topic as a plan input."""
+    inputs = assertions.plan_inputs(outcome.published_plan(FLOW_NAME) or {})
+    passed = any("topic" in name.lower() for name in inputs)
+    return Check(
+        "the plan takes the topic as an input",
+        passed,
+        "" if passed else f"found inputs {sorted(inputs)}",
+    )
+
+
 def checks(outcome: Outcome) -> list[Check]:
     calls = outcome.transcript.tool_calls
     report = conversion_report(outcome)
@@ -127,6 +138,8 @@ def checks(outcome: Outcome) -> list[Check]:
         assertions.check_publish_succeeded(calls),
         assertions.check_published_only_after_valid(calls),
         assertions.check_flow_saved(outcome.flows, FLOW_NAME),
+        assertions.check_flow_active(outcome.flows, FLOW_NAME),
+        check_topic_input(outcome),
     ]
 
 

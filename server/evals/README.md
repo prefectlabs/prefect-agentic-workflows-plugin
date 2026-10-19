@@ -8,7 +8,7 @@ between the agent and a simulated user. Its output is the outcome of that
 conversation: the transcript, the plan files the agent wrote, and the state
 of the run's flows in the sandbox. The evaluators check that outcome: the
 plan, the tools the agent called in order and with which arguments, and the
-flows it left in the workspace. For three cases, an LLM judge also answers
+flows it left in the workspace. For four cases, an LLM judge also answers
 one question that a regular expression can't.
 
 Each run starts Claude Code through the Claude Agent SDK, so it costs money,
@@ -137,6 +137,7 @@ fails without a call to the judge.
 | `rejected_approval` | The published plan. | The node after the rejection revises the earlier draft with the manager's notes. |
 | `release_notes_conversion` | The fixture's `SKILL.md`, the conversion report, and the published plan. | Each numbered step of the skill is in the plan, or the report explains why it was dropped or what replaced it. |
 | `no_infrastructure` | The request, the user's reply that no tool is reachable, and the agent's messages after it. | The agent offers a version of the workflow that runs without Zendesk and Slack tools. |
+| `unsupported_loop` | The published plan. | The plan makes two review-and-revise passes, as separate nodes or as steps in one node's objective, with no open-ended loop. |
 
 The judges use `anthropic:claude-haiku-5-5` by default. Each judge call sends
 the rubric and the evidence once, a few thousand tokens at most, so the
@@ -146,12 +147,14 @@ so read its reason before you change the skill for a failed judge assertion.
 
 ## CI
 
-`.github/workflows/evals.yml` runs every case once with `claude-haiku-5-5` on
-each pull request that changes `skills/` or `server/`. It uses the
+`.github/workflows/evals.yml` runs every case three times (`--repeat 3`) with
+`claude-haiku-5-5` on each pull request that changes `skills/`, `server/`, or
+the fixture skills in `tests/fixtures/skills/`. On other pull requests the job
+finishes at once, so its check always reports. The `behavioral evals` check is
+required before a pull request merges into `main`. It uses the
 `PREFECT_API_URL`, `PREFECT_API_KEY`, and `ANTHROPIC_API_KEY` repository
 secrets, so it skips pull requests from forks. The LLM judges run with their
-default model. The job can fail without
-blocking the pull request. Its summary has the pass rates, the failed checks,
+default model. Its summary has the pass rates, the failed checks,
 and the report. Its `eval-transcripts` artifact has each run's transcript and
 plan files. Run the workflow by hand to pick another model.
 

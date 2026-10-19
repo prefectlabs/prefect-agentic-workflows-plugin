@@ -19,7 +19,7 @@ from typing import Any
 
 from evals import assertions
 from evals.assertions import Check
-from evals.record import FlowState
+from evals.record import FlowState, Reply
 from evals.sandbox import SandboxApi
 from evals.scenario import (
     DECLINE_TEST_RUN,
@@ -198,6 +198,18 @@ def check_new_version_adds_action_items(outcome: Outcome) -> Check:
     )
 
 
+def first_approval(outcome: Outcome) -> Reply | None:
+    """Return the user's first yes to the edit, to the design or the activation."""
+    replies: list[Reply] = []
+    for label in ("design-approval", "promotion-approval"):
+        reply = outcome.transcript.first_reply(label)
+        if reply is not None:
+            replies.append(reply)
+    if not replies:
+        return None
+    return min(replies, key=lambda reply: reply.turn)
+
+
 def checks(outcome: Outcome) -> list[Check]:
     calls = outcome.transcript.tool_calls
     approval = outcome.transcript.first_reply("promotion-approval")
@@ -227,6 +239,7 @@ def checks(outcome: Outcome) -> list[Check]:
         assertions.check_only_after_reply(
             "activation only after the user's yes", activations, approval
         ),
+        assertions.check_validated_only_after_approval(calls, first_approval(outcome)),
         check_new_version_active(outcome),
         check_new_version_adds_action_items(outcome),
         assertions.check_published_only_after_valid(calls),

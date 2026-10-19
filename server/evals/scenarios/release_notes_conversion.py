@@ -137,6 +137,7 @@ def checks(outcome: Outcome) -> list[Check]:
         assertions.check_publish_succeeded(calls),
         assertions.check_published_only_after_valid(calls),
         assertions.check_flow_saved(outcome.flows, FLOW_NAME),
+        assertions.check_flow_active(outcome.flows, FLOW_NAME),
     ]
 
 

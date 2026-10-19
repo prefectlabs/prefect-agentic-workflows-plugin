@@ -29,6 +29,11 @@ PlanPath = Annotated[
 ]
 
 
+# A plan document is a few kilobytes. The cap keeps a wrong path from reading a
+# large file into memory.
+MAX_PLAN_FILE_BYTES = 5_000_000
+
+
 def load_plan(plan: dict[str, Any] | None, plan_path: str | None) -> dict[str, Any]:
     """Return the plan from exactly one of `plan` and `plan_path`.
 
@@ -42,9 +47,15 @@ def load_plan(plan: dict[str, Any] | None, plan_path: str | None) -> dict[str, A
     path = Path(str(plan_path))
     if not path.is_absolute():
         raise ToolError(f"`plan_path` must be an absolute path, not {plan_path!r}.")
+    if not path.is_file():
+        raise ToolError(f"The plan file {path} is not a regular file.")
+    if path.stat().st_size > MAX_PLAN_FILE_BYTES:
+        raise ToolError(
+            f"The plan file {path} is larger than {MAX_PLAN_FILE_BYTES} bytes."
+        )
     try:
-        loaded = json.loads(path.read_text())
-    except OSError as exc:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError) as exc:
         raise ToolError(f"Could not read the plan file {path}: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise ToolError(f"The plan file {path} is not valid JSON: {exc}") from exc
