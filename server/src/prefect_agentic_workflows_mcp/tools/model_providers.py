@@ -6,6 +6,7 @@ from fastmcp import FastMCP
 from pydantic import BaseModel, TypeAdapter
 
 from prefect_agentic_workflows_mcp.tools import tool
+from prefect_agentic_workflows_mcp.tools.workspace import app_url
 from prefect_agentic_workflows_mcp.workspace_api import WorkspaceApi
 
 PROVIDER_CONNECTIONS_PATH = "/agentic/provider-connections"
@@ -34,6 +35,7 @@ class ProviderConnectionList(BaseModel):
 class Provider(BaseModel):
     type: str
     models: list[Model]
+    add_url: str | None = None
 
 
 class ProviderList(BaseModel):
@@ -66,11 +68,19 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         Use it to turn a model name the user gives, such as "Haiku 5.5", into
         its model id, and to tell whether a provider the workspace has no
         connection for offers a model. A `prefect` connection runs only the
-        models listed under `prefect`.
+        models listed under `prefect`. `add_url` is the Prefect Cloud page
+        where the user adds a connection for that provider, or null when the
+        server can't work out the UI address.
         """
         providers = TypeAdapter(list[Provider]).validate_python(
             await api.call("GET", PROVIDERS_PATH)
         )
+        workspace_url = app_url(api.current_api_url())
+        if workspace_url is not None:
+            for provider in providers:
+                provider.add_url = (
+                    f"{workspace_url}/agentic-model-providers?add={provider.type}"
+                )
         return ProviderList(providers=providers)
 
     @tool(mcp, read_only=False)
@@ -79,10 +89,9 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
 
         It needs no API key. Call it only after the user chooses Prefect's
         models. A connection with the user's own key is added in the Prefect
-        Cloud UI, never with a tool: link the user to
-        `<app_url>/agentic-model-providers?add=<anthropic|openai|vertex>`,
-        with `app_url` from `get_workspace`, and call
-        `list_provider_connections` again when they're done.
+        Cloud UI, never with a tool: send the user the provider's `add_url`
+        from `list_providers`, and call `list_provider_connections` again when
+        they're done.
         """
         return ProviderConnection.model_validate(
             await api.call(

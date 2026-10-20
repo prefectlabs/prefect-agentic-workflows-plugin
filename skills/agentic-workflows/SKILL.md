@@ -58,7 +58,7 @@ A plan references a credential by a Secret block's ID from `list_secret_blocks`.
 
 ## Models
 
-An agent node without `model` runs Prefect Cloud's default model. When the user names a model, call `list_provider_connections` and `list_providers` instead of asking for an ID, and set `model` to a connection that runs it and the model's id from `list_providers`. When several connections run it, ask which one by name. When none does, offer the user a choice: Prefect's models, when `prefect` lists the model, which `create_prefect_connection` adds; or their own key, which they add on `<app_url>/agentic-model-providers?add=<type>`, with `app_url` from `get_workspace`. Never ask for an API key. If the user pastes one, keep it out of the plan and tell them to add it on that page and rotate it.
+An agent node without `model` runs Prefect Cloud's default model. When the user names a model, call `list_provider_connections` and `list_providers` instead of asking for an ID, and set `model` to a connection that runs it and the model's id from `list_providers`. When several connections run it, ask which one by name. When none does, offer the user a choice: Prefect's models, when `prefect` lists the model, which `create_prefect_connection` adds; or their own key, which they add at the provider's `add_url`. Never ask for an API key. If the user pastes one, keep it out of the plan and tell them to add it at that link and rotate it.
 
 ## Later changes
 

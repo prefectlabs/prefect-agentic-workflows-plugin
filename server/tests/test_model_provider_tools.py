@@ -4,8 +4,9 @@ from typing import Any
 
 import respx
 from fastmcp import Client
-from support import error_text, request_body
+from support import ACCOUNT_ID, WORKSPACE_ID, error_text, request_body
 
+APP_URL = f"https://app.prefect.cloud/account/{ACCOUNT_ID}/workspace/{WORKSPACE_ID}"
 PREFECT_CONNECTION_ID = "dddddddd-0000-0000-0000-000000000001"
 VERTEX_CONNECTION_ID = "dddddddd-0000-0000-0000-000000000002"
 
@@ -78,7 +79,7 @@ async def test_list_provider_connections_reads_a_connection_without_models_as_un
     assert result.structured_content["provider_connections"][0]["models"] is None
 
 
-async def test_list_providers_returns_each_providers_model_ids(
+async def test_list_providers_returns_each_providers_models_and_add_link(
     mcp_client: Client[Any], cloud_api: respx.MockRouter
 ):
     cloud_api.get("/agentic/providers").respond(
@@ -93,8 +94,16 @@ async def test_list_providers_returns_each_providers_model_ids(
 
     assert result.structured_content == {
         "providers": [
-            {"type": "anthropic", "models": [{"id": "claude-opus-5-5"}]},
-            {"type": "prefect", "models": [{"id": "claude-haiku-5-5"}]},
+            {
+                "type": "anthropic",
+                "models": [{"id": "claude-opus-5-5"}],
+                "add_url": f"{APP_URL}/agentic-model-providers?add=anthropic",
+            },
+            {
+                "type": "prefect",
+                "models": [{"id": "claude-haiku-5-5"}],
+                "add_url": f"{APP_URL}/agentic-model-providers?add=prefect",
+            },
         ]
     }
 
