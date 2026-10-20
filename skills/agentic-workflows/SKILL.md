@@ -56,6 +56,10 @@ The user answers every human-input form: show it in plain words and submit only 
 
 A plan references a credential by a Secret block's ID from `list_secret_blocks`. The block holds the whole header value, so for a bearer token it's `Bearer <token>`. When the block is missing, ask the user to create a **Secret** block in the Prefect Cloud UI under **Blocks**, or with `prefect block create secret`, then list the blocks again. Never ask the user to type a secret value. If they paste one, keep it out of the plan and tell them to store it in a block and rotate it.
 
+## Models
+
+An agent node without `model` runs Prefect Cloud's default model. When the user names a model, call `list_provider_connections` and `list_providers` instead of asking for an ID, and set `model` to a connection that runs it and the model's id from `list_providers`. When several connections run it, ask which one by name. When none does, offer the user a choice: Prefect's models, when `prefect` lists the model, which `create_prefect_connection` adds; or their own key, which they add on `<app_url>/agentic-model-providers?add=<type>`, with `app_url` from `get_workspace`. Never ask for an API key. If the user pastes one, keep it out of the plan and tell them to add it on that page and rotate it.
+
 ## Later changes
 
 Find a published workflow with `get_flow`, which never creates one.
