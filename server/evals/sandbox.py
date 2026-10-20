@@ -8,10 +8,6 @@ changed.
 
 Deleting a flow also deletes its execution plan, its plan versions, and its
 schedules.
-
-Provider connections belong to the whole workspace and have no prefix. The
-sandbox keeps none between runs: a case that adds one runs alone and deletes
-every connection before and after it runs.
 """
 
 import os
@@ -38,7 +34,6 @@ NOT_CLOUD_MESSAGE = (
 )
 SECRET_BLOCK_TYPE_SLUG = "secret"
 PLACEHOLDER_SECRET_VALUE = "Bearer eval-placeholder-token"
-PROVIDER_CONNECTIONS_PATH = "/agentic/provider-connections"
 PAGE_SIZE = 200
 TIMEOUT_SECONDS = 30.0
 
@@ -171,28 +166,6 @@ class SandboxApi:
         # Another session created the block between the read and this request.
         if created.status_code != 409:
             created.raise_for_status()
-
-    def delete_provider_connections(self) -> list[str]:
-        """Delete every provider connection in the sandbox, and return their names.
-
-        Tries every connection before it raises `RuntimeError` for the ones
-        it couldn't delete.
-        """
-        deleted: list[str] = []
-        failed: list[str] = []
-        for connection in self.send("GET", PROVIDER_CONNECTIONS_PATH).json():
-            response = self.client.delete(
-                f"{PROVIDER_CONNECTIONS_PATH}/{connection['id']}"
-            )
-            if response.is_success or response.status_code == 404:
-                deleted.append(connection["name"])
-            else:
-                failed.append(f"{connection['name']} (HTTP {response.status_code})")
-        if failed:
-            raise RuntimeError(
-                f"Could not delete these provider connections: {', '.join(failed)}"
-            )
-        return deleted
 
     # Reading and deleting the flows of a prefix.
 

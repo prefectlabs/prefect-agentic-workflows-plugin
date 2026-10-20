@@ -2,17 +2,14 @@
 
 Each run of a case gets its own directory and its own flow prefix inside the
 session's prefix, such as `eval-3f9a1c-2-`. Runs that happen at the same
-time, and repeats of one case, never read or delete each other's flows. A
-case with `runs_alone` has the sandbox to itself while it runs.
+time, and repeats of one case, never read or delete each other's flows.
 """
 
-import asyncio
 import itertools
 from collections.abc import Iterator
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
 
 from pydantic_evals import Case
 from pydantic_evals.evaluators import EvaluatorContext
@@ -52,55 +49,19 @@ def current_run() -> Run:
         ) from None
 
 
-Access = Literal["shared", "alone"]
-
-
-class SandboxLock:
-    """Lets runs share the sandbox, or gives one run the sandbox to itself.
-
-    A run that takes it `alone` waits until no other run holds it, and no run
-    takes it while that run holds it.
-    """
-
-    def __init__(self) -> None:
-        self.condition = asyncio.Condition()
-        self.sharing = 0
-        self.held_alone = False
-
-    async def acquire(self, access: Access) -> None:
-        async with self.condition:
-            if access == "alone":
-                await self.condition.wait_for(
-                    lambda: not self.held_alone and self.sharing == 0
-                )
-                self.held_alone = True
-            else:
-                await self.condition.wait_for(lambda: not self.held_alone)
-                self.sharing += 1
-
-    async def release(self, access: Access) -> None:
-        async with self.condition:
-            if access == "alone":
-                self.held_alone = False
-            else:
-                self.sharing -= 1
-            self.condition.notify_all()
-
-
 @dataclass
 class Session:
     """What every run of one evaluation shares.
 
     `flow_prefix` is the session's prefix, from `session_prefix()`. Each
     run's directory is in `output_dir`. `cleanup_errors` has one message for
-    each run the harness couldn't clean up after.
+    each run whose flows the harness couldn't delete.
     """
 
     sandbox: SandboxApi
     flow_prefix: str
     output_dir: Path
     cleanup_errors: list[str] = field(default_factory=list)
-    lock: SandboxLock = field(default_factory=SandboxLock, repr=False)
     run_numbers: Iterator[int] = field(
         default_factory=lambda: itertools.count(1), repr=False
     )
@@ -118,26 +79,21 @@ class Session:
 
 
 class SandboxLifecycle(CaseLifecycle[ScenarioInputs, Outcome, None]):
-    """Seeds the sandbox before a run, and cleans up after it.
+    """Seeds the sandbox before a run, and deletes the run's flows after it.
 
     Pydantic Evals calls `teardown` after the task and the evaluators, also
-    when the task or `setup` raised, so the case's own teardown runs and the
-    run's flows are deleted either way. An error in `teardown` would stop the
-    whole evaluation, so a failed cleanup is added to
-    `Session.cleanup_errors` instead.
+    when the task or `setup` raised, so the run's flows are deleted either
+    way. An error in `teardown` would stop the whole evaluation, so a failed
+    deletion is added to `Session.cleanup_errors` instead.
     """
 
     def __init__(self, case: ScenarioCase, session: Session) -> None:
         super().__init__(case)
         self.session = session
-        self.access: Access | None = None
         self.run: Run | None = None
         self.token: Token[Run] | None = None
 
     async def setup(self) -> None:
-        access: Access = "alone" if self.case.inputs.runs_alone else "shared"
-        await self.session.lock.acquire(access)
-        self.access = access
         self.run = self.session.new_run(self.case.name or "case")
         self.token = CURRENT_RUN.set(self.run)
         seed = self.case.inputs.setup
@@ -160,25 +116,11 @@ class SandboxLifecycle(CaseLifecycle[ScenarioInputs, Outcome, None]):
     ) -> None:
         if self.token is not None:
             CURRENT_RUN.reset(self.token)
+        if self.run is None:
+            return
         try:
-            if self.run is not None:
-                self.clean_up(self.run)
-        finally:
-            if self.access is not None:
-                await self.session.lock.release(self.access)
-
-    def clean_up(self, run: Run) -> None:
-        clean = self.case.inputs.teardown
-        if clean is not None:
-            try:
-                clean(run.sandbox, run.flow_prefix)
-            except Exception as exc:
-                self.session.cleanup_errors.append(
-                    f"The teardown of {run.directory.name} failed: {exc}"
-                )
-        try:
-            self.session.sandbox.delete_flows_with_prefix(run.flow_prefix)
+            self.session.sandbox.delete_flows_with_prefix(self.run.flow_prefix)
         except Exception as exc:
             self.session.cleanup_errors.append(
-                f"Could not delete the flows named {run.flow_prefix}*: {exc}"
+                f"Could not delete the flows named {self.run.flow_prefix}*: {exc}"
             )

@@ -227,33 +227,6 @@ def test_ensure_secret_block_creates_a_missing_block(
     assert set(body["data"]) == {"value"}
 
 
-def test_delete_provider_connections_tries_every_connection_before_it_raises(
-    api: respx.MockRouter, sandbox: SandboxApi
-):
-    api.get("/agentic/provider-connections").respond(
-        200, json=[{"id": "c-1", "name": "prefect"}, {"id": "c-2", "name": "team-key"}]
-    )
-    first = api.delete("/agentic/provider-connections/c-1").respond(500)
-    second = api.delete("/agentic/provider-connections/c-2").respond(204)
-
-    with pytest.raises(RuntimeError, match=r"prefect \(HTTP 500\)"):
-        sandbox.delete_provider_connections()
-
-    assert first.called
-    assert second.called
-
-
-def test_delete_provider_connections_returns_the_deleted_names(
-    api: respx.MockRouter, sandbox: SandboxApi
-):
-    api.get("/agentic/provider-connections").respond(
-        200, json=[{"id": "c-1", "name": "prefect"}]
-    )
-    api.delete("/agentic/provider-connections/c-1").respond(404)
-
-    assert sandbox.delete_provider_connections() == ["prefect"]
-
-
 def test_an_unexpected_error_response_raises(
     api: respx.MockRouter, sandbox: SandboxApi
 ):

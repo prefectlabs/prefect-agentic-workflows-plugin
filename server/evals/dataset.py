@@ -10,8 +10,6 @@ from evals.evaluators import CommonChecks, Judge, ScenarioChecks
 from evals.scenario import Outcome, Scenario, ScenarioInputs
 from evals.scenarios import (
     no_infrastructure,
-    own_key_model,
-    provider_onboarding,
     rejected_approval,
     release_notes_conversion,
     scheduled_edit,
@@ -25,8 +23,6 @@ SCENARIOS: list[Scenario] = [
     release_notes_conversion.SCENARIO,
     scheduled_edit.SCENARIO,
     rejected_approval.SCENARIO,
-    provider_onboarding.SCENARIO,
-    own_key_model.SCENARIO,
 ]
 CASE_NAMES = [scenario.name for scenario in SCENARIOS]
 

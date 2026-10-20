@@ -95,14 +95,6 @@ The `eval-github-token` Secret block, which the release-notes case
 references, holds a placeholder value. The harness creates it when it's
 missing and never deletes it.
 
-Provider connections belong to the whole workspace and have no prefix, so the
-sandbox keeps none between runs. `provider_onboarding` needs a workspace with
-none, and it adds one. It sets `runs_alone`, so it waits until no other run is
-in progress and no run starts until it's done, and it deletes every provider
-connection in the sandbox before and after it runs. The lock is per session:
-two sessions against the same sandbox at once, such as two pull requests'
-evals, can still see each other's connections.
-
 ## What a run does
 
 1. `SandboxLifecycle.setup` makes the run's directory, picks its prefix, and
@@ -125,8 +117,7 @@ evals, can still see each other's connections.
    it never called `start_run`. `ScenarioChecks` runs the case's own checks.
    Each check is one assertion in the report, with its detail as the reason.
    When the judges are on, a `Judge` asks each of the case's judgements.
-6. `SandboxLifecycle.teardown` runs the case's `teardown` function, then
-   deletes the run's flows.
+6. `SandboxLifecycle.teardown` deletes the run's flows.
 
 The report also has two metrics for each run: `agent_cost_usd`, the cost the
 SDK reported, and `agent_turns`.
@@ -184,8 +175,6 @@ and reports a run that the same key already started.
 | `unsupported_loop` | `unsupported_loop.py` | Converting the `post-review` fixture skill, which repeats until the reviewer is happy: the report flags the loop and proposes a substitute, the plan has two review passes and no cycle, and nothing is published before the user decides. |
 | `scheduled_edit` | `scheduled_edit.py` | Changing a flow that has an active version and a schedule: the agent names the schedule before it asks to activate, activates the new version with the action items only after the yes, and leaves the schedule alone. |
 | `no_infrastructure` | `no_infrastructure.py` | A workflow that needs Zendesk and Slack, for a user with no remote MCP servers: the infrastructure check comes first, and the agent offers a version without those tools. |
-| `provider_onboarding` | `provider_onboarding.py` | A workspace with no provider connections: the agent asks which model to use with the summary, not the first question, adds a Prefect connection only after the user picks Prefect's Haiku 5.5, and the published plan runs Haiku on that connection. Runs alone. |
-| `own_key_model` | `own_key_model.py` | A request for Claude Fable 5.1, which Prefect's models don't include: the agent sends the link to add an Anthropic or Vertex AI key, adds no Prefect connection, and never asks for the key. |
 
 ## Adding a case
 
@@ -216,9 +205,7 @@ and reports a run that the same key already started.
 | `user` | The simulated user's rules. |
 | `files` | Files or directories to copy into the working directory, by their path there. |
 | `setup` | A function that gets the `SandboxApi` and the run's flow prefix, and adds state to the sandbox before the agent starts. Every flow it creates must have a name that starts with the prefix. |
-| `teardown` | A function with the same arguments that removes state the run added outside its flows, such as a provider connection. It runs after the run, also when the task raised, before the run's flows are deleted. |
 | `max_turns` | The most agent turns in the conversation. The default is 12. |
-| `runs_alone` | True for a case that reads or changes state the whole workspace shares, such as provider connections. No other run of the session overlaps it. |
 
 After each agent turn, the simulated user takes the first `Rule` that applies
 to the agent's final message and sends its `reply`. A rule applies when its
@@ -246,8 +233,6 @@ Pydantic Evals adds a number to a repeated name.
   `check_only_after_reply`, which checks that calls came after the simulated
   user's reply. Pass it `outcome.transcript.first_reply(label)`, and
   `activating_calls(calls)` to check activations.
-- For credentials: `check_never_asks_for_id_or_key`, on the agent's
-  messages.
 - For the sandbox: `check_flow_saved`, which checks that a flow has a plan
   version. `outcome.flows` has each flow of the run by its name without the
   prefix, as a `FlowState`.

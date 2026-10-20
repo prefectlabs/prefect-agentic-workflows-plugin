@@ -17,8 +17,6 @@ from evals.runner import SKILL_DIR
 from evals.scenario import Outcome
 from evals.scenarios import (
     no_infrastructure,
-    own_key_model,
-    provider_onboarding,
     rejected_approval,
     scheduled_edit,
     unsupported_loop,
@@ -220,55 +218,6 @@ def release(broken: bool) -> Outcome:
     return outcome(transcript, plan, [] if broken else [saved_flow(flow, plan)])
 
 
-def onboarding(broken: bool) -> Outcome:
-    flow = provider_onboarding.FLOW_NAME
-    model = {"connection_id": "connection-1", "id": provider_onboarding.MODEL_ID}
-    plan = {
-        "kind": "ExecutionPlan",
-        "nodes": {"summarize": {"kind": "AgentNode", "model": model}},
-    }
-    first = "Which business tools does this workflow need?"
-    summary = "One agent node. Which model should it use? Prefect's is easiest."
-    create_turn = 3
-    if broken:
-        first += " And which model should the agent use?"
-        summary = "Paste your connection ID here and I'll use it."
-        create_turn = 2
-        plan["nodes"]["summarize"]["model"] = {**model, "id": "claude-sonnet-5-5"}
-    calls = [
-        ToolCall("list_provider_connections", {}, {"provider_connections": []}, turn=1),
-        ToolCall(
-            "create_prefect_connection",
-            {},
-            {"id": "connection-1", "name": "prefect", "provider": {"type": "prefect"}},
-            turn=create_turn,
-        ),
-        *published(plan, flow, turn=3),
-    ]
-    transcript = Transcript(
-        tool_calls=calls,
-        replies=[Reply(1, "reachable-systems", ""), Reply(2, "model-choice", "")],
-        turn_results=[first, summary, "Published."],
-    )
-    return outcome(transcript, plan, [saved_flow(flow, plan)])
-
-
-def own_key(broken: bool) -> Outcome:
-    link = (
-        "Prefect's models don't include Fable 5.1. Add your Anthropic key at "
-        "https://app.prefect.cloud/account/a/workspace/w/agentic-model-providers"
-        "?add=anthropic and tell me when it's there."
-    )
-    calls = [
-        ToolCall("list_provider_connections", {}, {"provider_connections": []}),
-        ToolCall("list_providers", {}, {"providers": []}),
-    ]
-    if broken:
-        link = "Fable needs your own key. Can you paste your Anthropic API key here?"
-        calls.append(ToolCall("create_prefect_connection", {}, {"id": "c-1"}))
-    return outcome(Transcript(tool_calls=calls, turn_results=[link]))
-
-
 SCENARIOS = {
     "rejected_approval": (
         rejected_approval,
@@ -323,25 +272,6 @@ SCENARIOS = {
             "plan has at least 1 HumanInputNode",
             "the flow 'release-notes' has a saved plan version",
             "the flow 'release-notes' runs its newest version",
-        ],
-    ),
-    "provider_onboarding": (
-        provider_onboarding,
-        onboarding,
-        [
-            "the first message asks nothing about the model",
-            "the Prefect connection is added only after the user chose it",
-            "the agent never asks for a connection ID or an API key",
-            "every agent node runs claude-haiku-5-5 on the new connection",
-        ],
-    ),
-    "own_key_model": (
-        own_key_model,
-        own_key,
-        [
-            "the agent sends the link to add an Anthropic or Vertex AI key",
-            "create_prefect_connection never called",
-            "the agent never asks for a connection ID or an API key",
         ],
     ),
 }
