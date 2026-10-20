@@ -12,7 +12,7 @@ VERTEX_CONNECTION_ID = "dddddddd-0000-0000-0000-000000000002"
 
 
 def connection(
-    connection_id: str, name: str, provider: dict[str, Any], **overrides: Any
+    connection_id: str, name: str, provider: dict[str, Any]
 ) -> dict[str, Any]:
     """Return a connection in the shape `/agentic/provider-connections` returns."""
     return {
@@ -21,27 +21,20 @@ def connection(
         "provider": provider,
         "created": "2026-10-19T12:00:00Z",
         "updated": "2026-10-19T12:00:00Z",
-        **overrides,
     }
 
 
-async def test_list_provider_connections_returns_only_ids_names_types_and_models(
+async def test_list_provider_connections_returns_only_ids_names_and_types(
     mcp_client: Client[Any], cloud_api: respx.MockRouter
 ):
     cloud_api.get("/agentic/provider-connections").respond(
         200,
         json=[
-            connection(
-                PREFECT_CONNECTION_ID,
-                "prefect",
-                {"type": "prefect"},
-                models=[{"id": "claude-haiku-5-5"}],
-            ),
+            connection(PREFECT_CONNECTION_ID, "prefect", {"type": "prefect"}),
             connection(
                 VERTEX_CONNECTION_ID,
                 "team-vertex",
                 {"type": "vertex", "project_id": "acme", "region": "us-east5"},
-                models=None,
             ),
         ],
     )
@@ -54,29 +47,14 @@ async def test_list_provider_connections_returns_only_ids_names_types_and_models
                 "id": PREFECT_CONNECTION_ID,
                 "name": "prefect",
                 "provider": {"type": "prefect"},
-                "models": [{"id": "claude-haiku-5-5"}],
             },
             {
                 "id": VERTEX_CONNECTION_ID,
                 "name": "team-vertex",
                 "provider": {"type": "vertex"},
-                "models": None,
             },
         ]
     }
-
-
-async def test_list_provider_connections_reads_a_connection_without_models_as_unlimited(
-    mcp_client: Client[Any], cloud_api: respx.MockRouter
-):
-    cloud_api.get("/agentic/provider-connections").respond(
-        200, json=[connection(PREFECT_CONNECTION_ID, "prefect", {"type": "prefect"})]
-    )
-
-    result = await mcp_client.call_tool("list_provider_connections", {})
-
-    assert result.structured_content is not None
-    assert result.structured_content["provider_connections"][0]["models"] is None
 
 
 async def test_list_providers_returns_each_providers_models_and_add_link(
@@ -125,7 +103,6 @@ async def test_create_prefect_connection_sends_a_prefect_provider(
         "id": PREFECT_CONNECTION_ID,
         "name": "prefect",
         "provider": {"type": "prefect"},
-        "models": None,
     }
 
 

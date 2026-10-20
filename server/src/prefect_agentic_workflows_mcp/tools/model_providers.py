@@ -24,7 +24,6 @@ class ProviderConnection(BaseModel):
     id: str
     name: str
     provider: ConnectionProvider
-    models: list[Model] | None = None
 
 
 class ProviderConnectionList(BaseModel):
@@ -51,12 +50,11 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
     async def list_provider_connections() -> ProviderConnectionList:
         """List the workspace's model provider connections.
 
-        Returns each connection's `id`, `name`, `provider` type, and `models`.
-        An agent node runs a specific model with
-        `"model": {"connection_id": "<id>", "id": "<model id>"}`. `models`
-        lists the only models a connection runs; null means it runs the
-        models its provider offers, which `list_providers` lists. Never ask the
-        user for a connection ID.
+        Returns each connection's `id`, `name`, and `provider` type. An agent
+        node runs a specific model with
+        `"model": {"connection_id": "<id>", "id": "<model id>"}`, using a model
+        its provider offers in `list_providers`. Never ask the user for a
+        connection ID.
         """
         connections = TypeAdapter(list[ProviderConnection]).validate_python(
             await api.call("GET", PROVIDER_CONNECTIONS_PATH)
