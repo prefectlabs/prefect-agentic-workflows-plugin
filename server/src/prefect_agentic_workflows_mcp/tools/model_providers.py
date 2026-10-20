@@ -1,8 +1,17 @@
 """Tools that find and add the model providers an agent node's `model` uses."""
 
-from typing import Any
+import uuid
+from typing import Any, Literal
 
-from fastmcp import FastMCP
+from fastmcp import Context, FastMCP
+from fastmcp.exceptions import ToolError
+from mcp.types import (
+    ElicitRequest,
+    ElicitRequestURLParams,
+    ElicitResult,
+    InputRequiredResult,
+)
+from mcp_types.version import MODERN_PROTOCOL_VERSIONS
 from pydantic import BaseModel, TypeAdapter
 
 from prefect_agentic_workflows_mcp.tools import tool
@@ -43,8 +52,52 @@ class ProviderList(BaseModel):
     providers: list[Provider]
 
 
+ConnectStatus = Literal[
+    "connected", "declined", "no_new_connection", "client_cannot_open_links"
+]
+
+
+class ConnectOutcome(BaseModel):
+    status: ConnectStatus
+    connections: list[ProviderConnection]
+    add_url: str
+    known_connection_ids: list[str]
+
+
+class ConnectRequest(BaseModel):
+    """What the first round of `connect_model_provider` hands to the second."""
+
+    provider: str
+    add_url: str
+    known_connection_ids: list[str]
+
+    def outcome(
+        self,
+        status: ConnectStatus,
+        *,
+        connections: list[ProviderConnection] | None = None,
+    ) -> ConnectOutcome:
+        return ConnectOutcome(
+            status=status,
+            connections=connections or [],
+            add_url=self.add_url,
+            known_connection_ids=self.known_connection_ids,
+        )
+
+
+CONNECT_INPUT_KEY = "add_connection"
+
+
 def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
     """Add the model provider tools to `mcp`."""
+
+    async def list_connections() -> list[ProviderConnection]:
+        return TypeAdapter(list[ProviderConnection]).validate_python(
+            await api.call("GET", PROVIDER_CONNECTIONS_PATH)
+        )
+
+    def add_url(provider_type: str) -> str:
+        return f"{api.current_ui_url()}/agentic-model-providers?add={provider_type}"
 
     @tool(mcp, read_only=True)
     async def list_provider_connections() -> ProviderConnectionList:
@@ -56,10 +109,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         its provider offers in `list_providers`. Never ask the user for a
         connection ID.
         """
-        connections = TypeAdapter(list[ProviderConnection]).validate_python(
-            await api.call("GET", PROVIDER_CONNECTIONS_PATH)
-        )
-        return ProviderConnectionList(provider_connections=connections)
+        return ProviderConnectionList(provider_connections=await list_connections())
 
     @tool(mcp, read_only=True)
     async def list_providers() -> ProviderList:
@@ -74,27 +124,118 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         catalog = TypeAdapter(list[CatalogProvider]).validate_python(
             await api.call("GET", PROVIDERS_PATH)
         )
-        add_page = f"{api.current_ui_url()}/agentic-model-providers"
         return ProviderList(
             providers=[
                 Provider(
                     type=provider.type,
                     models=provider.models,
-                    add_url=f"{add_page}?add={provider.type}",
+                    add_url=add_url(provider.type),
                 )
                 for provider in catalog
             ]
         )
+
+    async def find_new_connections(
+        request: ConnectRequest, action: Literal["accept", "decline", "cancel"]
+    ) -> ConnectOutcome:
+        if action != "accept":
+            return request.outcome("declined")
+        new = [
+            connection
+            for connection in await list_connections()
+            if connection.provider.type == request.provider
+            and connection.id not in request.known_connection_ids
+        ]
+        if not new:
+            return request.outcome("no_new_connection")
+        return request.outcome("connected", connections=new)
+
+    @tool(mcp, read_only=False)
+    async def connect_model_provider(
+        provider: str, ctx: Context
+    ) -> ConnectOutcome | InputRequiredResult:
+        """Have the user add a connection with their own key, and return it.
+
+        Call it when the user wants a provider account of their own, such as
+        `anthropic`. The user's client opens the provider's Prefect Cloud page,
+        where they enter the key, and the tool returns once they say they're
+        done. The key never passes through this conversation.
+
+        On `connected`, `connections` holds the connections the user added: use
+        the one, or ask which when there are several. On
+        `client_cannot_open_links`, send the user `add_url`; when they're done,
+        call `list_provider_connections` and use the connection of this
+        provider whose ID isn't in `known_connection_ids`. On `declined` or
+        `no_new_connection`, ask the user before calling this tool again.
+        """
+        if ctx.request_state is not None:
+            request = ConnectRequest.model_validate_json(ctx.request_state)
+            match (ctx.input_responses or {}).get(CONNECT_INPUT_KEY):
+                case ElicitResult(action=action):
+                    return await find_new_connections(request, action)
+                case _:
+                    return await find_new_connections(request, "cancel")
+
+        catalog = TypeAdapter(list[CatalogProvider]).validate_python(
+            await api.call("GET", PROVIDERS_PATH)
+        )
+        provider_types = [entry.type for entry in catalog]
+        if provider not in provider_types:
+            raise ToolError(
+                f"Prefect Cloud has no model provider `{provider}`. Use one of "
+                f"{', '.join(provider_types)}."
+            )
+        request = ConnectRequest(
+            provider=provider,
+            add_url=add_url(provider),
+            known_connection_ids=[
+                connection.id for connection in await list_connections()
+            ],
+        )
+
+        capabilities = ctx.session.client_capabilities
+        if (
+            capabilities is None
+            or capabilities.elicitation is None
+            or capabilities.elicitation.url is None
+        ):
+            return request.outcome("client_cannot_open_links")
+
+        message = (
+            f"Add your {provider} connection in Prefect Cloud. Enter the key "
+            "on that page, not in this chat, then come back here."
+        )
+        elicitation_id = str(uuid.uuid4())
+        # The 2026-07-28 protocol has no server-to-client requests mid-call: the
+        # tool returns the ask, and the client calls it again with the answer.
+        if ctx.session.protocol_version in MODERN_PROTOCOL_VERSIONS:
+            return InputRequiredResult(
+                input_requests={
+                    CONNECT_INPUT_KEY: ElicitRequest(
+                        params=ElicitRequestURLParams(
+                            message=message,
+                            url=request.add_url,
+                            elicitation_id=elicitation_id,
+                        )
+                    )
+                },
+                request_state=request.model_dump_json(),
+            )
+        answer = await ctx.session.elicit_url(
+            message=message,
+            url=request.add_url,
+            elicitation_id=elicitation_id,
+            related_request_id=ctx.request_id,
+        )
+        return await find_new_connections(request, answer.action)
 
     @tool(mcp, read_only=False)
     async def create_prefect_connection(name: str = "prefect") -> ProviderConnection:
         """Add a connection that runs models on Prefect Cloud's credentials.
 
         It needs no API key. Call it only after the user chooses Prefect's
-        models. A connection with the user's own key is added in the Prefect
-        Cloud UI, never with a tool: send the user the provider's `add_url`
-        from `list_providers`, and call `list_provider_connections` again when
-        they're done.
+        models. A connection with the user's own key is added with
+        `connect_model_provider`, never with this tool.
         """
         return ProviderConnection.model_validate(
             await api.call(

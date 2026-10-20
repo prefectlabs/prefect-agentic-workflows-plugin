@@ -44,10 +44,10 @@ def tool(
             fn,
             description=description,
             annotations=ToolAnnotations(
-                readOnlyHint=read_only,
-                destructiveHint=destructive,
-                idempotentHint=read_only,
-                openWorldHint=True,
+                read_only_hint=read_only,
+                destructive_hint=destructive,
+                idempotent_hint=read_only,
+                open_world_hint=True,
             ),
         )
         return fn

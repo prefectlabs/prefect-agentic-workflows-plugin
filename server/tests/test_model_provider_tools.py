@@ -1,14 +1,21 @@
 """Tests for the model provider tools, which reshape what Cloud returns."""
 
-from typing import Any
+from typing import Any, Literal
 
+import httpx
+import pytest
 import respx
 from fastmcp import Client
+from fastmcp.client.elicitation import ElicitResult
 from support import ACCOUNT_ID, WORKSPACE_ID, error_text, request_body
+
+from prefect_agentic_workflows_mcp.server import build_server
 
 APP_URL = f"https://app.prefect.cloud/account/{ACCOUNT_ID}/workspace/{WORKSPACE_ID}"
 PREFECT_CONNECTION_ID = "dddddddd-0000-0000-0000-000000000001"
 VERTEX_CONNECTION_ID = "dddddddd-0000-0000-0000-000000000002"
+ANTHROPIC_CONNECTION_ID = "dddddddd-0000-0000-0000-000000000003"
+ADD_ANTHROPIC_URL = f"{APP_URL}/agentic-model-providers?add=anthropic"
 
 
 def connection(
@@ -118,3 +125,137 @@ async def test_create_prefect_connection_relays_a_taken_name(
     )
 
     assert "already has a connection named 'prefect'" in error_text(result)
+
+
+def user_adds_anthropic_connection(cloud_api: respx.MockRouter) -> None:
+    """Mock a workspace that gains an Anthropic connection between two reads."""
+    existing = connection(PREFECT_CONNECTION_ID, "prefect", {"type": "prefect"})
+    added = connection(ANTHROPIC_CONNECTION_ID, "my-anthropic", {"type": "anthropic"})
+    cloud_api.get("/agentic/providers").respond(
+        200, json=[{"type": "anthropic", "models": [{"id": "claude-haiku-5-5"}]}]
+    )
+    cloud_api.get("/agentic/provider-connections").mock(
+        side_effect=[
+            httpx.Response(200, json=[existing]),
+            httpx.Response(200, json=[existing, added]),
+        ]
+    )
+
+
+def browser_user(
+    action: Literal["accept", "decline", "cancel"], opened_urls: list[str]
+) -> Any:
+    """Return an elicitation handler that records each URL and answers `action`."""
+
+    async def handle(message: str, response_type: Any, params: Any, context: Any):
+        opened_urls.append(params.url)
+        return ElicitResult(action=action)
+
+    return handle
+
+
+@pytest.mark.parametrize("mode", ["auto", "legacy"])
+async def test_connect_model_provider_returns_the_connection_the_user_added(
+    cloud_api: respx.MockRouter, mode: str
+):
+    user_adds_anthropic_connection(cloud_api)
+    opened_urls: list[str] = []
+
+    async with Client(
+        build_server(),
+        mode=mode,
+        elicitation_handler=browser_user("accept", opened_urls),
+    ) as client:
+        result = await client.call_tool(
+            "connect_model_provider", {"provider": "anthropic"}
+        )
+
+    assert opened_urls == [ADD_ANTHROPIC_URL]
+    assert result.structured_content == {
+        "status": "connected",
+        "connections": [
+            {
+                "id": ANTHROPIC_CONNECTION_ID,
+                "name": "my-anthropic",
+                "provider": {"type": "anthropic"},
+            }
+        ],
+        "add_url": ADD_ANTHROPIC_URL,
+        "known_connection_ids": [PREFECT_CONNECTION_ID],
+    }
+
+
+async def test_connect_model_provider_reports_a_declined_link(
+    cloud_api: respx.MockRouter,
+):
+    user_adds_anthropic_connection(cloud_api)
+
+    async with Client(
+        build_server(), elicitation_handler=browser_user("decline", [])
+    ) as client:
+        result = await client.call_tool(
+            "connect_model_provider", {"provider": "anthropic"}
+        )
+
+    assert result.structured_content == {
+        "status": "declined",
+        "connections": [],
+        "add_url": ADD_ANTHROPIC_URL,
+        "known_connection_ids": [PREFECT_CONNECTION_ID],
+    }
+
+
+async def test_connect_model_provider_reports_when_no_connection_was_added(
+    cloud_api: respx.MockRouter,
+):
+    cloud_api.get("/agentic/providers").respond(
+        200, json=[{"type": "anthropic", "models": [{"id": "claude-haiku-5-5"}]}]
+    )
+    cloud_api.get("/agentic/provider-connections").respond(200, json=[])
+
+    async with Client(
+        build_server(), elicitation_handler=browser_user("accept", [])
+    ) as client:
+        result = await client.call_tool(
+            "connect_model_provider", {"provider": "anthropic"}
+        )
+
+    assert result.structured_content == {
+        "status": "no_new_connection",
+        "connections": [],
+        "add_url": ADD_ANTHROPIC_URL,
+        "known_connection_ids": [],
+    }
+
+
+async def test_connect_model_provider_returns_the_link_to_a_client_that_cant_open_it(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    user_adds_anthropic_connection(cloud_api)
+
+    result = await mcp_client.call_tool(
+        "connect_model_provider", {"provider": "anthropic"}
+    )
+
+    assert result.structured_content == {
+        "status": "client_cannot_open_links",
+        "connections": [],
+        "add_url": ADD_ANTHROPIC_URL,
+        "known_connection_ids": [PREFECT_CONNECTION_ID],
+    }
+
+
+async def test_connect_model_provider_rejects_an_unknown_provider(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    cloud_api.get("/agentic/providers").respond(
+        200, json=[{"type": "anthropic", "models": [{"id": "claude-haiku-5-5"}]}]
+    )
+
+    result = await mcp_client.call_tool(
+        "connect_model_provider", {"provider": "claude"}, raise_on_error=False
+    )
+
+    assert error_text(result) == (
+        "Prefect Cloud has no model provider `claude`. Use one of anthropic."
+    )

@@ -22,7 +22,7 @@ INSTALL_SOURCE = (
 
 CONSOLE_SCRIPT = re.compile(r"^\[project\.scripts\]\n([a-z0-9-]+) =", re.MULTILINE)
 TOOL_NAME = re.compile(
-    r"`((?:get|list|create|update|delete|validate|publish|start|submit|activate)"
+    r"`((?:get|list|create|connect|update|delete|validate|publish|start|submit|activate)"
     r"_[a-z_]+)`"
 )
 
