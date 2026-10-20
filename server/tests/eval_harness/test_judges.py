@@ -161,4 +161,6 @@ def test_judges_are_added_only_with_a_judge_model():
         "release_notes_conversion": 1,
         "scheduled_edit": 0,
         "rejected_approval": 1,
+        "provider_onboarding": 0,
+        "own_key_model": 0,
     }

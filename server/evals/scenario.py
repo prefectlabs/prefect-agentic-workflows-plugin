@@ -109,15 +109,20 @@ class ScenarioInputs:
     directory, by the relative path they get there. `setup` adds state to
     the sandbox before the agent starts, such as a flow or a Secret block.
     It gets the `SandboxApi` and the run's flow prefix, and must name every
-    flow it creates with that prefix. `max_turns` caps the number of agent
-    turns in the conversation.
+    flow it creates with that prefix. `teardown` gets the same arguments and
+    runs after the run, before its flows are deleted. `max_turns` caps the
+    number of agent turns in the conversation. `runs_alone` keeps every other
+    run out of the sandbox while this one runs, for a case that reads or
+    changes state the whole workspace shares, such as provider connections.
     """
 
     prompt: str
     user: list[Rule]
     files: dict[str, Path] = field(default_factory=dict)
     setup: Callable[[SandboxApi, str], None] | None = None
+    teardown: Callable[[SandboxApi, str], None] | None = None
     max_turns: int = 12
+    runs_alone: bool = False
 
     def prompt_for(self, flow_prefix: str) -> str:
         return self.prompt.replace(FLOW_PREFIX, flow_prefix)

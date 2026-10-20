@@ -11,6 +11,5 @@ Many users don't know what MCP is. Write for that reader.
 
    A system is **reachable** when the user gives a public `https://` URL that fits the limits in [design-guidance.md](design-guidance.md) and needs either no sign-in or a fixed credential. Anything else is **not reachable yet**, including a stdio MCP server in a source skill.
 3. Tell the user, briefly, what this limits. For each unreachable system, name the steps that need it and offer a human approval step (a person does that part) or leaving the step out. A remote MCP server is a third option that needs a new service. With no reachable systems, every agent step works only with run inputs, earlier results, and form answers. A step that runs code needs a deployment first. On the conversion path, send this note with the conversion report, after the user has answered step 2.
-4. When `list_provider_connections` returns none, ask in the same note which model the agent steps should use, and say Prefect's models are the easiest start. [Models](../SKILL.md#models) covers the choices.
 
 The check is done when every system the workflow needs is reachable or has an option the user can pick in the summary.

@@ -317,3 +317,26 @@ def check_text_mentions(
         if not re.search(pattern, text, flags)
     ]
     return Check(name, not missing, f"missing: {', '.join(missing)}" if missing else "")
+
+
+# A request that the user hand over a connection ID or an API key, such as
+# "paste your Anthropic API key here".
+ASKS_FOR_ID_OR_KEY = re.compile(
+    r"(paste|share|send|provide|give|enter|type)[^.?!\n]{0,60}"
+    r"(connection id|uuid|api key)",
+    re.IGNORECASE,
+)
+
+
+def check_never_asks_for_id_or_key(messages: Iterable[str]) -> Check:
+    """Check that no message asks the user for a connection ID or an API key."""
+    asked = [
+        match.group(0)
+        for text in messages
+        if (match := ASKS_FOR_ID_OR_KEY.search(text))
+    ]
+    return Check(
+        "the agent never asks for a connection ID or an API key",
+        not asked,
+        f"asked: {asked[0]!r}" if asked else "",
+    )
