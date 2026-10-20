@@ -6,7 +6,6 @@ from fastmcp import FastMCP
 from pydantic import BaseModel, TypeAdapter
 
 from prefect_agentic_workflows_mcp.tools import tool
-from prefect_agentic_workflows_mcp.tools.workspace import app_url
 from prefect_agentic_workflows_mcp.workspace_api import WorkspaceApi
 
 PROVIDER_CONNECTIONS_PATH = "/agentic/provider-connections"
@@ -32,10 +31,13 @@ class ProviderConnectionList(BaseModel):
     provider_connections: list[ProviderConnection]
 
 
-class Provider(BaseModel):
+class CatalogProvider(BaseModel):
     type: str
     models: list[Model]
-    add_url: str | None = None
+
+
+class Provider(CatalogProvider):
+    add_url: str
 
 
 class ProviderList(BaseModel):
@@ -69,19 +71,22 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         its model id, and to tell whether a provider the workspace has no
         connection for offers a model. A `prefect` connection runs only the
         models listed under `prefect`. `add_url` is the Prefect Cloud page
-        where the user adds a connection for that provider, or null when the
-        server can't work out the UI address.
+        where the user adds a connection for that provider.
         """
-        providers = TypeAdapter(list[Provider]).validate_python(
+        catalog = TypeAdapter(list[CatalogProvider]).validate_python(
             await api.call("GET", PROVIDERS_PATH)
         )
-        workspace_url = app_url(api.current_api_url())
-        if workspace_url is not None:
-            for provider in providers:
-                provider.add_url = (
-                    f"{workspace_url}/agentic-model-providers?add={provider.type}"
+        add_page = f"{api.current_ui_url()}/agentic-model-providers"
+        return ProviderList(
+            providers=[
+                Provider(
+                    type=provider.type,
+                    models=provider.models,
+                    add_url=f"{add_page}?add={provider.type}",
                 )
-        return ProviderList(providers=providers)
+                for provider in catalog
+            ]
+        )
 
     @tool(mcp, read_only=False)
     async def create_prefect_connection(name: str = "prefect") -> ProviderConnection:
