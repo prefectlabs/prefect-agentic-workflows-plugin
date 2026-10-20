@@ -18,6 +18,7 @@ from fastmcp.utilities.tests import run_server_async
 from support import (
     ACCOUNT_ID,
     API_KEY,
+    PLAN,
     WORKSPACE_API_URL,
     WORKSPACE_ID,
     error_text,
@@ -202,6 +203,20 @@ async def test_a_rejected_header_key_says_to_fix_the_header(
     assert "X-Prefect-Api-Key header" in message
     assert "prefect cloud login" not in message
     assert "restart the server" not in message
+
+
+async def test_urls_that_differ_only_in_the_fragment_share_one_preflight(
+    server_url: str, cloud_api: respx.MockRouter
+):
+    cloud_api.post(f"{WORKSPACE_API_URL}/execution-plans/validate").respond(
+        200, json={"valid": True, "errors": []}
+    )
+    for fragment in ["", "#1", "#2"]:
+        headers = {**HEADERS, "X-Prefect-Api-Url": WORKSPACE_API_URL + fragment}
+        async with connect(server_url, headers) as client:
+            await client.call_tool("validate_plan", {"plan": PLAN})
+
+    assert cloud_api.routes["header_schema"].call_count == 1
 
 
 async def test_the_preflight_runs_once_for_each_set_of_headers(

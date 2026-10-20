@@ -16,7 +16,9 @@ Before the first request, `WorkspaceApi` runs a preflight check. The check
 confirms that the profile points at a Cloud workspace and that the workspace
 can use execution plans, and it turns each known failure into a message that
 says how to fix it. A passing check is cached for the API URL and key it ran
-with, so a new key gets checked too.
+with, so a new key gets checked too. The cache keeps the most recently used
+`VERIFIED_CACHE_SIZE` pairs, so clients of a shared server can't grow it
+without limit.
 A failing check is not cached, so the next tool call runs it again after the
 user fixes the problem.
 
@@ -27,6 +29,7 @@ turns that rejection into a message that names the missing bucket.
 
 import hashlib
 import os
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
@@ -38,6 +41,7 @@ from prefect.settings import Settings
 HttpMethod = Literal["GET", "POST", "PATCH", "DELETE"]
 
 DEFAULT_TIMEOUT_SECONDS = 30.0
+VERIFIED_CACHE_SIZE = 1024
 
 API_URL_HEADER = "X-Prefect-Api-Url"
 API_KEY_HEADER = "X-Prefect-Api-Key"
@@ -298,9 +302,10 @@ class WorkspaceApi:
     """
 
     def __init__(self) -> None:
-        # Over HTTP, clients can send different credentials, so keep every
-        # pair that passed rather than only the last one.
-        self._verified: set[tuple[str, str]] = set()
+        # Over HTTP, clients can send different credentials, so keep the
+        # recent pairs that passed rather than only the last one. The order is
+        # least recently used first.
+        self._verified: OrderedDict[tuple[str, str], None] = OrderedDict()
 
     async def request(
         self,
@@ -328,11 +333,20 @@ class WorkspaceApi:
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=timeout,
         ) as client:
-            # Keep a digest of the key rather than the key itself.
-            checked = (api_url, hashlib.sha256(api_key.encode()).hexdigest())
-            if checked not in self._verified:
+            # Keep a digest of the key rather than the key itself. Requests
+            # never send the fragment, so URLs that differ only there share
+            # one entry.
+            checked = (
+                str(httpx.URL(api_url).copy_with(fragment=None)),
+                hashlib.sha256(api_key.encode()).hexdigest(),
+            )
+            if checked in self._verified:
+                self._verified.move_to_end(checked)
+            else:
                 await self._preflight(client, api_url, credentials.messages)
-                self._verified.add(checked)
+                self._verified[checked] = None
+                if len(self._verified) > VERIFIED_CACHE_SIZE:
+                    self._verified.popitem(last=False)
             try:
                 return await client.request(method, path, json=json, params=params)
             except httpx.TimeoutException as exc:

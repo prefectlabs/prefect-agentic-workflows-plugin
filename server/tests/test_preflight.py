@@ -9,6 +9,7 @@ import respx
 from fastmcp import Client
 from support import API_KEY, PLAN, WORKSPACE_API_URL, error_text
 
+from prefect_agentic_workflows_mcp import workspace_api
 from prefect_agentic_workflows_mcp.server import build_server
 from prefect_agentic_workflows_mcp.workspace_api import is_cloud_workspace_api_url
 
@@ -165,6 +166,29 @@ async def test_a_new_api_key_runs_the_preflight_again(
     )
 
     assert "prefect cloud login" in error_text(result)
+
+
+async def test_the_preflight_cache_forgets_the_least_recently_used_key(
+    monkeypatch: pytest.MonkeyPatch,
+    mcp_client: Client[Any],
+    cloud_api: respx.MockRouter,
+):
+    monkeypatch.setattr(workspace_api, "VERIFIED_CACHE_SIZE", 2)
+    cloud_api.post("/execution-plans/validate").respond(200, json=VALID)
+
+    for key in ["pnu_first", "pnu_second", "pnu_first", "pnu_third"]:
+        set_profile(monkeypatch, {"PREFECT_API_KEY": key})
+        await mcp_client.call_tool("validate_plan", {"plan": PLAN})
+    assert cloud_api.routes["schema"].call_count == 3
+
+    # Using the first key again kept it, so the third key pushed out the second.
+    set_profile(monkeypatch, {"PREFECT_API_KEY": "pnu_first"})
+    await mcp_client.call_tool("validate_plan", {"plan": PLAN})
+    assert cloud_api.routes["schema"].call_count == 3
+
+    set_profile(monkeypatch, {"PREFECT_API_KEY": "pnu_second"})
+    await mcp_client.call_tool("validate_plan", {"plan": PLAN})
+    assert cloud_api.routes["schema"].call_count == 4
 
 
 async def test_a_failing_preflight_runs_again_on_the_next_call(
