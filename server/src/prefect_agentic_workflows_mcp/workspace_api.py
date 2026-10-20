@@ -7,7 +7,10 @@ only fails the tool call and never stops the server from starting.
 When the server runs over HTTP, a client can send its own credentials in the
 `X-Prefect-Api-Url` and `X-Prefect-Api-Key` headers, and they are used instead
 of the profile for that request. The headers are used as a pair, so the
-server's own API key is never sent to a URL that a client chose.
+profile's API key is never sent to a URL that a client chose. A client can be
+anyone who reaches the server, so a header URL must use HTTPS on a host in
+`PREFECT_HEADER_API_HOSTS`. Otherwise a client could make the server send
+requests into the network it runs in.
 
 Before the first request, `WorkspaceApi` runs a preflight check. The check
 confirms that the profile points at a Cloud workspace and that the workspace
@@ -23,6 +26,7 @@ turns that rejection into a message that names the missing bucket.
 """
 
 import hashlib
+import os
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
@@ -37,6 +41,10 @@ DEFAULT_TIMEOUT_SECONDS = 30.0
 
 API_URL_HEADER = "X-Prefect-Api-Url"
 API_KEY_HEADER = "X-Prefect-Api-Key"
+# A comma-separated list of the hosts a header URL may name. Operators set it
+# to allow another Cloud host, such as staging.
+HEADER_API_HOSTS_VARIABLE = "PREFECT_HEADER_API_HOSTS"
+DEFAULT_HEADER_API_HOSTS = frozenset({"api.prefect.cloud"})
 
 NO_API_URL_MESSAGE = (
     "No Prefect API URL is set in the active Prefect profile. Execution plans "
@@ -93,6 +101,12 @@ HEADER_NOT_CLOUD_MESSAGE = (
     "`https://<host>/api/accounts/<account_id>/workspaces/<workspace_id>`. "
     "Execution plans are only available in Prefect Cloud. Fix the header in "
     "the MCP client's configuration, then call this tool again."
+)
+HEADER_UNTRUSTED_HOST_MESSAGE = (
+    "The X-Prefect-Api-Url header is {api_url}. This server only accepts a "
+    "header URL that uses HTTPS on one of these hosts: {hosts}. Fix the header "
+    "in the MCP client's configuration, or ask the server's operator to add "
+    "the host to `PREFECT_HEADER_API_HOSTS`, then call this tool again."
 )
 HEADER_UNAUTHORIZED_MESSAGE = (
     "Prefect Cloud rejected the API key in the X-Prefect-Api-Key header (HTTP "
@@ -190,6 +204,25 @@ def is_cloud_workspace_api_url(api_url: str) -> bool:
     if "/accounts/" not in url.path or "/workspaces/" not in url.path:
         return False
     return url.scheme == "https" or url.host in LOOPBACK_HOSTS
+
+
+def header_api_hosts() -> frozenset[str]:
+    """Return the hosts a URL in the `X-Prefect-Api-Url` header may name."""
+    value = os.environ.get(HEADER_API_HOSTS_VARIABLE)
+    if value is None:
+        return DEFAULT_HEADER_API_HOSTS
+    return frozenset(host.strip().lower() for host in value.split(",") if host.strip())
+
+
+def is_trusted_header_api_url(api_url: str) -> bool:
+    """Return whether a URL from the `X-Prefect-Api-Url` header may be used.
+
+    Unlike a profile URL, a header URL comes from a client, so it must use
+    HTTPS on an exact host from `header_api_hosts`. Loopback and other hosts
+    are refused, so a client can't point the server at its own network.
+    """
+    url = httpx.URL(api_url)
+    return url.scheme == "https" and url.host in header_api_hosts()
 
 
 def header_ui_url(api_url: str) -> str:
@@ -370,6 +403,12 @@ class WorkspaceApi:
             )
         if not is_cloud_workspace_api_url(api_url):
             raise ToolError(HEADER_NOT_CLOUD_MESSAGE.format(api_url=api_url))
+        if not is_trusted_header_api_url(api_url):
+            raise ToolError(
+                HEADER_UNTRUSTED_HOST_MESSAGE.format(
+                    api_url=api_url, hosts=", ".join(sorted(header_api_hosts()))
+                )
+            )
         return Credentials(
             api_url=api_url,
             api_key=api_key,

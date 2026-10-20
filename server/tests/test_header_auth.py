@@ -40,6 +40,7 @@ def cloud_profile(monkeypatch: pytest.MonkeyPatch) -> None:
     """Point the profile at a workspace the headers don't name."""
     monkeypatch.setenv("PREFECT_API_URL", PROFILE_API_URL)
     monkeypatch.setenv("PREFECT_API_KEY", PROFILE_API_KEY)
+    monkeypatch.delenv("PREFECT_HEADER_API_HOSTS", raising=False)
 
 
 @pytest.fixture
@@ -132,6 +133,62 @@ async def test_a_header_url_that_is_not_a_cloud_workspace_sends_no_request(
     assert "X-Prefect-Api-Url header" in message
     assert "not a Prefect Cloud workspace" in message
     assert not cloud_calls(cloud_api)
+
+
+WORKSPACE_PATH = "/api/accounts/a/workspaces/w"
+
+
+@pytest.mark.parametrize(
+    "api_url",
+    [
+        f"http://127.0.0.1:4200{WORKSPACE_PATH}",
+        f"https://localhost{WORKSPACE_PATH}",
+        f"https://10.0.0.5{WORKSPACE_PATH}",
+        f"https://169.254.169.254{WORKSPACE_PATH}",
+        f"https://prefect.internal.example.com{WORKSPACE_PATH}",
+        f"https://api.stg.prefect.dev{WORKSPACE_PATH}",
+        f"http://api.prefect.cloud{WORKSPACE_PATH}",
+    ],
+    ids=[
+        "loopback-over-http",
+        "localhost",
+        "private-address",
+        "metadata-address",
+        "internal-host",
+        "unlisted-cloud-host",
+        "trusted-host-over-http",
+    ],
+)
+async def test_a_header_url_off_the_trusted_hosts_sends_no_request(
+    server_url: str, cloud_api: respx.MockRouter, api_url: str
+):
+    headers = {**HEADERS, "X-Prefect-Api-Url": api_url}
+    async with connect(server_url, headers) as client:
+        result = await client.call_tool("get_schema", {}, raise_on_error=False)
+
+    message = error_text(result)
+    assert "X-Prefect-Api-Url header" in message
+    assert not cloud_calls(cloud_api)
+
+
+async def test_operators_can_trust_other_hosts(
+    monkeypatch: pytest.MonkeyPatch, server_url: str, cloud_api: respx.MockRouter
+):
+    staging_url = f"https://api.stg.prefect.dev{WORKSPACE_PATH}"
+    monkeypatch.setenv(
+        "PREFECT_HEADER_API_HOSTS",
+        "api.prefect.cloud, api.stg.prefect.dev",
+    )
+    staging = cloud_api.get(f"{staging_url}/execution-plans/schema").respond(
+        200, json=schema_response()
+    )
+
+    async with connect(
+        server_url, {**HEADERS, "X-Prefect-Api-Url": staging_url}
+    ) as client:
+        await client.call_tool("get_schema", {})
+
+    assert staging.called
 
 
 async def test_a_rejected_header_key_says_to_fix_the_header(
