@@ -72,14 +72,11 @@ class ConnectRequest(BaseModel):
     known_connection_ids: list[str]
 
     def outcome(
-        self,
-        status: ConnectStatus,
-        *,
-        connections: list[ProviderConnection] | None = None,
+        self, status: ConnectStatus, connections: list[ProviderConnection]
     ) -> ConnectOutcome:
         return ConnectOutcome(
             status=status,
-            connections=connections or [],
+            connections=connections,
             add_url=self.add_url,
             known_connection_ids=self.known_connection_ids,
         )
@@ -135,20 +132,23 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             ]
         )
 
-    async def find_new_connections(
-        request: ConnectRequest, action: Literal["accept", "decline", "cancel"]
-    ) -> ConnectOutcome:
-        if action != "accept":
-            return request.outcome("declined")
-        new = [
-            connection
-            for connection in await list_connections()
-            if connection.provider.type == request.provider
-            and connection.id not in request.known_connection_ids
-        ]
-        if not new:
-            return request.outcome("no_new_connection")
-        return request.outcome("connected", connections=new)
+    async def new_connect_request(provider: str) -> ConnectRequest:
+        catalog = TypeAdapter(list[CatalogProvider]).validate_python(
+            await api.call("GET", PROVIDERS_PATH)
+        )
+        provider_types = [entry.type for entry in catalog]
+        if provider not in provider_types:
+            raise ToolError(
+                f"Prefect Cloud has no model provider `{provider}`. Use one of "
+                f"{', '.join(provider_types)}."
+            )
+        return ConnectRequest(
+            provider=provider,
+            add_url=add_url(provider),
+            known_connection_ids=[
+                connection.id for connection in await list_connections()
+            ],
+        )
 
     @tool(mcp, read_only=False)
     async def connect_model_provider(
@@ -161,63 +161,54 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         use. On `client_cannot_open_links`, send the user `add_url`; the new
         connection is the one not in `known_connection_ids`.
         """
-        if ctx.request_state is not None:
-            request = ConnectRequest.model_validate_json(ctx.request_state)
-            match (ctx.input_responses or {}).get(CONNECT_INPUT_KEY):
-                case ElicitResult(action=action):
-                    return await find_new_connections(request, action)
-                case _:
-                    return await find_new_connections(request, "cancel")
-
-        catalog = TypeAdapter(list[CatalogProvider]).validate_python(
-            await api.call("GET", PROVIDERS_PATH)
-        )
-        provider_types = [entry.type for entry in catalog]
-        if provider not in provider_types:
-            raise ToolError(
-                f"Prefect Cloud has no model provider `{provider}`. Use one of "
-                f"{', '.join(provider_types)}."
-            )
-        request = ConnectRequest(
-            provider=provider,
-            add_url=add_url(provider),
-            known_connection_ids=[
-                connection.id for connection in await list_connections()
-            ],
-        )
-
-        capabilities = ctx.session.client_capabilities
-        if (
-            capabilities is None
-            or capabilities.elicitation is None
-            or capabilities.elicitation.url is None
-        ):
-            return request.outcome("client_cannot_open_links")
-
-        message = f"Add your {provider} API key in Prefect Cloud, then come back here."
-        elicitation_id = str(uuid.uuid4())
-        # The 2026-07-28 protocol has no server-to-client requests mid-call: the
-        # tool returns the ask, and the client calls it again with the answer.
-        if ctx.session.protocol_version in MODERN_PROTOCOL_VERSIONS:
-            return InputRequiredResult(
-                input_requests={
-                    CONNECT_INPUT_KEY: ElicitRequest(
-                        params=ElicitRequestURLParams(
-                            message=message,
-                            url=request.add_url,
-                            elicitation_id=elicitation_id,
+        if ctx.request_state is None:
+            request = await new_connect_request(provider)
+            capabilities = ctx.session.client_capabilities
+            if (
+                capabilities is None
+                or capabilities.elicitation is None
+                or capabilities.elicitation.url is None
+            ):
+                return request.outcome("client_cannot_open_links", [])
+            message = f"Add your {provider} API key in Prefect Cloud, then come back."
+            elicitation_id = str(uuid.uuid4())
+            # The 2026-07-28 protocol has no server-to-client requests mid-call:
+            # the tool returns the ask, and the client calls it again with the
+            # answer and the request state.
+            if ctx.session.protocol_version in MODERN_PROTOCOL_VERSIONS:
+                return InputRequiredResult(
+                    input_requests={
+                        CONNECT_INPUT_KEY: ElicitRequest(
+                            params=ElicitRequestURLParams(
+                                message=message,
+                                url=request.add_url,
+                                elicitation_id=elicitation_id,
+                            )
                         )
-                    )
-                },
-                request_state=request.model_dump_json(),
+                    },
+                    request_state=request.model_dump_json(),
+                )
+            answer = await ctx.session.elicit_url(
+                message=message,
+                url=request.add_url,
+                elicitation_id=elicitation_id,
+                related_request_id=ctx.request_id,
             )
-        answer = await ctx.session.elicit_url(
-            message=message,
-            url=request.add_url,
-            elicitation_id=elicitation_id,
-            related_request_id=ctx.request_id,
-        )
-        return await find_new_connections(request, answer.action)
+        else:
+            request = ConnectRequest.model_validate_json(ctx.request_state)
+            answer = (ctx.input_responses or {}).get(CONNECT_INPUT_KEY)
+
+        if not isinstance(answer, ElicitResult) or answer.action != "accept":
+            return request.outcome("declined", [])
+        new = [
+            connection
+            for connection in await list_connections()
+            if connection.provider.type == request.provider
+            and connection.id not in request.known_connection_ids
+        ]
+        if not new:
+            return request.outcome("no_new_connection", [])
+        return request.outcome("connected", new)
 
     @tool(mcp, read_only=False)
     async def create_prefect_connection(name: str = "prefect") -> ProviderConnection:

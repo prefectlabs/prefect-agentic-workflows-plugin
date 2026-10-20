@@ -6,7 +6,13 @@ import httpx
 import pytest
 import respx
 from fastmcp import Client
-from fastmcp.client.elicitation import ElicitResult
+from fastmcp.client.elicitation import (
+    ElicitationHandler,
+    ElicitRequestParams,
+    ElicitResult,
+    RequestContext,
+)
+from mcp.types import ElicitRequestURLParams
 from support import ACCOUNT_ID, WORKSPACE_ID, error_text, request_body
 
 from prefect_agentic_workflows_mcp.server import build_server
@@ -144,10 +150,16 @@ def user_adds_anthropic_connection(cloud_api: respx.MockRouter) -> None:
 
 def browser_user(
     action: Literal["accept", "decline", "cancel"], opened_urls: list[str]
-) -> Any:
+) -> ElicitationHandler:
     """Return an elicitation handler that records each URL and answers `action`."""
 
-    async def handle(message: str, response_type: Any, params: Any, context: Any):
+    async def handle(
+        message: str,
+        response_type: type | None,
+        params: ElicitRequestParams,
+        context: RequestContext,
+    ) -> ElicitResult[dict[str, Any]]:
+        assert isinstance(params, ElicitRequestURLParams)
         opened_urls.append(params.url)
         return ElicitResult(action=action)
 
