@@ -6,18 +6,15 @@ from fastmcp import Client
 
 
 async def test_server_reports_its_name_and_alpha_version(mcp_client: Client[Any]):
-    initialize_result = mcp_client.initialize_result
-    assert initialize_result is not None
+    server_info = mcp_client.server_info
+    assert server_info is not None
 
-    assert initialize_result.serverInfo.name == "prefect-agentic-workflows"
-    assert initialize_result.serverInfo.version == "0.1.0a1"
+    assert server_info.name == "prefect-agentic-workflows"
+    assert server_info.version == "0.1.0a1"
 
 
 async def test_server_instructions_say_it_is_alpha(mcp_client: Client[Any]):
-    initialize_result = mcp_client.initialize_result
-    assert initialize_result is not None
-
-    assert "alpha" in (initialize_result.instructions or "")
+    assert "alpha" in (mcp_client.instructions or "")
 
 
 async def test_every_tool_is_annotated_and_marked_alpha(mcp_client: Client[Any]):
@@ -27,7 +24,9 @@ async def test_every_tool_is_annotated_and_marked_alpha(mcp_client: Client[Any])
     for tool in tools:
         annotations = tool.annotations
         assert annotations is not None, tool.name
-        assert annotations.readOnlyHint is not None, tool.name
-        assert annotations.destructiveHint is not None, tool.name
-        assert not (annotations.readOnlyHint and annotations.destructiveHint), tool.name
+        assert annotations.read_only_hint is not None, tool.name
+        assert annotations.destructive_hint is not None, tool.name
+        assert not (annotations.read_only_hint and annotations.destructive_hint), (
+            tool.name
+        )
         assert "alpha" in (tool.description or ""), tool.name

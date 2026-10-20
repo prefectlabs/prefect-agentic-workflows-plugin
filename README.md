@@ -338,6 +338,7 @@ your agent can ask before a tool writes.
 | `get_deployment` | Read one deployment's parameters and their schema |
 | `list_provider_connections`, `list_providers` | List the workspace's model provider connections, and each provider's models with a link to add a connection, for an agent node's `model` |
 | `create_prefect_connection` | Add a connection that runs Prefect Cloud's models, with no API key |
+| `connect_model_provider` | Have you add a connection to your own provider account in Prefect Cloud, and return it |
 | `get_workspace` | Show the workspace the server uses, with its Prefect Cloud UI address |
 
 ## Development
