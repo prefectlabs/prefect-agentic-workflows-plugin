@@ -154,19 +154,12 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
     async def connect_model_provider(
         provider: str, ctx: Context
     ) -> ConnectOutcome | InputRequiredResult:
-        """Have the user add a connection with their own key, and return it.
+        """Have the user add a connection with their own API key, and return it.
 
-        Call it when the user wants a provider account of their own, such as
-        `anthropic`. The user's client opens the provider's Prefect Cloud page,
-        where they enter the key, and the tool returns once they say they're
-        done. The key never passes through this conversation.
-
-        On `connected`, `connections` holds the connections the user added: use
-        the one, or ask which when there are several. On
-        `client_cannot_open_links`, send the user `add_url`; when they're done,
-        call `list_provider_connections` and use the connection of this
-        provider whose ID isn't in `known_connection_ids`. On `declined` or
-        `no_new_connection`, ask the user before calling this tool again.
+        The user enters the key on the provider's Prefect Cloud page, outside
+        this conversation. When several connections come back, ask which to
+        use. On `client_cannot_open_links`, send the user `add_url`; the new
+        connection is the one not in `known_connection_ids`.
         """
         if ctx.request_state is not None:
             request = ConnectRequest.model_validate_json(ctx.request_state)
@@ -201,10 +194,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         ):
             return request.outcome("client_cannot_open_links")
 
-        message = (
-            f"Add your {provider} connection in Prefect Cloud. Enter the key "
-            "on that page, not in this chat, then come back here."
-        )
+        message = f"Add your {provider} API key in Prefect Cloud, then come back here."
         elicitation_id = str(uuid.uuid4())
         # The 2026-07-28 protocol has no server-to-client requests mid-call: the
         # tool returns the ask, and the client calls it again with the answer.
@@ -234,8 +224,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         """Add a connection that runs models on Prefect Cloud's credentials.
 
         It needs no API key. Call it only after the user chooses Prefect's
-        models. A connection with the user's own key is added with
-        `connect_model_provider`, never with this tool.
+        models.
         """
         return ProviderConnection.model_validate(
             await api.call(
