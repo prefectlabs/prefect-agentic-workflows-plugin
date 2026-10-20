@@ -24,7 +24,7 @@ def connection(
     }
 
 
-async def test_list_provider_connections_returns_each_providers_type_and_models(
+async def test_list_provider_connections_returns_only_ids_names_types_and_models(
     mcp_client: Client[Any], cloud_api: respx.MockRouter
 ):
     cloud_api.get("/agentic/provider-connections").respond(
@@ -52,13 +52,13 @@ async def test_list_provider_connections_returns_each_providers_type_and_models(
             {
                 "id": PREFECT_CONNECTION_ID,
                 "name": "prefect",
-                "provider": "prefect",
-                "models": ["claude-haiku-5-5"],
+                "provider": {"type": "prefect"},
+                "models": [{"id": "claude-haiku-5-5"}],
             },
             {
                 "id": VERTEX_CONNECTION_ID,
                 "name": "team-vertex",
-                "provider": "vertex",
+                "provider": {"type": "vertex"},
                 "models": None,
             },
         ]
@@ -93,8 +93,8 @@ async def test_list_providers_returns_each_providers_model_ids(
 
     assert result.structured_content == {
         "providers": [
-            {"type": "anthropic", "models": ["claude-opus-5-5"]},
-            {"type": "prefect", "models": ["claude-haiku-5-5"]},
+            {"type": "anthropic", "models": [{"id": "claude-opus-5-5"}]},
+            {"type": "prefect", "models": [{"id": "claude-haiku-5-5"}]},
         ]
     }
 
@@ -115,7 +115,7 @@ async def test_create_prefect_connection_sends_a_prefect_provider(
     assert result.structured_content == {
         "id": PREFECT_CONNECTION_ID,
         "name": "prefect",
-        "provider": "prefect",
+        "provider": {"type": "prefect"},
         "models": None,
     }
 
