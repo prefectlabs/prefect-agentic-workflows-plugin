@@ -154,10 +154,10 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
     async def connect_model_provider(
         provider: str, ctx: Context
     ) -> ConnectOutcome | InputRequiredResult:
-        """Have the user add a connection with their own API key, and return it.
+        """Have the user add a connection to their own provider account.
 
-        The user enters the key on the provider's Prefect Cloud page, outside
-        this conversation. When several connections come back, ask which to
+        The user enters its credentials on the provider's Prefect Cloud page,
+        outside this conversation. When several connections come back, ask which to
         use. On `client_cannot_open_links`, send the user `add_url`; the new
         connection is the one not in `known_connection_ids`.
         """
@@ -170,7 +170,9 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                 or capabilities.elicitation.url is None
             ):
                 return request.outcome("client_cannot_open_links", [])
-            message = f"Add your {provider} API key in Prefect Cloud, then come back."
+            message = (
+                f"Add your {provider} connection in Prefect Cloud, then come back."
+            )
             elicitation_id = str(uuid.uuid4())
             # The 2026-07-28 protocol has no server-to-client requests mid-call:
             # the tool returns the ask, and the client calls it again with the
