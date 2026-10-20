@@ -7,7 +7,9 @@ import respx
 from fastmcp import Client
 from support import ACCOUNT_ID, WORKSPACE_API_URL, WORKSPACE_ID
 
-from prefect_agentic_workflows_mcp.tools.workspace import app_url
+STAGING_API_URL = (
+    f"https://api.stg.prefect.dev/api/accounts/{ACCOUNT_ID}/workspaces/{WORKSPACE_ID}"
+)
 
 
 async def test_get_workspace_returns_the_api_and_ui_addresses(
@@ -24,12 +26,28 @@ async def test_get_workspace_returns_the_api_and_ui_addresses(
     assert not cloud_api.calls
 
 
-@pytest.mark.parametrize(
-    "api_url",
-    [
-        "https://api.eu.prefect.cloud/api/accounts/a/workspaces/w",
-        "https://api.prefect.cloud/api/accounts/a/workspaces/w/extra",
-    ],
-)
-def test_an_unfamiliar_api_url_has_no_ui_address(api_url: str):
-    assert app_url(api_url) is None
+async def test_get_workspace_follows_a_staging_profile(
+    mcp_client: Client[Any], monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("PREFECT_API_URL", STAGING_API_URL)
+    monkeypatch.setenv("PREFECT_CLOUD_API_URL", "https://api.stg.prefect.dev/api")
+
+    result = await mcp_client.call_tool("get_workspace", {})
+
+    assert result.structured_content is not None
+    assert result.structured_content["app_url"] == (
+        f"https://app.stg.prefect.dev/account/{ACCOUNT_ID}/workspace/{WORKSPACE_ID}"
+    )
+
+
+async def test_get_workspace_uses_an_explicit_ui_url(
+    mcp_client: Client[Any], monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("PREFECT_UI_URL", "https://prefect.example.com/workspace")
+
+    result = await mcp_client.call_tool("get_workspace", {})
+
+    assert result.structured_content is not None
+    assert (
+        result.structured_content["app_url"] == "https://prefect.example.com/workspace"
+    )

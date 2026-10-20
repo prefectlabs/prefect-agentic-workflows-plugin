@@ -18,7 +18,8 @@ turns that rejection into a message that names the missing bucket.
 """
 
 import hashlib
-from typing import Any, Literal
+from dataclasses import dataclass
+from typing import Any, Literal, cast
 
 import httpx
 from fastmcp.exceptions import ToolError
@@ -162,6 +163,13 @@ def read_json(response: httpx.Response, method: HttpMethod, path: str) -> Any:
         ) from exc
 
 
+@dataclass(frozen=True)
+class Profile:
+    api_url: str
+    api_key: str
+    ui_url: str
+
+
 class WorkspaceApi:
     """Sends requests to the Cloud workspace in the active Prefect profile.
 
@@ -192,7 +200,8 @@ class WorkspaceApi:
         if not path.startswith("/"):
             raise ValueError("Workspace API paths must start with '/'.")
 
-        api_url, api_key = self._read_profile()
+        profile = self._read_profile()
+        api_url, api_key = profile.api_url, profile.api_key
         async with httpx.AsyncClient(
             base_url=api_url,
             headers={"Authorization": f"Bearer {api_key}"},
@@ -239,10 +248,18 @@ class WorkspaceApi:
         Raises `ToolError` with a fix-it message when the settings have no
         Cloud workspace URL or no API key.
         """
-        api_url, _ = self._read_profile()
-        return api_url
+        return self._read_profile().api_url
 
-    def _read_profile(self) -> tuple[str, str]:
+    def current_ui_url(self) -> str:
+        """Return the workspace's page in the Prefect Cloud UI.
+
+        Prefect works it out from the API URL, or uses `PREFECT_UI_URL` when
+        that is set. Raises `ToolError` with a fix-it message when the settings
+        have no Cloud workspace URL or no API key.
+        """
+        return self._read_profile().ui_url
+
+    def _read_profile(self) -> Profile:
         # Load settings fresh on every call. Prefect's current-settings context
         # is fixed when the process starts, so it would miss a user switching
         # profiles or logging in to another workspace while the server runs.
@@ -254,7 +271,13 @@ class WorkspaceApi:
             raise ToolError(NOT_CLOUD_MESSAGE.format(api_url=api_url) + OVERRIDE_NOTE)
         if settings.api.key is None or not settings.api.key.get_secret_value():
             raise ToolError(NO_API_KEY_MESSAGE + OVERRIDE_NOTE)
-        return api_url, settings.api.key.get_secret_value()
+        return Profile(
+            api_url=api_url,
+            api_key=settings.api.key.get_secret_value(),
+            # SAFETY: Prefect fills `ui_url` from the API URL whenever it isn't
+            # set, and the API URL is set here.
+            ui_url=cast("str", settings.ui_url),
+        )
 
     async def _preflight(self, client: httpx.AsyncClient, api_url: str) -> None:
         # Cloud answers 404 on every execution-plan route when the account

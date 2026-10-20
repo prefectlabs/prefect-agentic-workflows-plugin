@@ -9,6 +9,7 @@ Constants and payload builders are in `support.py`.
 """
 
 from collections.abc import AsyncIterator, Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -20,12 +21,16 @@ from prefect_agentic_workflows_mcp.server import build_server
 
 
 @pytest.fixture(autouse=True)
-def cloud_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+def cloud_profile(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Point the Prefect settings at a fake Cloud workspace.
 
     The server loads settings fresh on each call, so tests set environment
-    variables, which take precedence over the developer's profile.
+    variables and an empty profiles file. A developer's profile can't leak in,
+    such as a staging `PREFECT_CLOUD_API_URL` that changes the UI address.
     """
+    monkeypatch.setenv("PREFECT_PROFILES_PATH", str(tmp_path / "profiles.toml"))
+    monkeypatch.delenv("PREFECT_CLOUD_API_URL", raising=False)
+    monkeypatch.delenv("PREFECT_UI_URL", raising=False)
     monkeypatch.setenv("PREFECT_API_URL", WORKSPACE_API_URL)
     monkeypatch.setenv("PREFECT_API_KEY", API_KEY)
 

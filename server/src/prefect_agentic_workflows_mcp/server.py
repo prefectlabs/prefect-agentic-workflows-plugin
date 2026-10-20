@@ -20,6 +20,9 @@ The tools use the Prefect Cloud workspace in the user's active Prefect profile.
 Execution plans are only available in Prefect Cloud, and the account needs the
 `execution-plans` feature. When a tool returns an error that explains how to fix
 the profile or the workspace, relay that error to the user.
+
+When `list_provider_connections` returns none, ask the user which model to use;
+Prefect's models (`create_prefect_connection`) are the easiest start.
 """
 
 

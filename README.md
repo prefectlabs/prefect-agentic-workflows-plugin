@@ -336,6 +336,8 @@ your agent can ask before a tool writes.
 | `list_secret_blocks` | List Secret block names and IDs, never their values |
 | `list_deployments` | List deployment names and IDs, for Deployment nodes |
 | `get_deployment` | Read one deployment's parameters and their schema |
+| `list_provider_connections`, `list_providers` | List the workspace's model provider connections, and each provider's models with a link to add a connection, for an agent node's `model` |
+| `create_prefect_connection` | Add a connection that runs Prefect Cloud's models, with no API key |
 | `get_workspace` | Show the workspace the server uses, with its Prefect Cloud UI address |
 
 ## Development
