@@ -72,6 +72,30 @@ def version_response(version_id: str = VERSION_ID) -> dict[str, Any]:
     }
 
 
+def version_summary(version_id: str = VERSION_ID) -> dict[str, Any]:
+    """Return a version as the tools return it, without the plan document."""
+    version = version_response(version_id)
+    return {
+        key: value
+        for key, value in version.items()
+        if key not in ("plan", "layout", "output_schemas")
+    }
+
+
+def active_state_summary(version_id: str | None = VERSION_ID) -> dict[str, Any]:
+    """Return a flow's active state as the tools return it, without the plan."""
+    if version_id is None:
+        return {"active_version": None}
+    state = active_state_response(version_id)
+    return {
+        "active_version": {
+            key: value
+            for key, value in state["active_version"].items()
+            if key not in ("plan", "layout", "output_schemas")
+        }
+    }
+
+
 def active_state_response(version_id: str | None = VERSION_ID) -> dict[str, Any]:
     """Return the active-plan state Cloud returns for a flow."""
     if version_id is None:
