@@ -14,9 +14,11 @@ from support import (
     VERSION_ID,
     VERSIONS_PATH,
     active_state_response,
+    active_state_summary,
     error_text,
     request_body,
     version_response,
+    version_summary,
 )
 
 ACTIVATE_PATH = f"{VERSIONS_PATH}/{VERSION_ID}/activate"
@@ -27,7 +29,7 @@ def publish_result(**overrides: Any) -> dict[str, Any]:
         "published": True,
         "activated": False,
         "version_id": VERSION_ID,
-        "version": version_response(),
+        "version": version_summary(),
         "active_state": None,
         "errors": [],
         "activation_error": None,
@@ -59,7 +61,7 @@ async def test_publish_plan_validates_creates_and_activates_a_version(
     result = await publish(mcp_client)
 
     assert result.structured_content == publish_result(
-        activated=True, active_state=active_state_response()
+        activated=True, active_state=active_state_summary()
     )
     assert request_body(validate.calls.last.request) == {"plan": PLAN}
     assert request_body(create.calls.last.request) == {"plan": PLAN}
@@ -230,4 +232,19 @@ async def test_activate_plan_version_reports_an_activation_whose_connection_fail
         "activate_plan_version", {"flow_id": FLOW_ID, "version_id": VERSION_ID}
     )
 
-    assert result.structured_content == active_state_response()
+    assert result.structured_content == active_state_summary()
+
+
+@pytest.mark.usefixtures("validate")
+async def test_publish_plan_leaves_the_plan_out_of_its_result(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    cloud_api.post(VERSIONS_PATH).respond(201, json=version_response())
+    cloud_api.post(ACTIVATE_PATH).respond(200, json=active_state_response())
+
+    result = await publish(mcp_client)
+
+    content = result.structured_content
+    assert content is not None
+    assert "plan" not in content["version"]
+    assert "plan" not in content["active_state"]["active_version"]

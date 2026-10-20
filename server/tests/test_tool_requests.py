@@ -25,6 +25,7 @@ from support import (
     VERSIONS_PATH,
     WORKSPACE_API_PATH,
     active_state_response,
+    active_state_summary,
     flow_run_response,
     request_body,
     run_observation,
@@ -107,7 +108,7 @@ ROWS = [
         {"flow_id": FLOW_ID, "version_id": OLDER_VERSION_ID},
         ("POST", f"{VERSIONS_PATH}/{OLDER_VERSION_ID}/activate", {}, None),
         (200, active_state_response(OLDER_VERSION_ID)),
-        active_state_response(OLDER_VERSION_ID),
+        active_state_summary(OLDER_VERSION_ID),
         id="activate_plan_version",
     ),
     pytest.param(
