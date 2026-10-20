@@ -20,6 +20,13 @@ The tools use the Prefect Cloud workspace in the user's active Prefect profile.
 Execution plans are only available in Prefect Cloud, and the account needs the
 `execution-plans` feature. When a tool returns an error that explains how to fix
 the profile or the workspace, relay that error to the user.
+
+An agent node runs Prefect Cloud's default model unless it names one. When the
+user names a model, or the workspace has no provider connections, use
+`list_provider_connections` and `list_providers` to choose one. Never ask the
+user for a connection ID or an API key. When no connection fits, offer
+Prefect's models through `create_prefect_connection`, or the provider's
+`add_url` for the user's own key.
 """
 
 
