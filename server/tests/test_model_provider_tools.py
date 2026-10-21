@@ -13,7 +13,7 @@ from fastmcp.client.elicitation import (
     RequestContext,
 )
 from mcp.types import ElicitRequestURLParams
-from support import ACCOUNT_ID, WORKSPACE_ID, error_text, request_body
+from support import ACCOUNT_ID, WORKSPACE_ID, error_text
 
 from prefect_agentic_workflows_mcp.server import build_server
 
@@ -93,44 +93,10 @@ async def test_list_providers_returns_each_providers_models_and_add_link(
             {
                 "type": "prefect",
                 "models": [{"id": "claude-haiku-5-5"}],
-                "add_url": f"{APP_URL}/agentic-model-providers?add=prefect",
+                "add_url": None,
             },
         ]
     }
-
-
-async def test_create_prefect_connection_sends_a_prefect_provider(
-    mcp_client: Client[Any], cloud_api: respx.MockRouter
-):
-    route = cloud_api.post("/agentic/provider-connections").respond(
-        201, json=connection(PREFECT_CONNECTION_ID, "prefect", {"type": "prefect"})
-    )
-
-    result = await mcp_client.call_tool("create_prefect_connection", {})
-
-    assert request_body(route.calls.last.request) == {
-        "name": "prefect",
-        "provider": {"type": "prefect"},
-    }
-    assert result.structured_content == {
-        "id": PREFECT_CONNECTION_ID,
-        "name": "prefect",
-        "provider": {"type": "prefect"},
-    }
-
-
-async def test_create_prefect_connection_relays_a_taken_name(
-    mcp_client: Client[Any], cloud_api: respx.MockRouter
-):
-    cloud_api.post("/agentic/provider-connections").respond(
-        409, json={"detail": "The workspace already has a connection named 'prefect'."}
-    )
-
-    result = await mcp_client.call_tool(
-        "create_prefect_connection", {}, raise_on_error=False
-    )
-
-    assert "already has a connection named 'prefect'" in error_text(result)
 
 
 def user_adds_anthropic_connection(cloud_api: respx.MockRouter) -> None:
@@ -270,4 +236,17 @@ async def test_connect_model_provider_rejects_an_unknown_provider(
 
     assert error_text(result) == (
         "Prefect Cloud has no model provider `claude`. Use one of anthropic."
+    )
+
+
+async def test_connect_model_provider_points_prefect_at_the_existing_connection(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    result = await mcp_client.call_tool(
+        "connect_model_provider", {"provider": "prefect"}, raise_on_error=False
+    )
+
+    assert error_text(result) == (
+        "The workspace already has a `prefect` connection; find it with "
+        "`list_provider_connections`."
     )

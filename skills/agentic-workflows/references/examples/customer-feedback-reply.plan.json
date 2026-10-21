@@ -17,6 +17,7 @@
       "kind": "AgentNode",
       "label": "Sort the feedback and draft a reply",
       "objective": "Read the customer feedback in the `feedback` input. Sort it into one category: `bug` when something doesn't work as expected, `feature_request` when the customer asks for something new, `praise` when the customer is happy, or `complaint` when the customer is unhappy for any other reason. Then write a reply to the customer in under 150 words. Thank them, answer what they raised, and make no promise about dates or refunds. Select the `drafted` output with `category` and `draft`, the reply text.",
+      "model": {"connection_id": "00000000-0000-0000-0000-000000000000", "id": "claude-opus-5-5"},
       "inputs": {
         "feedback": {
           "schema": {"type": "string"},
@@ -112,6 +113,7 @@
       "kind": "AgentNode",
       "label": "Finish the reply",
       "objective": "Read the manager's answer in the `review` input and the draft in the `draft` input. When `review.decision` is `approved`, select the `approved_reply` output with the value of `draft.draft`, copied word for word. When `review.decision` is `rejected`, rewrite the draft once so it follows the manager's `review.notes`. Keep what the draft says about the customer's feedback, keep it under 150 words, and make no promise about dates or refunds. When the notes are empty, make the reply clearer and warmer. Select the `revised_reply` output with the new reply text.",
+      "model": {"connection_id": "00000000-0000-0000-0000-000000000000", "id": "claude-opus-5-5"},
       "inputs": {
         "draft": {
           "schema": {

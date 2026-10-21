@@ -27,7 +27,7 @@ For a join after a fan-out, set `orchestration.evaluate_when` to `all_reachable_
 Last verified: 2026-10-16, against the Prefect Cloud API. When an error from `validate_plan` or `publish_plan` disagrees with this list, follow the error and tell the user this file may be out of date.
 
 - Plans run only in Prefect Cloud. Versions are immutable.
-- Without `model`, an agent node runs Prefect Cloud's default model. `model` selects a model through one of the workspace's provider connections, with an optional `effort`; [Models](../SKILL.md#models) says how to pick one.
+- Set `model` on every agent node: a model through one of the workspace's provider connections, with an optional `effort`. [Models](../SKILL.md#models) says how to pick one.
 - An agent node can run shell commands and read and write files while it works, but nothing it writes carries over to later nodes; pass results on through outputs. `runtime.env` sets environment variables for the agent, and a name that looks like a credential must be a Secret block reference.
 - An agent doesn't know the current date. Pass dates as plan inputs, or tell the agent to run `date -u` before any date math. Otherwise it guesses a date and reads the wrong time window.
 - Don't write a JSON `null` anywhere in a plan, such as an `on_expiry.value`. Use `{}` or `""`, with an output schema of the matching type.

@@ -45,7 +45,7 @@ class CatalogProvider(BaseModel):
 
 
 class Provider(CatalogProvider):
-    add_url: str
+    add_url: str | None
 
 
 class ProviderList(BaseModel):
@@ -101,7 +101,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         """List the workspace's model provider connections.
 
         Returns each connection's `id`, `name`, and `provider` type. An agent
-        node runs a specific model with
+        node sets its model with
         `"model": {"connection_id": "<id>", "id": "<model id>"}`, using a model
         its provider offers in `list_providers`. Never ask the user for a
         connection ID.
@@ -116,7 +116,8 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         its model id, and to tell whether a provider the workspace has no
         connection for offers a model. A `prefect` connection runs only the
         models listed under `prefect`. `add_url` is the Prefect Cloud page
-        where the user adds a connection for that provider.
+        where the user adds a connection for that provider; `prefect` has none,
+        because every workspace already has its connection.
         """
         catalog = TypeAdapter(list[CatalogProvider]).validate_python(
             await api.call("GET", PROVIDERS_PATH)
@@ -126,13 +127,20 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                 Provider(
                     type=provider.type,
                     models=provider.models,
-                    add_url=add_url(provider.type),
+                    add_url=None
+                    if provider.type == "prefect"
+                    else add_url(provider.type),
                 )
                 for provider in catalog
             ]
         )
 
     async def new_connect_request(provider: str) -> ConnectRequest:
+        if provider == "prefect":
+            raise ToolError(
+                "The workspace already has a `prefect` connection; find it with "
+                "`list_provider_connections`."
+            )
         catalog = TypeAdapter(list[CatalogProvider]).validate_python(
             await api.call("GET", PROVIDERS_PATH)
         )
@@ -211,18 +219,3 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         if not new:
             return request.outcome("no_new_connection", [])
         return request.outcome("connected", new)
-
-    @tool(mcp, read_only=False)
-    async def create_prefect_connection(name: str = "prefect") -> ProviderConnection:
-        """Add a connection that runs models on Prefect Cloud's credentials.
-
-        It needs no API key. Call it only after the user chooses Prefect's
-        models.
-        """
-        return ProviderConnection.model_validate(
-            await api.call(
-                "POST",
-                PROVIDER_CONNECTIONS_PATH,
-                json={"name": name, "provider": {"type": "prefect"}},
-            )
-        )
