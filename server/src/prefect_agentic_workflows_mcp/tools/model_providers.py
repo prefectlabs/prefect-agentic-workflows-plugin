@@ -211,18 +211,3 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         if not new:
             return request.outcome("no_new_connection", [])
         return request.outcome("connected", new)
-
-    @tool(mcp, read_only=False)
-    async def create_prefect_connection(name: str = "prefect") -> ProviderConnection:
-        """Add a connection that runs models on Prefect Cloud's credentials.
-
-        It needs no API key. Call it only after the user chooses Prefect's
-        models.
-        """
-        return ProviderConnection.model_validate(
-            await api.call(
-                "POST",
-                PROVIDER_CONNECTIONS_PATH,
-                json={"name": name, "provider": {"type": "prefect"}},
-            )
-        )
