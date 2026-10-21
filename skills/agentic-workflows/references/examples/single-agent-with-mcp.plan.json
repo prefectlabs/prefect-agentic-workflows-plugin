@@ -16,7 +16,7 @@
       "kind": "AgentNode",
       "label": "Summarize open bugs",
       "objective": "Use the GitHub tools to list the open issues labeled `bug` in the repository given in the `repository` input. Read at most the 20 most recently updated issues. Select the `summary` output with `issue_count`, the number of open bug issues, and `summary`, three to five sentences on the common themes and the issues that need attention first.",
-      "model": {"connection_id": "00000000-0000-0000-0000-000000000000", "id": "gpt-6-luna"},
+      "model": {"connection_id": "00000000-0000-0000-0000-000000000000", "id": "claude-opus-5-5"},
       "mcp": {
         "mcpServers": {
           "github": {
