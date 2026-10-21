@@ -237,3 +237,16 @@ async def test_connect_model_provider_rejects_an_unknown_provider(
     assert error_text(result) == (
         "Prefect Cloud has no model provider `claude`. Use one of anthropic."
     )
+
+
+async def test_connect_model_provider_points_prefect_at_the_existing_connection(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    result = await mcp_client.call_tool(
+        "connect_model_provider", {"provider": "prefect"}, raise_on_error=False
+    )
+
+    assert error_text(result) == (
+        "The workspace already has a `prefect` connection; find it with "
+        "`list_provider_connections`."
+    )

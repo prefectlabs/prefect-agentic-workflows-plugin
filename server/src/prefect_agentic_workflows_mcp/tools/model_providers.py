@@ -133,6 +133,11 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         )
 
     async def new_connect_request(provider: str) -> ConnectRequest:
+        if provider == "prefect":
+            raise ToolError(
+                "The workspace already has a `prefect` connection; find it with "
+                "`list_provider_connections`."
+            )
         catalog = TypeAdapter(list[CatalogProvider]).validate_python(
             await api.call("GET", PROVIDERS_PATH)
         )
