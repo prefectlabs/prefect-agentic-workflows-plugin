@@ -21,9 +21,9 @@ Execution plans are only available in Prefect Cloud, and the account needs the
 `execution-plans` feature. When a tool returns an error that explains how to fix
 the profile or the workspace, relay that error to the user.
 
-Every workspace has a `prefect` provider connection, which runs Prefect's models
-with no API key. When it is the only connection, ask the user which model to
-use; Prefect's models are the easiest start.
+Set `model` on every agent node. Every workspace has a `prefect` provider
+connection, which runs Prefect's models with no API key. When the user hasn't
+picked a model, ask which to use; Prefect's models are the easiest start.
 """
 
 

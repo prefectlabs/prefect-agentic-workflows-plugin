@@ -101,7 +101,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         """List the workspace's model provider connections.
 
         Returns each connection's `id`, `name`, and `provider` type. An agent
-        node runs a specific model with
+        node sets its model with
         `"model": {"connection_id": "<id>", "id": "<model id>"}`, using a model
         its provider offers in `list_providers`. Never ask the user for a
         connection ID.
