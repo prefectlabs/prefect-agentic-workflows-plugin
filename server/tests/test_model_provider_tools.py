@@ -93,7 +93,7 @@ async def test_list_providers_returns_each_providers_models_and_add_link(
             {
                 "type": "prefect",
                 "models": [{"id": "claude-haiku-5-5"}],
-                "add_url": f"{APP_URL}/agentic-model-providers?add=prefect",
+                "add_url": None,
             },
         ]
     }

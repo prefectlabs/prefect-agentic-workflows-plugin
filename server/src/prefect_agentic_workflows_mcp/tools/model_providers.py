@@ -45,7 +45,7 @@ class CatalogProvider(BaseModel):
 
 
 class Provider(CatalogProvider):
-    add_url: str
+    add_url: str | None
 
 
 class ProviderList(BaseModel):
@@ -116,7 +116,8 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         its model id, and to tell whether a provider the workspace has no
         connection for offers a model. A `prefect` connection runs only the
         models listed under `prefect`. `add_url` is the Prefect Cloud page
-        where the user adds a connection for that provider.
+        where the user adds a connection for that provider; `prefect` has none,
+        because every workspace already has its connection.
         """
         catalog = TypeAdapter(list[CatalogProvider]).validate_python(
             await api.call("GET", PROVIDERS_PATH)
@@ -126,7 +127,9 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                 Provider(
                     type=provider.type,
                     models=provider.models,
-                    add_url=add_url(provider.type),
+                    add_url=None
+                    if provider.type == "prefect"
+                    else add_url(provider.type),
                 )
                 for provider in catalog
             ]
