@@ -16,6 +16,48 @@ Run it from the GitHub repository with `uvx`:
 uvx --from "git+https://github.com/prefectlabs/prefect-agentic-workflows-plugin#subdirectory=server" prefect-agentic-workflows-mcp
 ```
 
+## Credentials in HTTP headers
+
+When the server is hosted over HTTP, each client can send its own workspace credentials
+in two headers, and the server uses them instead of its Prefect profile for that request:
+
+- `X-Prefect-Api-Url`: the workspace API URL, such as
+  `https://api.prefect.cloud/api/accounts/<account_id>/workspaces/<workspace_id>`
+- `X-Prefect-Api-Key`: a Prefect Cloud API key for that workspace
+
+Send both headers or neither. A request with only one of them fails, so the
+server's own API key is never sent to a URL that a client chose. Without the
+headers, and always over stdio, the server uses its Prefect profile.
+
+The header URL must use HTTPS on a trusted host, so a client can't make the
+server send requests to `localhost` or other hosts on its network. Only
+`api.prefect.cloud` is trusted by default. To trust other hosts, set
+`PREFECT_HEADER_API_HOSTS` to a comma-separated list of hostnames. The list
+replaces the default, so include `api.prefect.cloud` if you still need it:
+
+```sh
+PREFECT_HEADER_API_HOSTS=api.prefect.cloud,api2.prefect.cloud
+```
+
+To serve over HTTP, run the server with the FastMCP CLI from this directory:
+
+```sh
+uv run fastmcp run src/prefect_agentic_workflows_mcp/server.py:build_server --transport http
+```
+
+Then add it to Claude Code with the headers:
+
+```sh
+claude mcp add-json prefect-agentic-workflows '{
+  "type": "http",
+  "url": "https://your-server.example.com/mcp",
+  "headers": {
+    "X-Prefect-Api-Url": "https://api.prefect.cloud/api/accounts/<account_id>/workspaces/<workspace_id>",
+    "X-Prefect-Api-Key": "<your-api-key>"
+  }
+}'
+```
+
 ## Development
 
 Run these commands from this directory.
