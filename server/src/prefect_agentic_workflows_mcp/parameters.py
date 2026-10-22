@@ -3,9 +3,22 @@
 import json
 from pathlib import Path
 from typing import Annotated, Any
+from uuid import UUID
 
 from fastmcp.exceptions import ToolError
 from pydantic import Field
+
+WorkspaceId = Annotated[
+    UUID | None,
+    Field(
+        description=(
+            "A workspace UUID from your Prefect Cloud OAuth consent grant. "
+            "Omit when the grant includes exactly one workspace. With several, "
+            "call get_workspace, ask which workspace to use, and pass its UUID "
+            "to each tool. Requires OAuth authentication."
+        )
+    ),
+]
 
 PlanDocument = Annotated[
     dict[str, Any] | None,

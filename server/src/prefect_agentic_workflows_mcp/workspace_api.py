@@ -1,42 +1,31 @@
-"""Requests to the Prefect Cloud workspace in the active Prefect profile.
+"""Authenticated requests to a Prefect Cloud workspace.
 
-Every tool sends its requests through `WorkspaceApi`. It reads the API URL and
-API key from the active profile on each call, so a missing or wrong profile
-only fails the tool call and never stops the server from starting.
+Every tool uses `WorkspaceApi`. In OAuth mode, requests use the validated
+user token and a workspace in its consent grant. With OAuth disabled, paired
+HTTP credentials override the active Prefect profile. A header URL requires
+HTTPS and a host in `PREFECT_HEADER_API_HOSTS`.
 
-When the server runs over HTTP, a client can send its own credentials in the
-`X-Prefect-Api-Url` and `X-Prefect-Api-Key` headers, and they are used instead
-of the profile for that request. The headers are used as a pair, so the
-profile's API key is never sent to a URL that a client chose. A client can be
-anyone who reaches the server, so a header URL must use HTTPS on a host in
-`PREFECT_HEADER_API_HOSTS`. Otherwise a client could make the server send
-requests into the network it runs in.
-
-Before the first request, `WorkspaceApi` runs a preflight check. The check
-confirms that the profile points at a Cloud workspace and that the workspace
-can use execution plans, and it turns each known failure into a message that
-says how to fix it. A passing check is cached for the API URL and key it ran
-with, so a new key gets checked too. The cache keeps the most recently used
-`VERIFIED_CACHE_SIZE` pairs, so clients of a shared server can't grow it
-without limit.
-A failing check is not cached, so the next tool call runs it again after the
-user fixes the problem.
-
-The preflight check can't detect a workspace with no object storage bucket,
-because Cloud only rejects requests that write to the bucket. `read_json`
-turns that rejection into a message that names the missing bucket.
+Requests require a Cloud workspace with execution plans enabled. Known access
+failures include instructions for fixing the credentials or workspace.
+OAuth failures never fall back to the server's profile or API key.
 """
 
 import hashlib
 import os
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal, cast
+from uuid import UUID
 
 import httpx
 from fastmcp.exceptions import ToolError
-from fastmcp.server.dependencies import get_http_headers
+from fastmcp.server.dependencies import get_access_token, get_http_headers
 from prefect.settings import Settings
+
+from prefect_agentic_workflows_mcp.cloud_oauth import (
+    CloudOAuthSettings,
+    resolve_authorized_workspace,
+)
 
 HttpMethod = Literal["GET", "POST", "PATCH", "DELETE"]
 
@@ -184,12 +173,28 @@ HEADER_MESSAGES = AccessMessages(
 )
 
 
+OAUTH_MESSAGES = AccessMessages(
+    feature_not_enabled=(
+        "Prefect Cloud returned 404 for the execution-plan API at {api_url}. "
+        "Check that the workspace exists and its account has execution plans enabled."
+    ),
+    unauthorized=(
+        "Prefect Cloud rejected the OAuth token (HTTP 401). "
+        "Reconnect to this server and authorize your workspaces again."
+    ),
+    forbidden=(
+        "Prefect Cloud refused access to this workspace (HTTP 403). "
+        "Check your workspace permissions or reconnect to authorize it again."
+    ),
+)
+
+
 @dataclass(frozen=True)
 class Credentials:
-    """The workspace URLs and API key for one request."""
+    """The workspace URLs and API key or OAuth token for one request."""
 
     api_url: str
-    api_key: str
+    api_key: str = field(repr=False)
     ui_url: str
     messages: AccessMessages
 
@@ -293,15 +298,15 @@ def read_json(response: httpx.Response, method: HttpMethod, path: str) -> Any:
 
 
 class WorkspaceApi:
-    """Sends requests to the Cloud workspace in the request's headers or in
-    the active Prefect profile.
+    """Send requests using OAuth, paired HTTP credentials, or a Prefect profile.
 
-    Requests go through a plain `httpx` client. The `prefect` client retries
-    429 and 503 responses on its own, which would hide the `Retry-After`
-    header from tools that pass it on to the agent.
+    OAuth requests accept a workspace UUID from the user's consent grant.
+    With OAuth disabled, the header credentials or active profile choose the
+    workspace, and an explicit workspace UUID is rejected.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, oauth_settings: CloudOAuthSettings | None = None) -> None:
+        self.oauth_settings = oauth_settings or CloudOAuthSettings()
         # Over HTTP, clients can send different credentials, so keep the
         # recent pairs that passed rather than only the last one. The order is
         # least recently used first.
@@ -315,19 +320,22 @@ class WorkspaceApi:
         json: Any = None,
         params: dict[str, Any] | None = None,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
+        workspace_id: UUID | None = None,
     ) -> httpx.Response:
         """Send a request to a workspace-relative path and return the response.
 
-        The response is returned for every HTTP status, so a caller can read
-        headers such as `Retry-After`. Use `call`, or pass the response to
-        `read_json`, to raise on error statuses.
-        Raises `ToolError` with a fix-it message when the preflight check fails.
+        Responses retain status codes and headers such as `Retry-After`.
+        Use `call`, or pass the response to `read_json`, to raise on error
+        statuses. Raises `ToolError` for invalid credentials, failed preflight
+        checks, or rejected OAuth authorization.
         """
         if not path.startswith("/"):
             raise ValueError("Workspace API paths must start with '/'.")
 
-        credentials = self._read_credentials()
+        credentials = await self._read_credentials(workspace_id)
         api_url, api_key = credentials.api_url, credentials.api_key
+        # The Prefect client retries 429/503 responses, hiding retry hints
+        # that these tools return to the agent.
         async with httpx.AsyncClient(
             base_url=api_url,
             headers={"Authorization": f"Bearer {api_key}"},
@@ -348,7 +356,13 @@ class WorkspaceApi:
                 if len(self._verified) > VERIFIED_CACHE_SIZE:
                     self._verified.popitem(last=False)
             try:
-                return await client.request(method, path, json=json, params=params)
+                response = await client.request(method, path, json=json, params=params)
+                if self.oauth_settings.enabled:
+                    if response.status_code == 401:
+                        raise ToolError(credentials.messages.unauthorized)
+                    if response.status_code == 403:
+                        raise ToolError(credentials.messages.forbidden)
+                return response
             except httpx.TimeoutException as exc:
                 raise RequestTimedOutError(
                     UNREACHABLE_MESSAGE.format(api_url=api_url, error=exc)
@@ -366,6 +380,7 @@ class WorkspaceApi:
         json: Any = None,
         params: dict[str, Any] | None = None,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
+        workspace_id: UUID | None = None,
     ) -> Any:
         """Send a request and return the JSON body.
 
@@ -373,30 +388,46 @@ class WorkspaceApi:
         or higher. Returns None when the response has no body.
         """
         response = await self.request(
-            method, path, json=json, params=params, timeout=timeout
+            method,
+            path,
+            json=json,
+            params=params,
+            timeout=timeout,
+            workspace_id=workspace_id,
         )
         return read_json(response, method, path)
 
-    def current_api_url(self) -> str:
-        """Return the workspace API URL from the request's headers or the
-        current Prefect settings.
+    async def current_api_url(self, workspace_id: UUID | None = None) -> str:
+        """Return the authorized workspace API URL for this request."""
+        return (await self._read_credentials(workspace_id)).api_url
 
-        Raises `ToolError` with a fix-it message when they have no Cloud
-        workspace URL or no API key.
-        """
-        return self._read_credentials().api_url
+    async def current_ui_url(self, workspace_id: UUID | None = None) -> str:
+        """Return the authorized workspace's page in the Prefect Cloud UI."""
+        return (await self._read_credentials(workspace_id)).ui_url
 
-    def current_ui_url(self) -> str:
-        """Return the workspace's page in the Prefect Cloud UI.
-
-        For a profile, Prefect works it out from the API URL, or uses
-        `PREFECT_UI_URL` when that is set. For headers, it is worked out from
-        the `X-Prefect-Api-Url` header. Raises `ToolError` with a fix-it
-        message when there is no Cloud workspace URL or no API key.
-        """
-        return self._read_credentials().ui_url
-
-    def _read_credentials(self) -> Credentials:
+    async def _read_credentials(self, workspace_id: UUID | None = None) -> Credentials:
+        if self.oauth_settings.enabled:
+            token = get_access_token()
+            if token is None:
+                raise ToolError(
+                    "A validated Prefect Cloud OAuth token is required. "
+                    "Reconnect to this server."
+                )
+            workspace = await resolve_authorized_workspace(
+                self.oauth_settings, workspace_id
+            )
+            api_url = (
+                f"{self.oauth_settings.api_base_url}/api/accounts/"
+                f"{workspace.account_id}/workspaces/{workspace.workspace_id}"
+            )
+            return Credentials(
+                api_url=api_url,
+                api_key=token.token,
+                ui_url=header_ui_url(api_url),
+                messages=OAUTH_MESSAGES,
+            )
+        if workspace_id is not None:
+            raise ToolError("workspace_id requires Prefect Cloud OAuth authentication.")
         # Outside an HTTP request, such as over stdio, there are no headers.
         headers = get_http_headers()
         api_url = headers.get(API_URL_HEADER.lower())

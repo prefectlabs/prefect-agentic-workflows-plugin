@@ -14,6 +14,7 @@ from mcp.types import (
 from mcp_types.version import MODERN_PROTOCOL_VERSIONS
 from pydantic import BaseModel, TypeAdapter
 
+from prefect_agentic_workflows_mcp.parameters import WorkspaceId
 from prefect_agentic_workflows_mcp.tools import tool
 from prefect_agentic_workflows_mcp.workspace_api import WorkspaceApi
 
@@ -88,16 +89,20 @@ CONNECT_INPUT_KEY = "add_connection"
 def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
     """Add the model provider tools to `mcp`."""
 
-    async def list_connections() -> list[ProviderConnection]:
+    async def list_connections(
+        workspace_id: WorkspaceId = None,
+    ) -> list[ProviderConnection]:
         return TypeAdapter(list[ProviderConnection]).validate_python(
-            await api.call("GET", PROVIDER_CONNECTIONS_PATH)
+            await api.call("GET", PROVIDER_CONNECTIONS_PATH, workspace_id=workspace_id)
         )
 
-    def add_url(provider_type: str) -> str:
-        return f"{api.current_ui_url()}/agentic-model-providers?add={provider_type}"
+    def add_url(provider_type: str, ui_url: str) -> str:
+        return f"{ui_url}/agentic-model-providers?add={provider_type}"
 
     @tool(mcp, read_only=True)
-    async def list_provider_connections() -> ProviderConnectionList:
+    async def list_provider_connections(
+        workspace_id: WorkspaceId = None,
+    ) -> ProviderConnectionList:
         """List the workspace's model provider connections.
 
         Returns each connection's `id`, `name`, and `provider` type. An agent
@@ -106,10 +111,12 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         its provider offers in `list_providers`. Never ask the user for a
         connection ID.
         """
-        return ProviderConnectionList(provider_connections=await list_connections())
+        return ProviderConnectionList(
+            provider_connections=await list_connections(workspace_id=workspace_id)
+        )
 
     @tool(mcp, read_only=True)
-    async def list_providers() -> ProviderList:
+    async def list_providers(workspace_id: WorkspaceId = None) -> ProviderList:
         """List the provider types a connection can use and their known models.
 
         Use it to turn a model name the user gives, such as "Haiku 5.5", into
@@ -120,8 +127,9 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         because every workspace already has its connection.
         """
         catalog = TypeAdapter(list[CatalogProvider]).validate_python(
-            await api.call("GET", PROVIDERS_PATH)
+            await api.call("GET", PROVIDERS_PATH, workspace_id=workspace_id)
         )
+        ui_url = await api.current_ui_url(workspace_id=workspace_id)
         return ProviderList(
             providers=[
                 Provider(
@@ -129,20 +137,22 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                     models=provider.models,
                     add_url=None
                     if provider.type == "prefect"
-                    else add_url(provider.type),
+                    else add_url(provider.type, ui_url),
                 )
                 for provider in catalog
             ]
         )
 
-    async def new_connect_request(provider: str) -> ConnectRequest:
+    async def new_connect_request(
+        provider: str, workspace_id: WorkspaceId = None
+    ) -> ConnectRequest:
         if provider == "prefect":
             raise ToolError(
                 "The workspace already has a `prefect` connection; find it with "
                 "`list_provider_connections`."
             )
         catalog = TypeAdapter(list[CatalogProvider]).validate_python(
-            await api.call("GET", PROVIDERS_PATH)
+            await api.call("GET", PROVIDERS_PATH, workspace_id=workspace_id)
         )
         provider_types = [entry.type for entry in catalog]
         if provider not in provider_types:
@@ -152,15 +162,18 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             )
         return ConnectRequest(
             provider=provider,
-            add_url=add_url(provider),
+            add_url=add_url(
+                provider, await api.current_ui_url(workspace_id=workspace_id)
+            ),
             known_connection_ids=[
-                connection.id for connection in await list_connections()
+                connection.id
+                for connection in await list_connections(workspace_id=workspace_id)
             ],
         )
 
     @tool(mcp, read_only=False)
     async def connect_model_provider(
-        provider: str, ctx: Context
+        provider: str, ctx: Context, workspace_id: WorkspaceId = None
     ) -> ConnectOutcome | InputRequiredResult:
         """Have the user add a connection to their own provider account.
 
@@ -170,7 +183,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         connection is the one not in `known_connection_ids`.
         """
         if ctx.request_state is None:
-            request = await new_connect_request(provider)
+            request = await new_connect_request(provider, workspace_id=workspace_id)
             capabilities = ctx.session.client_capabilities
             if (
                 capabilities is None
@@ -212,7 +225,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             return request.outcome("declined", [])
         new = [
             connection
-            for connection in await list_connections()
+            for connection in await list_connections(workspace_id=workspace_id)
             if connection.provider.type == request.provider
             and connection.id not in request.known_connection_ids
         ]

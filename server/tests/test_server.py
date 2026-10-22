@@ -30,3 +30,5 @@ async def test_every_tool_is_annotated_and_marked_alpha(mcp_client: Client[Any])
             tool.name
         )
         assert "alpha" in (tool.description or ""), tool.name
+        assert "workspace_id" in tool.input_schema["properties"], tool.name
+        assert "workspace_id" not in tool.input_schema.get("required", []), tool.name

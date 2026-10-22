@@ -18,7 +18,12 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from pydantic import Field
 
-from prefect_agentic_workflows_mcp.parameters import PlanDocument, PlanPath, load_plan
+from prefect_agentic_workflows_mcp.parameters import (
+    PlanDocument,
+    PlanPath,
+    WorkspaceId,
+    load_plan,
+)
 from prefect_agentic_workflows_mcp.tools import tool
 from prefect_agentic_workflows_mcp.workspace_api import (
     WorkspaceApi,
@@ -129,13 +134,17 @@ def create_errors(response: httpx.Response) -> list[dict[str, Any]]:
 def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
     """Add the plan version tools to `mcp`."""
 
-    async def active_state_if(flow_id: UUID, version_id: str) -> dict[str, Any] | None:
+    async def active_state_if(
+        flow_id: UUID, version_id: str, workspace_id: WorkspaceId = None
+    ) -> dict[str, Any] | None:
         """Return the flow's active state when `version_id` is the active version.
 
         An activation can succeed in Cloud even when its response is lost, so
         a failed activation call checks this before reporting a failure.
         """
-        active_state = await api.call("GET", f"/flows/{flow_id}/execution-plan")
+        active_state = await api.call(
+            "GET", f"/flows/{flow_id}/execution-plan", workspace_id=workspace_id
+        )
         active = (active_state or {}).get("active_version") or {}
         return active_state if str(active.get("id")) == version_id else None
 
@@ -154,6 +163,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                 ),
             ),
         ] = True,
+        workspace_id: WorkspaceId = None,
     ) -> dict[str, Any]:
         """Validate a plan, save it as a new version of the flow, and activate it.
 
@@ -174,13 +184,18 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         """
         plan = load_plan(plan, plan_path)
         validation = await api.call(
-            "POST", "/execution-plans/validate", json={"plan": plan}
+            "POST",
+            "/execution-plans/validate",
+            json={"plan": plan},
+            workspace_id=workspace_id,
         )
         if not validation.get("valid"):
             return publish_result(errors=validation.get("errors", []))
 
         versions_path = f"/flows/{flow_id}/execution-plan/versions"
-        response = await api.request("POST", versions_path, json={"plan": plan})
+        response = await api.request(
+            "POST", versions_path, json={"plan": plan}, workspace_id=workspace_id
+        )
         errors = create_errors(response)
         if errors:
             return publish_result(errors=errors)
@@ -190,10 +205,14 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             return publish_result(version=version)
         try:
             active_state = await api.call(
-                "POST", f"{versions_path}/{version['id']}/activate"
+                "POST",
+                f"{versions_path}/{version['id']}/activate",
+                workspace_id=workspace_id,
             )
         except ToolError as exc:
-            active_state = await active_state_if(flow_id, version["id"])
+            active_state = await active_state_if(
+                flow_id, version["id"], workspace_id=workspace_id
+            )
             if active_state is None:
                 return publish_result(version=version, activation_error=str(exc))
         return publish_result(version=version, active_state=active_state)
@@ -210,6 +229,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                 ),
             ),
         ] = None,
+        workspace_id: WorkspaceId = None,
     ) -> dict[str, Any]:
         """Read a flow's active plan, or one of its plan versions.
 
@@ -222,9 +242,13 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         `plan` document and publish it as a new version.
         """
         if version_id is None:
-            return await api.call("GET", f"/flows/{flow_id}/execution-plan")
+            return await api.call(
+                "GET", f"/flows/{flow_id}/execution-plan", workspace_id=workspace_id
+            )
         return await api.call(
-            "GET", f"/flows/{flow_id}/execution-plan/versions/{version_id}"
+            "GET",
+            f"/flows/{flow_id}/execution-plan/versions/{version_id}",
+            workspace_id=workspace_id,
         )
 
     @tool(mcp, read_only=True)
@@ -234,6 +258,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             int,
             Field(ge=1, description="Page of results to read, starting at 1."),
         ] = 1,
+        workspace_id: WorkspaceId = None,
     ) -> dict[str, Any]:
         """List a flow's plan versions, without their plan documents.
 
@@ -250,8 +275,11 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             "GET",
             f"/flows/{flow_id}/execution-plan/versions",
             params={"page": page},
+            workspace_id=workspace_id,
         )
-        active_state = await api.call("GET", f"/flows/{flow_id}/execution-plan")
+        active_state = await api.call(
+            "GET", f"/flows/{flow_id}/execution-plan", workspace_id=workspace_id
+        )
         active_version = active_state.get("active_version")
         return {
             **versions,
@@ -260,7 +288,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
 
     @tool(mcp, read_only=False, destructive=True)
     async def activate_plan_version(
-        flow_id: FlowId, version_id: VersionId
+        flow_id: FlowId, version_id: VersionId, workspace_id: WorkspaceId = None
     ) -> dict[str, Any]:
         """Make a saved plan version the flow's active version.
 
@@ -276,9 +304,12 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             active_state = await api.call(
                 "POST",
                 f"/flows/{flow_id}/execution-plan/versions/{version_id}/activate",
+                workspace_id=workspace_id,
             )
         except ToolError:
-            active_state = await active_state_if(flow_id, str(version_id))
+            active_state = await active_state_if(
+                flow_id, str(version_id), workspace_id=workspace_id
+            )
             if active_state is None:
                 raise
         return active_state_summary(active_state) or {}

@@ -17,6 +17,7 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from pydantic import Field
 
+from prefect_agentic_workflows_mcp.parameters import WorkspaceId
 from prefect_agentic_workflows_mcp.tools import tool
 from prefect_agentic_workflows_mcp.workspace_api import (
     NO_BUCKET_DETAIL,
@@ -170,6 +171,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                 ),
             ),
         ] = None,
+        workspace_id: WorkspaceId = None,
     ) -> dict[str, Any]:
         """Start a run of a flow's active execution plan.
 
@@ -184,7 +186,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         if idempotency_key is not None:
             body["idempotency_key"] = idempotency_key
         path = f"/flows/{flow_id}/execution-plan/runs"
-        response = await api.request("POST", path, json=body)
+        response = await api.request("POST", path, json=body, workspace_id=workspace_id)
         flow_run = read_json_with_retry_hint(response, "POST", path)
         return {
             "created": response.status_code == 201,
@@ -193,13 +195,17 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         }
 
     async def read_run(
-        flow_run_id: UUID, timeout: float | None = None
+        flow_run_id: UUID,
+        timeout: float | None = None,
+        workspace_id: WorkspaceId = None,
     ) -> dict[str, Any]:
         path = f"/flow_runs/{flow_run_id}/execution-plan"
         if timeout is None:
-            response = await api.request("GET", path)
+            response = await api.request("GET", path, workspace_id=workspace_id)
         else:
-            response = await api.request("GET", path, timeout=timeout)
+            response = await api.request(
+                "GET", path, timeout=timeout, workspace_id=workspace_id
+            )
         return read_json_with_retry_hint(response, "GET", path)
 
     @tool(mcp, read_only=True)
@@ -217,6 +223,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                 ),
             ),
         ] = None,
+        workspace_id: WorkspaceId = None,
     ) -> dict[str, Any]:
         """Read the progress of an execution-plan run.
 
@@ -241,7 +248,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         When a node waits for human input, show its form to the user and
         submit only what the user answers, with `submit_human_input`.
         """
-        run = await read_run(flow_run_id)
+        run = await read_run(flow_run_id, workspace_id=workspace_id)
         if wait_seconds is None:
             return {**run, "wait": None}
 
@@ -260,7 +267,9 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             # Bound the read by the time left, so a slow response can't stretch
             # the call past the wait the caller asked for.
             try:
-                run = await read_run(flow_run_id, timeout=remaining)
+                run = await read_run(
+                    flow_run_id, timeout=remaining, workspace_id=workspace_id
+                )
             except RequestTimedOutError:
                 # The wait ran out while Cloud was answering, which is the
                 # same as a wait with no change. Return the last observation.
@@ -300,6 +309,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                 ),
             ),
         ] = None,
+        workspace_id: WorkspaceId = None,
     ) -> dict[str, Any]:
         """Read a plan output of a run, or one node activation's output.
 
@@ -322,7 +332,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             path = f"{run_path}/outputs/{output_name}"
         else:
             path = f"{run_path}/activations/{activation_id}/outputs/{output_name}"
-        response = await api.request("GET", path)
+        response = await api.request("GET", path, workspace_id=workspace_id)
 
         if response.status_code == 409 and NO_BUCKET_DETAIL in response_detail(
             response
@@ -368,6 +378,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                 ),
             ),
         ],
+        workspace_id: WorkspaceId = None,
     ) -> dict[str, Any]:
         """Submit the user's answer to a human-input form in a run.
 
@@ -381,7 +392,9 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             f"/flow_runs/{flow_run_id}/execution-plan/activations/"
             f"{activation_id}/human-input/responses"
         )
-        result = await api.request("POST", path, json={"response": response})
+        result = await api.request(
+            "POST", path, json={"response": response}, workspace_id=workspace_id
+        )
         read_json_with_retry_hint(result, "POST", path)
         return {
             "submitted": True,

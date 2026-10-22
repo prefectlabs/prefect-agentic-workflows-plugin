@@ -6,6 +6,7 @@ from uuid import UUID
 from fastmcp import FastMCP
 from pydantic import BaseModel
 
+from prefect_agentic_workflows_mcp.parameters import WorkspaceId
 from prefect_agentic_workflows_mcp.tools import tool
 from prefect_agentic_workflows_mcp.workspace_api import WorkspaceApi
 
@@ -31,12 +32,17 @@ class Deployment(DeploymentSummary):
 def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
     """Add the deployment tools to `mcp`."""
 
-    async def read_all(path: str, body: dict[str, Any]) -> list[dict[str, Any]]:
+    async def read_all(
+        path: str, body: dict[str, Any], workspace_id: WorkspaceId = None
+    ) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
         offset = 0
         while True:
             page = await api.call(
-                "POST", path, json={**body, "offset": offset, "limit": PAGE_SIZE}
+                "POST",
+                path,
+                json={**body, "offset": offset, "limit": PAGE_SIZE},
+                workspace_id=workspace_id,
             )
             documents: list[dict[str, Any]] = page or []
             items.extend(documents)
@@ -45,7 +51,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             offset += PAGE_SIZE
 
     @tool(mcp, read_only=True)
-    async def list_deployments() -> DeploymentList:
+    async def list_deployments(workspace_id: WorkspaceId = None) -> DeploymentList:
         """List the deployments in the workspace.
 
         Returns each deployment's `id`, `name`, `flow_name`, and
@@ -54,12 +60,16 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         or a data load, needs a deployment that runs that code. Call
         `get_deployment` for the parameters of a deployment you plan to use.
         """
-        deployments = await read_all("/deployments/filter", {"sort": "NAME_ASC"})
+        deployments = await read_all(
+            "/deployments/filter", {"sort": "NAME_ASC"}, workspace_id=workspace_id
+        )
         flow_ids = sorted({str(d["flow_id"]) for d in deployments if d.get("flow_id")})
         flow_names: dict[str, str] = {}
         if flow_ids:
             flows = await read_all(
-                "/flows/filter", {"flows": {"id": {"any_": flow_ids}}}
+                "/flows/filter",
+                {"flows": {"id": {"any_": flow_ids}}},
+                workspace_id=workspace_id,
             )
             flow_names = {str(flow["id"]): str(flow["name"]) for flow in flows}
         return DeploymentList(
@@ -75,7 +85,9 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         )
 
     @tool(mcp, read_only=True)
-    async def get_deployment(deployment_id: UUID) -> Deployment:
+    async def get_deployment(
+        deployment_id: UUID, workspace_id: WorkspaceId = None
+    ) -> Deployment:
         """Read one deployment, with its parameters.
 
         Returns the same fields as `list_deployments`, plus the default
@@ -85,10 +97,14 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         credential, such as a token or password: have them set it up inside
         the deployment instead.
         """
-        deployment = await api.call("GET", f"/deployments/{deployment_id}")
+        deployment = await api.call(
+            "GET", f"/deployments/{deployment_id}", workspace_id=workspace_id
+        )
         flow_name = None
         if deployment.get("flow_id"):
-            flow = await api.call("GET", f"/flows/{deployment['flow_id']}")
+            flow = await api.call(
+                "GET", f"/flows/{deployment['flow_id']}", workspace_id=workspace_id
+            )
             flow_name = str(flow["name"])
         return Deployment(
             id=str(deployment["id"]),

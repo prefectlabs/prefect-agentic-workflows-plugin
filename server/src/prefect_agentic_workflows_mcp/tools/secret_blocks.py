@@ -5,6 +5,7 @@ from typing import Any
 from fastmcp import FastMCP
 from pydantic import BaseModel
 
+from prefect_agentic_workflows_mcp.parameters import WorkspaceId
 from prefect_agentic_workflows_mcp.tools import tool
 from prefect_agentic_workflows_mcp.workspace_api import WorkspaceApi
 
@@ -34,7 +35,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
     """Add the Secret block tool to `mcp`."""
 
     @tool(mcp, read_only=True)
-    async def list_secret_blocks() -> SecretBlockList:
+    async def list_secret_blocks(workspace_id: WorkspaceId = None) -> SecretBlockList:
         """List the Secret blocks in the workspace by name and ID.
 
         Returns names and IDs only, never secret values. Reference a block in
@@ -56,6 +57,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                     "offset": offset,
                     "limit": PAGE_SIZE,
                 },
+                workspace_id=workspace_id,
             )
             documents: list[dict[str, Any]] = page or []
             # Copy only the name and ID, and check the block type here too,
