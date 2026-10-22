@@ -76,6 +76,10 @@ def test_next_rule(
         (INFRASTRUCTURE_QUESTION, True),
         ("Do you have a remote MCP server for each business tool?", True),
         ("Which web addresses can this workflow use?", True),
+        ("For each of these, do you have that address?", True),
+        ("For Zendesk and Slack, do you have those addresses?", True),
+        ("I don't have that address. Do you approve the design?", False),
+        ("We have those addresses. Should I build it?", False),
         ("The workflow has no business tools. Do you approve the design?", False),
         ("No remote MCP server is needed. Should I build it?", False),
         ("The MCP inventory is empty.\n\nReply yes to approve this design.", False),
@@ -165,6 +169,36 @@ async def test_talk_records_tool_calls_and_answers_from_the_rules():
     ]
     assert transcript.replies == [Reply(1, "approve", "Yes.")]
     assert transcript.errors == []
+
+
+async def test_no_infrastructure_answers_a_follow_up_address_question():
+    question = (
+        "An agent step in Prefect Cloud can only use a business tool through a "
+        "remote MCP server: a web address that lets the agent use that tool.\n\n"
+        "For each of these, do you have that address?"
+    )
+    agent = ScriptedAgent(
+        [result(question)],
+        [result("Paste the Zendesk tickets in, then copy the summary to Slack.")],
+    )
+    transcript = Transcript()
+
+    await talk(
+        agent,
+        transcript,
+        "Build the support summary workflow.",
+        no_infrastructure.USER,
+        max_turns=3,
+    )
+
+    assert agent.prompts == [
+        "Build the support summary workflow.",
+        no_infrastructure.NO_SERVERS,
+    ]
+    assert transcript.replies == [
+        Reply(1, "no-remote-servers", no_infrastructure.NO_SERVERS)
+    ]
+    assert len(transcript.turn_results) == 2
 
 
 async def test_rejected_approval_summary_gets_design_approval_before_validation():

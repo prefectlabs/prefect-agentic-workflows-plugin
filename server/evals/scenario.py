@@ -56,6 +56,7 @@ def next_rule(rules: list[Rule], message: str, transcript: Transcript) -> Rule |
 
 INFRASTRUCTURE_QUESTION = (
     r"(remote MCP server|MCP|web address|business tool|reach)[^.!?\n]*\?"
+    r"|\bdo you have (that address|(?:those|these) addresses)\?"
 )
 TEST_RUN_OFFER = r"test run|start (a|the) run|run it"
 
