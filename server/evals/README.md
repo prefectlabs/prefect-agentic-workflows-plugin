@@ -107,8 +107,12 @@ missing and never deletes it.
    case's rules, and the runner sends that answer in the same session. The
    conversation ends when a rule says so, when no rule applies, or after
    `max_turns` turns.
-4. It reads the tool calls from the SDK's messages and the plan files from
-   `workflows/`. Then it reads the state of each flow with the run's prefix
+4. It reads the tool calls from the SDK's messages and plan files from
+   `workflows/` directories, including those inside subdirectories such as
+   `release-notes/workflows/`. Plan keys are paths relative to the agent's
+   working directory, so files with the same name remain distinct. Installed
+   skill examples and files outside the working directory are excluded.
+   Then it reads the state of each flow with the run's prefix
    into `outcome.flows`: the active version and its plan, the plan versions
    from oldest to newest, and the schedules. The evaluators read these, not
    the live API.

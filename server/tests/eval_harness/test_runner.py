@@ -18,7 +18,7 @@ from claude_agent_sdk import (
 
 from evals import runner
 from evals.lifecycle import CURRENT_RUN, Run
-from evals.record import FlowState, Reply, ToolCall, Transcript
+from evals.record import FlowState, Reply, ToolCall, Transcript, read_plan_files
 from evals.runner import converse, scenario_task, talk
 from evals.sandbox import Credentials, SandboxApi
 from evals.scenario import Rule, ScenarioInputs, next_rule
@@ -270,6 +270,64 @@ def stub_client(clients: list[Any], *turns: Sequence[Message]) -> type[ScriptedA
     return StubClient
 
 
+@pytest.mark.parametrize("directory", ["workflows", "release-notes/workflows"])
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        (
+            '{"nodes": {"review": {"kind": "HumanInputNode"}}}',
+            {"nodes": {"review": {"kind": "HumanInputNode"}}},
+        ),
+        ("not valid JSON", "not valid JSON"),
+    ],
+)
+def test_read_plan_files_in_workflow_directories(
+    tmp_path: Path, directory: str, content: str, expected: Any
+):
+    path = tmp_path / directory / "release-notes.plan.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(content)
+
+    assert read_plan_files(tmp_path) == {
+        f"{directory}/release-notes.plan.json": expected
+    }
+
+
+def test_read_plan_files_keeps_identical_names_in_different_directories(tmp_path: Path):
+    for directory in ["workflows", "release-notes/workflows"]:
+        path = tmp_path / directory / "release-notes.plan.json"
+        path.parent.mkdir(parents=True)
+        path.write_text("{}")
+
+    assert list(read_plan_files(tmp_path)) == [
+        "release-notes/workflows/release-notes.plan.json",
+        "workflows/release-notes.plan.json",
+    ]
+
+
+def test_read_plan_files_excludes_installed_skills_and_source_plans(tmp_path: Path):
+    for name in [
+        ".claude/skills/example/workflows/example.plan.json",
+        "release-notes/example.plan.json",
+    ]:
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}")
+
+    assert read_plan_files(tmp_path) == {}
+
+
+def test_read_plan_files_excludes_symlinks_outside_workspace(tmp_path: Path):
+    workspace = tmp_path / "agent"
+    workflows = workspace / "workflows"
+    workflows.mkdir(parents=True)
+    outside = tmp_path / "outside.plan.json"
+    outside.write_text("{}")
+    (workflows / "linked.plan.json").symlink_to(outside)
+
+    assert read_plan_files(workspace) == {}
+
+
 async def test_converse_snapshots_the_run_prefix(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -297,6 +355,30 @@ async def test_converse_snapshots_the_run_prefix(
     assert not any("LOOPBACK" in name for name in env)
     transcript = json.loads((tmp_path / "transcript.json").read_text())
     assert transcript["turn_results"] == ["Done."]
+
+
+async def test_converse_collects_a_nested_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(
+        runner, "ClaudeSDKClient", stub_client([], [result("Published.")])
+    )
+    plan = {"nodes": {"review": {"kind": "HumanInputNode"}}}
+    source = tmp_path / "source.plan.json"
+    source.write_text(json.dumps(plan))
+    name = "release-notes/workflows/release-notes.plan.json"
+
+    outcome = await converse(
+        tmp_path / "run",
+        "Convert the skill.",
+        [Rule(label="end", reply=None)],
+        sandbox=StubSandbox(),
+        flow_prefix="eval-abc123-1-",
+        files={name: source},
+    )
+
+    assert outcome.plans == {name: plan}
+    assert outcome.plan["nodes"]["review"]["kind"] == "HumanInputNode"
 
 
 async def test_converse_saves_the_transcript_when_the_agent_raises(
