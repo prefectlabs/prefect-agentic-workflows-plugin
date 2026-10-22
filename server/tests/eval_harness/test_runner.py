@@ -201,6 +201,92 @@ async def test_no_infrastructure_answers_a_follow_up_address_question():
     assert len(transcript.turn_results) == 2
 
 
+@pytest.mark.parametrize(
+    ("summary", "label"),
+    [
+        ("", "conversion-decisions"),
+        ("## Summary\nInputs, outputs, steps, and model.\nApprove?", "design-approval"),
+        (
+            "## Plan summary\nInputs, outputs, steps, and model.\nApprove?",
+            "design-approval",
+        ),
+        (
+            "## Summary of the planned workflow\n"
+            "Inputs, outputs, steps, and model.\nApprove?",
+            "design-approval",
+        ),
+        (
+            "**Workflow summary**\nInputs, outputs, steps, and model.\nApprove?",
+            "design-approval",
+        ),
+    ],
+)
+def test_release_notes_distinguishes_conversion_decisions_from_design_approval(
+    summary: str, label: str
+):
+    message = (
+        "Here is the conversion report. Please decide each row. "
+        "I'll write the summary after that.\n\n"
+        "## Conversion report: release-notes\n\n"
+        "### Parts that need a decision\n"
+        "Use two check passes and a remote tool for collect_changes.\n\n"
+        "Can you confirm the token scopes?\n\n"
+        f"{summary}"
+    )
+    transcript = Transcript(replies=[Reply(1, "reachable-systems", "")])
+
+    rule = next_rule(release_notes.USER, message, transcript)
+
+    assert rule is not None and rule.label == label
+    if label == "conversion-decisions":
+        assert rule.reply is not None
+        assert "before writing or validating" in rule.reply
+        assert "I approve the design" not in rule.reply
+
+
+async def test_release_notes_approves_report_choices_before_the_design():
+    report = (
+        "Here is the conversion report. Please decide each row. "
+        "I'll write the summary after that.\n\n"
+        "## Conversion report: release-notes\n\n"
+        "### Parts that need a decision\n"
+        "Use two check passes and a remote tool for collect_changes.\n\n"
+        "Can you confirm the token scopes?"
+    )
+    summary = "## Summary: release-notes\nInputs, outputs, steps, and model.\nApprove?"
+    agent = ScriptedAgent(
+        [result("Which business tools can this workflow reach?")],
+        [result(report)],
+        [result(summary)],
+        [
+            AssistantMessage(
+                [
+                    ToolUseBlock(
+                        "validate-1",
+                        "mcp__prefect-agentic-workflows__validate_plan",
+                        {"plan": {}},
+                    )
+                ],
+                model="m",
+            ),
+            result("Validated."),
+        ],
+    )
+    transcript = Transcript()
+
+    await talk(agent, transcript, "Convert the skill.", release_notes.USER, max_turns=5)
+
+    assert [reply.label for reply in transcript.replies] == [
+        "reachable-systems",
+        "conversion-decisions",
+        "design-approval",
+    ]
+    assert transcript.first_reply("design-approval") == Reply(
+        3, "design-approval", release_notes.DESIGN_APPROVAL
+    )
+    assert transcript.tool_calls[0].turn == 4
+
+
 async def test_rejected_approval_summary_gets_design_approval_before_validation():
     summary = (
         "The infrastructure check is done. This workflow uses no business tools, "
