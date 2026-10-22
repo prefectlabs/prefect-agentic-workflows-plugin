@@ -26,7 +26,5 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         Cloud UI. Build links from `app_url`: add `/flows/flow/<flow_id>` for
         a flow, or `/runs/flow-run/<flow_run_id>` for a run.
         """
-        return Workspace(
-            api_url=await api.current_api_url(workspace_id=workspace_id),
-            app_url=await api.current_ui_url(workspace_id=workspace_id),
-        )
+        api_url, app_url = await api.current_workspace_urls(workspace_id=workspace_id)
+        return Workspace(api_url=api_url, app_url=app_url)

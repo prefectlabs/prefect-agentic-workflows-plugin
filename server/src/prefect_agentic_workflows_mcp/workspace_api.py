@@ -397,9 +397,12 @@ class WorkspaceApi:
         )
         return read_json(response, method, path)
 
-    async def current_api_url(self, workspace_id: UUID | None = None) -> str:
-        """Return the authorized workspace API URL for this request."""
-        return (await self._read_credentials(workspace_id)).api_url
+    async def current_workspace_urls(
+        self, workspace_id: UUID | None = None
+    ) -> tuple[str, str]:
+        """Return the authorized workspace API and UI URLs for this request."""
+        credentials = await self._read_credentials(workspace_id)
+        return credentials.api_url, credentials.ui_url
 
     async def current_ui_url(self, workspace_id: UUID | None = None) -> str:
         """Return the authorized workspace's page in the Prefect Cloud UI."""

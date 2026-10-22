@@ -144,6 +144,27 @@ async def test_oauth_uses_the_granted_workspace_and_token(
     assert all(r.url.host == "api.prefect.dev" for r in requests)
 
 
+async def test_get_workspace_resolves_its_grant_once(
+    server_url: str, signing_key: RSAKeyPair, cloud_api: respx.MockRouter
+):
+    grant = cloud_api.routes["grant"].mock(
+        side_effect=[
+            httpx.Response(200, json=[WORKSPACE]),
+            httpx.Response(200, json=[OTHER_WORKSPACE]),
+        ]
+    )
+    async with connect(server_url, access_token(signing_key)) as client:
+        result = await client.call_tool("get_workspace", {})
+
+    assert grant.call_count == 1
+    assert result.structured_content == {
+        "api_url": WORKSPACE_URL,
+        "app_url": (
+            f"https://app.prefect.dev/account/{ACCOUNT_ID}/workspace/{WORKSPACE_ID}"
+        ),
+    }
+
+
 @pytest.mark.parametrize(
     "overrides",
     [
