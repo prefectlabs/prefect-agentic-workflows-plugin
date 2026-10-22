@@ -54,6 +54,9 @@ def next_rule(rules: list[Rule], message: str, transcript: Transcript) -> Rule |
     return next((rule for rule in rules if rule.applies(message, transcript)), None)
 
 
+INFRASTRUCTURE_QUESTION = (
+    r"(remote MCP server|MCP|web address|business tool|reach)[^.!?\n]*\?"
+)
 TEST_RUN_OFFER = r"test run|start (a|the) run|run it"
 
 # Scenarios only check authoring, so the simulated user turns down the test

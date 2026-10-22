@@ -32,6 +32,7 @@ from evals.sandbox import SandboxApi
 from evals.scenario import (
     DECLINE_TEST_RUN,
     FLOW_PREFIX,
+    INFRASTRUCTURE_QUESTION,
     Judgement,
     Outcome,
     Rule,
@@ -85,7 +86,7 @@ USER = [
     Rule(
         label="reachable-systems",
         before_tool="validate_plan",
-        pattern=r"reach|business tool|web address|remote MCP server",
+        pattern=INFRASTRUCTURE_QUESTION,
         reply=REACHABLE_SYSTEMS,
         max_uses=1,
     ),

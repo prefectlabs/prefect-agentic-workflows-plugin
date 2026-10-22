@@ -22,7 +22,12 @@ from evals.record import FlowState, Reply, ToolCall, Transcript
 from evals.runner import converse, scenario_task, talk
 from evals.sandbox import Credentials, SandboxApi
 from evals.scenario import Rule, ScenarioInputs, next_rule
-from evals.scenarios import no_infrastructure
+from evals.scenarios import (
+    no_infrastructure,
+    rejected_approval,
+    scheduled_edit,
+    unsupported_loop,
+)
 from evals.scenarios import release_notes_conversion as release_notes
 
 INFRASTRUCTURE_QUESTION = (
@@ -53,6 +58,38 @@ def test_next_rule(
     rule = next_rule(release_notes.USER, message, transcript)
 
     assert (rule.label if rule else None) == expected
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        no_infrastructure,
+        rejected_approval,
+        release_notes,
+        scheduled_edit,
+        unsupported_loop,
+    ],
+)
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        (INFRASTRUCTURE_QUESTION, True),
+        ("Do you have a remote MCP server for each business tool?", True),
+        ("Which web addresses can this workflow use?", True),
+        ("The workflow has no business tools. Do you approve the design?", False),
+        ("No remote MCP server is needed. Should I build it?", False),
+        ("The MCP inventory is empty.\n\nReply yes to approve this design.", False),
+    ],
+)
+def test_infrastructure_rule_answers_questions_not_design_summaries(
+    scenario: Any, message: str, expected: bool
+):
+    rule = next_rule(scenario.USER, message, Transcript())
+
+    assert (
+        bool(rule and rule.label in {"reachable-systems", "no-remote-servers"})
+        is expected
+    )
 
 
 def result(text: str) -> ResultMessage:
@@ -128,6 +165,45 @@ async def test_talk_records_tool_calls_and_answers_from_the_rules():
     ]
     assert transcript.replies == [Reply(1, "approve", "Yes.")]
     assert transcript.errors == []
+
+
+async def test_rejected_approval_summary_gets_design_approval_before_validation():
+    summary = (
+        "The infrastructure check is done. This workflow uses no business tools, "
+        "so there's nothing to reach.\n\n"
+        "Reply with **yes** to approve this design, and tell me the model choice. "
+        "I'll write the plan file, validate it, and publish it after that."
+    )
+    agent = ScriptedAgent(
+        [result(summary)],
+        [
+            AssistantMessage(
+                [
+                    ToolUseBlock(
+                        "validate-1",
+                        "mcp__prefect-agentic-workflows__validate_plan",
+                        {"plan": {}},
+                    )
+                ],
+                model="m",
+            ),
+            result("The plan is valid."),
+        ],
+    )
+    transcript = Transcript()
+
+    await talk(
+        agent,
+        transcript,
+        "Build the feedback workflow.",
+        rejected_approval.USER,
+        max_turns=3,
+    )
+
+    assert agent.prompts == ["Build the feedback workflow.", "Yes, build it."]
+    assert transcript.replies == [Reply(1, "design-approval", "Yes, build it.")]
+    assert transcript.tool_calls[0].name == "validate_plan"
+    assert transcript.tool_calls[0].turn == 2
 
 
 class StubSandbox(SandboxApi):
