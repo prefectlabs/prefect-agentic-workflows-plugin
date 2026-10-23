@@ -22,6 +22,7 @@ from evals.runner import REPO_ROOT
 from evals.scenario import (
     DECLINE_TEST_RUN,
     FLOW_PREFIX,
+    INFRASTRUCTURE_QUESTION,
     Judgement,
     Outcome,
     Rule,
@@ -56,7 +57,7 @@ USER = [
     Rule(
         label="reachable-systems",
         before_tool="validate_plan",
-        pattern=r"reach|business tool|web address|remote MCP server",
+        pattern=INFRASTRUCTURE_QUESTION,
         reply="None. The workflow only uses the topic I give it.",
         max_uses=1,
     ),

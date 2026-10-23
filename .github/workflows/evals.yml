@@ -98,7 +98,7 @@ jobs:
           name: eval-transcripts
           path: |
             ${{ runner.temp }}/evals/**/transcript.json
-            ${{ runner.temp }}/evals/**/agent/workflows/
+            ${{ runner.temp }}/evals/**/agent/**/workflows/*.plan.json
             ${{ runner.temp }}/eval-report.md
           if-no-files-found: ignore
           retention-days: 14
