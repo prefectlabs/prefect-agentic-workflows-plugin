@@ -7,6 +7,7 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from pydantic import Field
 
+from prefect_agentic_workflows_mcp.parameters import WorkspaceId
 from prefect_agentic_workflows_mcp.tools import tool
 from prefect_agentic_workflows_mcp.workspace_api import WorkspaceApi, read_json
 
@@ -33,28 +34,32 @@ FlowTags = Annotated[
 def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
     """Add the flow tools to `mcp`."""
 
-    async def find_flow(name: str) -> dict[str, Any] | None:
+    async def find_flow(
+        name: str, workspace_id: WorkspaceId = None
+    ) -> dict[str, Any] | None:
         if name in DOT_SEGMENTS:
             raise ToolError(f"{name!r} isn't a valid flow name.")
         lookup_path = f"/flows/name/{quote(name, safe='')}"
-        response = await api.request("GET", lookup_path)
+        response = await api.request("GET", lookup_path, workspace_id=workspace_id)
         if response.status_code == 404:
             return None
         return read_json(response, "GET", lookup_path)
 
     @tool(mcp, read_only=True)
-    async def get_flow(name: FlowName) -> dict[str, Any]:
+    async def get_flow(
+        name: FlowName, workspace_id: WorkspaceId = None
+    ) -> dict[str, Any]:
         """Return the existing flow with this name, without creating one.
 
         Use this to find a published workflow to run, roll back, or schedule.
         Returns `found` and, when it is true, the `flow`.
         """
-        flow = await find_flow(name)
+        flow = await find_flow(name, workspace_id=workspace_id)
         return {"found": flow is not None, "flow": flow}
 
     @tool(mcp, read_only=False)
     async def get_or_create_flow(
-        name: FlowName, tags: FlowTags = None
+        name: FlowName, tags: FlowTags = None, workspace_id: WorkspaceId = None
     ) -> dict[str, Any]:
         """Return the flow with this name, and create it if it doesn't exist.
 
@@ -66,12 +71,15 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         Returns `created`, which is true when this call created the flow, and
         `flow`, the flow as Prefect Cloud returns it.
         """
-        flow = await find_flow(name)
+        flow = await find_flow(name, workspace_id=workspace_id)
         if flow is not None:
             return {"created": False, "flow": flow}
 
         response = await api.request(
-            "POST", "/flows/", json={"name": name, "tags": tags or []}
+            "POST",
+            "/flows/",
+            json={"name": name, "tags": tags or []},
+            workspace_id=workspace_id,
         )
         flow = read_json(response, "POST", "/flows/")
         # Cloud answers 200 instead of 201 when another caller created the flow

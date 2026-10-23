@@ -12,6 +12,7 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from pydantic import BaseModel, ConfigDict, Field
 
+from prefect_agentic_workflows_mcp.parameters import WorkspaceId
 from prefect_agentic_workflows_mcp.tools import tool
 from prefect_agentic_workflows_mcp.workspace_api import WorkspaceApi
 
@@ -125,6 +126,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             bool, Field(description="Whether the schedule starts runs.")
         ] = True,
         parameters: ScheduleParameters | None = None,
+        workspace_id: WorkspaceId = None,
     ) -> dict[str, Any]:
         """Create a schedule that starts runs of a flow's execution plan.
 
@@ -144,18 +146,23 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                 "schedule": schedule.model_dump(mode="json", exclude_none=True),
                 "parameters": parameters or {},
             },
+            workspace_id=workspace_id,
         )
 
     @tool(mcp, read_only=True)
-    async def list_schedules(flow_id: FlowId) -> dict[str, Any]:
+    async def list_schedules(
+        flow_id: FlowId, workspace_id: WorkspaceId = None
+    ) -> dict[str, Any]:
         """List the schedules of a flow's execution plan.
 
         Returns `schedules`, a list in the same shape `get_schedule` returns.
         """
-        return await api.call("GET", schedules_path(flow_id))
+        return await api.call("GET", schedules_path(flow_id), workspace_id=workspace_id)
 
     @tool(mcp, read_only=True)
-    async def get_schedule(flow_id: FlowId, schedule_id: ScheduleId) -> dict[str, Any]:
+    async def get_schedule(
+        flow_id: FlowId, schedule_id: ScheduleId, workspace_id: WorkspaceId = None
+    ) -> dict[str, Any]:
         """Read one schedule of a flow's execution plan.
 
         The result includes `active`, `schedule`, `parameters`,
@@ -163,7 +170,9 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         `last_created_flow_run_id`, and the last failure to start a run in
         `last_error`.
         """
-        return await api.call("GET", f"{schedules_path(flow_id)}/{schedule_id}")
+        return await api.call(
+            "GET", f"{schedules_path(flow_id)}/{schedule_id}", workspace_id=workspace_id
+        )
 
     @tool(mcp, read_only=False, destructive=True)
     async def update_schedule(
@@ -200,6 +209,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                 ),
             ),
         ] = None,
+        workspace_id: WorkspaceId = None,
     ) -> dict[str, Any]:
         """Change a schedule of a flow's execution plan.
 
@@ -220,19 +230,26 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         if not changes:
             raise ToolError(NO_CHANGES_MESSAGE)
         return await api.call(
-            "PATCH", f"{schedules_path(flow_id)}/{schedule_id}", json=changes
+            "PATCH",
+            f"{schedules_path(flow_id)}/{schedule_id}",
+            json=changes,
+            workspace_id=workspace_id,
         )
 
     @tool(mcp, read_only=False, destructive=True)
     async def delete_schedule(
-        flow_id: FlowId, schedule_id: ScheduleId
+        flow_id: FlowId, schedule_id: ScheduleId, workspace_id: WorkspaceId = None
     ) -> dict[str, Any]:
         """Delete a schedule of a flow's execution plan.
 
         The schedule starts no more runs. Runs it already started are not
         changed. Ask the user to confirm before you call this tool.
         """
-        await api.call("DELETE", f"{schedules_path(flow_id)}/{schedule_id}")
+        await api.call(
+            "DELETE",
+            f"{schedules_path(flow_id)}/{schedule_id}",
+            workspace_id=workspace_id,
+        )
         return {
             "deleted": True,
             "flow_id": str(flow_id),

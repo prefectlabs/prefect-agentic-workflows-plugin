@@ -40,6 +40,14 @@ async def test_get_workspace_follows_a_staging_profile(
     )
 
 
+async def test_workspace_selection_requires_oauth(mcp_client: Client[Any]):
+    result = await mcp_client.call_tool(
+        "get_workspace", {"workspace_id": str(WORKSPACE_ID)}, raise_on_error=False
+    )
+    assert result.is_error
+    assert "OAuth" in str(result.content)
+
+
 async def test_get_workspace_uses_an_explicit_ui_url(
     mcp_client: Client[Any], monkeypatch: pytest.MonkeyPatch
 ):

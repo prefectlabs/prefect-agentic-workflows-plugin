@@ -28,6 +28,8 @@ def cloud_profile(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     variables and an empty profiles file. A developer's profile can't leak in,
     such as a staging `PREFECT_CLOUD_API_URL` that changes the UI address.
     """
+    for name in ["ENABLED", "API_BASE_URL", "AUTH_BASE_URL", "PUBLIC_BASE_URL"]:
+        monkeypatch.delenv(f"PREFECT_MCP_CLOUD_{name}", raising=False)
     monkeypatch.setenv("PREFECT_PROFILES_PATH", str(tmp_path / "profiles.toml"))
     monkeypatch.delenv("PREFECT_CLOUD_API_URL", raising=False)
     monkeypatch.delenv("PREFECT_UI_URL", raising=False)

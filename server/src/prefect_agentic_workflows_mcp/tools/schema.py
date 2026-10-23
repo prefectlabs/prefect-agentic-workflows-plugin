@@ -5,7 +5,12 @@ from typing import Annotated, Any
 from fastmcp import FastMCP
 from pydantic import Field
 
-from prefect_agentic_workflows_mcp.parameters import PlanDocument, PlanPath, load_plan
+from prefect_agentic_workflows_mcp.parameters import (
+    PlanDocument,
+    PlanPath,
+    WorkspaceId,
+    load_plan,
+)
 from prefect_agentic_workflows_mcp.tools import tool
 from prefect_agentic_workflows_mcp.workspace_api import WorkspaceApi
 
@@ -24,7 +29,9 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
     """Add the schema tools to `mcp`."""
 
     @tool(mcp, read_only=True)
-    async def get_schema(version: SchemaVersion = None) -> dict[str, Any]:
+    async def get_schema(
+        version: SchemaVersion = None, workspace_id: WorkspaceId = None
+    ) -> dict[str, Any]:
         """Read the JSON Schema for execution-plan documents from Prefect Cloud.
 
         Call this before drafting a plan. Omitting `version` returns the
@@ -33,11 +40,15 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         Call `validate_plan` to check a draft against the graph rules too.
         """
         params = {"version": version} if version is not None else None
-        return await api.call("GET", "/execution-plans/schema", params=params)
+        return await api.call(
+            "GET", "/execution-plans/schema", params=params, workspace_id=workspace_id
+        )
 
     @tool(mcp, read_only=True)
     async def validate_plan(
-        plan: PlanDocument = None, plan_path: PlanPath = None
+        plan: PlanDocument = None,
+        plan_path: PlanPath = None,
+        workspace_id: WorkspaceId = None,
     ) -> dict[str, Any]:
         """Check an execution-plan draft without saving it.
 
@@ -50,5 +61,8 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         """
         document = load_plan(plan, plan_path)
         return await api.call(
-            "POST", "/execution-plans/validate", json={"plan": document}
+            "POST",
+            "/execution-plans/validate",
+            json={"plan": document},
+            workspace_id=workspace_id,
         )

@@ -5,6 +5,7 @@ from typing import Any
 from fastmcp import FastMCP
 from pydantic import BaseModel
 
+from prefect_agentic_workflows_mcp.parameters import WorkspaceId
 from prefect_agentic_workflows_mcp.tools import tool
 from prefect_agentic_workflows_mcp.workspace_api import WorkspaceApi
 
@@ -18,11 +19,12 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
     """Add the workspace tool to `mcp`."""
 
     @tool(mcp, read_only=True)
-    async def get_workspace() -> Workspace:
+    async def get_workspace(workspace_id: WorkspaceId = None) -> Workspace:
         """Return the Prefect Cloud workspace this server sends requests to.
 
         Returns `api_url` and `app_url`, the workspace's page in the Prefect
         Cloud UI. Build links from `app_url`: add `/flows/flow/<flow_id>` for
         a flow, or `/runs/flow-run/<flow_run_id>` for a run.
         """
-        return Workspace(api_url=api.current_api_url(), app_url=api.current_ui_url())
+        api_url, app_url = await api.current_workspace_urls(workspace_id=workspace_id)
+        return Workspace(api_url=api_url, app_url=app_url)
