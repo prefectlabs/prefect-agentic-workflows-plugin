@@ -73,15 +73,23 @@ class FlowState:
 
 
 def read_plan_files(workspace: Path) -> dict[str, Any]:
-    """Return each `workflows/*.plan.json` file in the workspace, by file name.
+    """Return plan files from workflow directories, keyed by workspace-relative path.
+
+    Includes nested workflow directories and excludes installed skills and
+    files outside the workspace.
 
     A file that isn't valid JSON is returned as its text.
     """
     plans: dict[str, Any] = {}
-    for path in sorted((workspace / "workflows").glob("*.plan.json")):
+    root = workspace.resolve()
+    for path in sorted(workspace.glob("**/workflows/*.plan.json")):
+        relative_path = path.relative_to(workspace)
+        if ".claude" in relative_path.parts or not path.resolve().is_relative_to(root):
+            continue
         text = path.read_text()
+        name = relative_path.as_posix()
         try:
-            plans[path.name] = json.loads(text)
+            plans[name] = json.loads(text)
         except ValueError:
-            plans[path.name] = text
+            plans[name] = text
     return plans

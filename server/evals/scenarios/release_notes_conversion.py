@@ -8,7 +8,9 @@ When the infrastructure check asks which business tools an agent can reach,
 the simulated user names the GitHub server and a tools server that needs no
 credentials, and says the Docker-based server runs only on their machine.
 The GitHub token is the sandbox's `eval-github-token` Secret block, which
-holds a placeholder value. The user turns down the test run.
+holds a placeholder value. When the report and design summary are separate,
+the user chooses substitutes before approving the design. The user turns down
+the test run.
 
 Expected results:
 
@@ -32,6 +34,7 @@ from evals.sandbox import SandboxApi
 from evals.scenario import (
     DECLINE_TEST_RUN,
     FLOW_PREFIX,
+    INFRASTRUCTURE_QUESTION,
     Judgement,
     Outcome,
     Rule,
@@ -56,12 +59,16 @@ https://api.githubcopilot.com/mcp/, and its token is in the Secret block
 """
 
 
-DESIGN_APPROVAL = f"""\
-I accept every proposed substitute in the report, and the summary is right.
+CONVERSION_CHOICES = f"""\
+I accept every proposed substitute in the report.
 For the check loop, use two check-and-fix passes. The changes script is
 available as the `collect_changes` tool on our remote MCP server at
-{TOOLS_SERVER}, which needs no credentials. Go ahead.
+{TOOLS_SERVER}, which needs no credentials.
 """
+
+DESIGN_APPROVAL = (
+    CONVERSION_CHOICES + "\nThe summary is right, and I approve the design. Go ahead.\n"
+)
 
 REACHABLE_SYSTEMS = f"""\
 GitHub is reachable through https://api.githubcopilot.com/mcp/ with the token
@@ -85,9 +92,23 @@ USER = [
     Rule(
         label="reachable-systems",
         before_tool="validate_plan",
-        pattern=r"reach|business tool|web address|remote MCP server",
+        pattern=INFRASTRUCTURE_QUESTION,
         reply=REACHABLE_SYSTEMS,
         max_uses=1,
+    ),
+    Rule(
+        label="conversion-decisions",
+        before_tool="validate_plan",
+        pattern=(
+            r"(?ms)\A"
+            r"(?!.*^[ \t]*(?:#{1,6}[ \t]+|\*\*)[^\n]*\bsummary\b)"
+            r".*\bconversion report\b"
+        ),
+        reply=(
+            CONVERSION_CHOICES
+            + "\nPlease show me the design summary before writing or validating "
+            "the plan.\n"
+        ),
     ),
     Rule(
         label="design-approval",

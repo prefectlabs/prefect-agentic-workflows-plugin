@@ -21,6 +21,7 @@ import re
 from evals import assertions
 from evals.assertions import Check
 from evals.scenario import (
+    INFRASTRUCTURE_QUESTION,
     Judgement,
     Outcome,
     Rule,
@@ -43,9 +44,7 @@ browser, and nobody here hosts anything.
 USER = [
     Rule(
         label="no-remote-servers",
-        # Reply only to a question about the user's tools or servers, not to a
-        # message that mentions MCP in passing.
-        pattern=r"(remote MCP server|MCP|web address|business tool|reach)[^?]{0,300}\?",
+        pattern=INFRASTRUCTURE_QUESTION,
         reply=NO_SERVERS,
         max_uses=1,
     ),

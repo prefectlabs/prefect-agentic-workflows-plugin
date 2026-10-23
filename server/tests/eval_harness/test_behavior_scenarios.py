@@ -218,6 +218,21 @@ def release(broken: bool) -> Outcome:
     return outcome(transcript, plan, [] if broken else [saved_flow(flow, plan)])
 
 
+@pytest.mark.parametrize("approval_turn", [None, 4])
+def test_conversion_decisions_do_not_authorize_validation(approval_turn: int | None):
+    result = release(False)
+    for call in result.transcript.tool_calls:
+        call.turn = 3
+    result.transcript.replies = [Reply(2, "conversion-decisions", "")]
+    if approval_turn is not None:
+        result.transcript.replies.append(Reply(approval_turn, "design-approval", ""))
+
+    by_name = {check.name: check for check in release_notes.checks(result)}
+
+    assert not by_name["nothing validated before the design approval"].passed
+    assert by_name["design approved once"].passed is (approval_turn is not None)
+
+
 SCENARIOS = {
     "rejected_approval": (
         rejected_approval,
