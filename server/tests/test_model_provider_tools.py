@@ -1,19 +1,12 @@
 """Tests for the model provider tools, which reshape what Cloud returns."""
 
-from typing import Any, Literal
+from typing import Any
 
 import httpx
 import pytest
 import respx
 from fastmcp import Client
-from fastmcp.client.elicitation import (
-    ElicitationHandler,
-    ElicitRequestParams,
-    ElicitResult,
-    RequestContext,
-)
-from mcp.types import ElicitRequestURLParams
-from support import ACCOUNT_ID, WORKSPACE_ID, error_text
+from support import ACCOUNT_ID, WORKSPACE_ID, browser_user, error_text
 
 from prefect_agentic_workflows_mcp.server import build_server
 
@@ -112,24 +105,6 @@ def user_adds_anthropic_connection(cloud_api: respx.MockRouter) -> None:
             httpx.Response(200, json=[existing, added]),
         ]
     )
-
-
-def browser_user(
-    action: Literal["accept", "decline", "cancel"], opened_urls: list[str]
-) -> ElicitationHandler:
-    """Return an elicitation handler that records each URL and answers `action`."""
-
-    async def handle(
-        message: str,
-        response_type: type | None,
-        params: ElicitRequestParams,
-        context: RequestContext,
-    ) -> ElicitResult[dict[str, Any]]:
-        assert isinstance(params, ElicitRequestURLParams)
-        opened_urls.append(params.url)
-        return ElicitResult(action=action)
-
-    return handle
 
 
 @pytest.mark.parametrize("mode", ["auto", "legacy"])

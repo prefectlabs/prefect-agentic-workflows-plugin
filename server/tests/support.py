@@ -1,11 +1,17 @@
 """Constants, payloads, and helpers shared by the mocked tests."""
 
 import json
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from fastmcp.client.client import CallToolResult
-from mcp.types import TextContent
+from fastmcp.client.elicitation import (
+    ElicitationHandler,
+    ElicitRequestParams,
+    ElicitResult,
+    RequestContext,
+)
+from mcp.types import ElicitRequestURLParams, TextContent
 
 ACCOUNT_ID = "11111111-1111-1111-1111-111111111111"
 WORKSPACE_ID = "22222222-2222-2222-2222-222222222222"
@@ -179,3 +185,21 @@ def error_text(result: CallToolResult) -> str:
     content = result.content[0]
     assert isinstance(content, TextContent)
     return content.text
+
+
+def browser_user(
+    action: Literal["accept", "decline", "cancel"], opened_urls: list[str]
+) -> ElicitationHandler:
+    """Return an elicitation handler that records each URL and answers `action`."""
+
+    async def handle(
+        message: str,
+        response_type: type | None,
+        params: ElicitRequestParams,
+        context: RequestContext,
+    ) -> ElicitResult[dict[str, Any]]:
+        assert isinstance(params, ElicitRequestURLParams)
+        opened_urls.append(params.url)
+        return ElicitResult(action=action)
+
+    return handle

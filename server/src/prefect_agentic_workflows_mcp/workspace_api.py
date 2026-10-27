@@ -265,6 +265,25 @@ def response_detail(response: httpx.Response) -> str:
     return str(body)
 
 
+def coded_error_detail(response: httpx.Response) -> dict[str, Any] | None:
+    """Return the detail of a Prefect API error when it is an object with a `code`.
+
+    Routes use a coded detail for errors a caller can act on, such as
+    `mcp_connection_access_denied`. Returns None for a success or any other
+    body.
+    """
+    if not response.is_error:
+        return None
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if isinstance(detail, dict) and "code" in detail:
+        return detail
+    return None
+
+
 def read_json(response: httpx.Response, method: HttpMethod, path: str) -> Any:
     """Return the JSON body of the response to a request for `method` and `path`.
 
@@ -360,7 +379,13 @@ class WorkspaceApi:
                 if self.oauth_settings.enabled:
                     if response.status_code == 401:
                         raise ToolError(credentials.messages.unauthorized)
-                    if response.status_code == 403:
+                    # A 403 with a coded detail refuses one object, such as an
+                    # MCP connection, not the workspace. Its message says whom
+                    # to ask for access, so it reaches the caller.
+                    if (
+                        response.status_code == 403
+                        and coded_error_detail(response) is None
+                    ):
                         raise ToolError(credentials.messages.forbidden)
                 return response
             except httpx.TimeoutException as exc:
