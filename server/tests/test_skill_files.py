@@ -19,7 +19,8 @@ SKILL_DIR = Path(__file__).resolve().parents[2] / "skills" / "agentic-workflows"
 
 # A backticked name that starts with one of these verbs is read as a tool name.
 TOOL_NAME = re.compile(
-    r"`((?:get|list|create|update|delete|validate|publish|start|submit|activate)"
+    r"`((?:get|list|create|connect|update|delete|validate|publish|start|submit"
+    r"|activate|discover|check)"
     r"_[a-z_]+)`"
 )
 MARKDOWN_LINK = re.compile(r"\]\(([^)#]+)\)")

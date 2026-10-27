@@ -11,7 +11,7 @@ A skill runs on the user's machine, with scripts, local files, stdio MCP servers
 | Part in the source skill | Proposed substitute |
 |---|---|
 | A local script or shell command | The agent node itself, when the script needs only the run's inputs, earlier results, and public network access. A tool on a remote MCP server when it needs the user's systems and a later step needs its result ("needs a new service"). A Deployment node when only success or failure matters, since it passes on only the child run's ID and state. |
-| A stdio MCP server | The same tools from a remote Streamable-HTTP MCP server, with credentials as Secret blocks. |
+| A stdio MCP server | The same tools from a remote Streamable-HTTP MCP server, through an MCP connection. |
 | A loop until done | A fixed number of passes, or a human checkpoint that approves or sends back. |
 | A timed wait | Not supported yet. A human checkpoint, or a second workflow on a schedule. |
 | A list of items | Handle the list in one node, or fan out to a fixed set of nodes. |
