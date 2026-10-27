@@ -20,8 +20,9 @@ checks in `tests/eval_harness/`. Those start no agent and call no workspace.
 
 The harness reads the sandbox from `PREFECT_API_URL` and `PREFECT_API_KEY`
 and stops before any agent starts when either one is missing. The workspace
-needs execution plans enabled and an object storage bucket. Use a sandbox
-workspace: the cases create flows and a Secret block there.
+needs execution plans enabled, MCP connections enabled, and an object
+storage bucket. Use a sandbox workspace: the cases create flows, MCP
+connections, and a Secret block there.
 
 The Claude Agent SDK includes its own copy of Claude Code. It uses
 `ANTHROPIC_API_KEY` when it's set, and your Claude Code login otherwise. The
@@ -81,15 +82,17 @@ prefix.
 
 `SandboxLifecycle` in `lifecycle.py` is the dataset's `CaseLifecycle`. Its
 `setup` picks the run's prefix and directory and runs the case's `setup`
-function. Its `teardown` deletes the flows with the run's prefix. Pydantic
-Evals calls `teardown` also when the task or `setup` raised. After the last
-run, the command deletes every flow with the session's prefix, to catch a
-run whose cleanup failed. The harness lists the flows with
+function. Its `teardown` deletes the flows with the run's prefix, and the
+MCP connections with the prefix in their names. Pydantic Evals calls
+`teardown` also when the task or `setup` raised. After the last run, the
+command deletes every flow and MCP connection with the session's prefix, to
+catch a run whose cleanup failed. A connection's name is the provider and
+the account, so a case puts the run's prefix in the account name. The harness lists the flows with
 `POST /flows/filter` and deletes each one. Deleting a flow also deletes its
 execution plan, its plan versions, and its schedules. The harness never
-deletes a flow without the prefix. A session that is killed, such as a
-cancelled CI job, can leave its flows in the sandbox. Delete those by hand by
-their `eval-` prefix.
+deletes a flow or a connection without the prefix. A session that is killed,
+such as a cancelled CI job, can leave its flows and connections in the
+sandbox. Delete those by hand by their `eval-` prefix.
 
 The `eval-github-token` Secret block, which the release-notes case
 references, holds a placeholder value. The harness creates it when it's
@@ -121,7 +124,7 @@ missing and never deletes it.
    it never called `start_run`. `ScenarioChecks` runs the case's own checks.
    Each check is one assertion in the report, with its detail as the reason.
    When the judges are on, a `Judge` asks each of the case's judgements.
-6. `SandboxLifecycle.teardown` deletes the run's flows.
+6. `SandboxLifecycle.teardown` deletes the run's flows and MCP connections.
 
 The report also has two metrics for each run: `agent_cost_usd`, the cost the
 SDK reported, and `agent_turns`.
@@ -178,6 +181,7 @@ and reports a run that the same key already started.
 | `rejected_approval` | `rejected_approval.py` | The README quickstart workflow: the approval's rejected output leads to the agent node that revises the draft, and the plan has the `reply` and `category` outputs. |
 | `unsupported_loop` | `unsupported_loop.py` | Converting the `post-review` fixture skill, which repeats until the reviewer is happy: the report flags the loop and proposes a substitute, the plan has two review passes and no cycle, and nothing is published before the user decides. |
 | `scheduled_edit` | `scheduled_edit.py` | Changing a flow that has an active version and a schedule: the agent names the schedule before it asks to activate, activates the new version with the action items only after the yes, and leaves the schedule alone. |
+| `mcp_connection_setup` | `mcp_connection_setup.py` | A workflow that reads Linear and Stripe: the agent inspects each server before it saves an OAuth connection for Linear and an API-key header connection for Stripe, names them after the account, never asks for the key, sends the setup links, and publishes a plan that references both connections. |
 | `no_infrastructure` | `no_infrastructure.py` | A workflow that needs Zendesk and Slack, for a user with no remote MCP servers: the infrastructure check comes first, and the agent offers a version without those tools. |
 
 ## Adding a case

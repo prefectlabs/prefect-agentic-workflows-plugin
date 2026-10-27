@@ -2,9 +2,10 @@
 
 The harness uses these to seed the state a scenario starts from, to record
 the state of a run's flows after the conversation, and to delete the flows
-of a test session. Every flow the harness creates or deletes has a name that
-starts with the session's prefix, so other flows in the workspace are never
-changed.
+and MCP connections of a test session. Every flow the harness creates or
+deletes has a name that starts with the session's prefix, and every MCP
+connection it deletes has the prefix in its name, so other flows and
+connections in the workspace are never changed.
 
 Deleting a flow also deletes its execution plan, its plan versions, and its
 schedules.
@@ -200,8 +201,7 @@ class SandboxApi:
         mistake can't delete other flows in the workspace. Tries every flow
         before it raises `RuntimeError` for the ones it couldn't delete.
         """
-        if not prefix.startswith("eval-") or len(prefix) <= len("eval-"):
-            raise ValueError(f"Refusing to delete flows with the prefix {prefix!r}.")
+        require_eval_prefix(prefix, "flows")
         deleted: list[str] = []
         failed: list[str] = []
         for flow in self.flows_with_prefix(prefix):
@@ -248,3 +248,40 @@ class SandboxApi:
             flow["name"].removeprefix(prefix): self.flow_state(flow)
             for flow in self.flows_with_prefix(prefix)
         }
+
+    def delete_mcp_connections_with_prefix(self, prefix: str) -> list[str]:
+        """Delete each MCP connection whose name contains `prefix`, and return names.
+
+        A connection's name is the provider and the account, so a scenario
+        puts the run's prefix in the account name, such as
+        `Linear (eval-3f9a1c-2-acme)`. Raises `ValueError` for a prefix that
+        isn't an evaluation prefix. Tries every connection before it raises
+        `RuntimeError` for the ones it couldn't delete.
+        """
+        require_eval_prefix(prefix, "MCP connections")
+        deleted: list[str] = []
+        failed: list[str] = []
+        for connection in self.send("GET", "/agentic/mcp-connections").json():
+            if prefix not in connection["name"]:
+                continue
+            response = self.client.delete(
+                f"/agentic/mcp-connections/{connection['id']}"
+            )
+            if response.is_success or response.status_code == 404:
+                deleted.append(connection["name"])
+            else:
+                failed.append(f"{connection['name']} (HTTP {response.status_code})")
+        if failed:
+            raise RuntimeError(
+                f"Could not delete these MCP connections: {', '.join(failed)}"
+            )
+        return deleted
+
+
+def require_eval_prefix(prefix: str, objects: str) -> None:
+    """Raise `ValueError` unless `prefix` is an evaluation prefix with a session ID.
+
+    A mistake can then never delete other `objects` in the workspace.
+    """
+    if not prefix.startswith("eval-") or len(prefix) <= len("eval-"):
+        raise ValueError(f"Refusing to delete {objects} with the prefix {prefix!r}.")

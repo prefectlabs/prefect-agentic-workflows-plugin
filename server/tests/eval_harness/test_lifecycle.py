@@ -23,6 +23,7 @@ class RecordingSandbox(SandboxApi):
         super().__init__(Credentials("https://api.prefect.cloud/api/x", "pnu_key"))
         self.created: list[str] = []
         self.deleted_prefixes: list[str] = []
+        self.deleted_connection_prefixes: list[str] = []
         self.fail_deletes = fail_deletes
 
     def create_flow(self, name: str) -> dict[str, Any]:
@@ -33,6 +34,10 @@ class RecordingSandbox(SandboxApi):
         self.deleted_prefixes.append(prefix)
         if self.fail_deletes:
             raise RuntimeError("HTTP 500")
+        return []
+
+    def delete_mcp_connections_with_prefix(self, prefix: str) -> list[str]:
+        self.deleted_connection_prefixes.append(prefix)
         return []
 
 
@@ -76,6 +81,7 @@ async def test_each_run_seeds_and_deletes_its_own_prefix(tmp_path: Path):
     assert prefixes == [f"{SESSION_PREFIX}{number}-" for number in (1, 2, 3, 4)]
     assert sorted(sandbox.created) == [f"{prefix}digest" for prefix in prefixes]
     assert sorted(sandbox.deleted_prefixes) == prefixes
+    assert sorted(sandbox.deleted_connection_prefixes) == prefixes
     directories = sorted(path.name for path in tmp_path.iterdir())
     assert directories == ["1-first", "2-first", "3-second", "4-second"]
     assert report.cases[0].metrics == {"agent_cost_usd": 0.5, "agent_turns": 0}
@@ -129,8 +135,10 @@ async def test_a_failed_cleanup_is_recorded_and_the_evaluation_continues(
 
     assert len(report.cases) == 2
     assert sorted(current.cleanup_errors) == [
-        f"Could not delete the flows named {SESSION_PREFIX}1-*: HTTP 500",
-        f"Could not delete the flows named {SESSION_PREFIX}2-*: HTTP 500",
+        f"Could not delete the flows and MCP connections of {SESSION_PREFIX}1-: "
+        "HTTP 500",
+        f"Could not delete the flows and MCP connections of {SESSION_PREFIX}2-: "
+        "HTTP 500",
     ]
 
 

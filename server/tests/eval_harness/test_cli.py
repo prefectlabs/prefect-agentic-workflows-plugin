@@ -99,6 +99,9 @@ class StubSandbox(SandboxApi):
         self.deleted_prefixes.append(prefix)
         return []
 
+    def delete_mcp_connections_with_prefix(self, prefix: str) -> list[str]:
+        return []
+
 
 def stub_task(model: str | None) -> Any:
     async def task(inputs: ScenarioInputs) -> Outcome:

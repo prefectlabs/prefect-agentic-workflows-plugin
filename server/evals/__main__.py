@@ -131,13 +131,16 @@ async def evaluate(args: argparse.Namespace, credentials: Credentials) -> int:
             },
         )
     finally:
-        # Each run deletes its own flows. This also deletes the flows of a run
-        # whose cleanup failed, or that was cancelled before its teardown.
+        # Each run deletes its own flows and MCP connections. This also deletes
+        # those of a run whose cleanup failed, or that was cancelled before its
+        # teardown.
         try:
             sandbox.delete_flows_with_prefix(flow_prefix)
+            sandbox.delete_mcp_connections_with_prefix(flow_prefix)
         except Exception as exc:
             session.cleanup_errors.append(
-                f"Could not delete the flows named {flow_prefix}*: {exc}"
+                f"Could not delete the flows and MCP connections of {flow_prefix}: "
+                f"{exc}"
             )
         sandbox.close()
 
