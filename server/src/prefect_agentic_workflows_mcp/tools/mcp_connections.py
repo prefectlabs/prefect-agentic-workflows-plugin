@@ -301,7 +301,8 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         what happened:
 
         - `opened`: read `connection.status` to see whether they finished.
-        - `declined`: the user closed the page.
+        - `declined`: the user closed the page. Send them
+          `connection.setup_url` to finish later.
         - `not_needed`: the server needs no credential.
         - `client_cannot_open_links`: send the user `connection.setup_url`.
 
