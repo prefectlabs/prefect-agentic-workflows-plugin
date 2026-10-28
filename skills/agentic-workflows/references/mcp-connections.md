@@ -4,7 +4,7 @@ An MCP connection saves a remote MCP server and its sign-in in Prefect Cloud. An
 
 ## Find or create a connection
 
-1. Call `list_mcp_connections`. When one has the server's URL and the account the user wants, use it. Each person can have their own connection to the same server, named after their account.
+1. Call `list_mcp_connections`. When one has the server's URL and the account the user wants, use it. When its `status.state` is `authorization_needed` or `reauthorization_required`, send the user its `setup_url` and call `check_mcp_connection` after they finish, as in steps 4 and 5. Each person can have their own connection to the same server, named after their account.
 2. Otherwise call `discover_mcp_server` with the URL, and create the connection from its answer with `create_mcp_connection`:
 
    | Answer | Create with |
