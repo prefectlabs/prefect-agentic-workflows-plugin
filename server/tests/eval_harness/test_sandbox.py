@@ -110,6 +110,37 @@ def test_delete_flows_with_prefix_refuses_a_prefix_without_a_session_id(
         sandbox.delete_flows_with_prefix(prefix)
 
 
+def test_delete_mcp_connections_with_prefix_deletes_only_names_containing_it(
+    api: respx.MockRouter, sandbox: SandboxApi
+):
+    api.get("/agentic/mcp-connections").respond(
+        200,
+        json=[
+            {"id": "1", "name": f"Linear ({PREFIX}1-acme)"},
+            {"id": "2", "name": "Linear (eddie)"},
+            {"id": "3", "name": f"Stripe ({PREFIX}2-acme)"},
+        ],
+    )
+    first = api.delete("/agentic/mcp-connections/1").respond(204)
+    other = api.delete("/agentic/mcp-connections/2").respond(204)
+    third = api.delete("/agentic/mcp-connections/3").respond(500)
+
+    with pytest.raises(RuntimeError, match=r"Stripe \(.*\) \(HTTP 500\)"):
+        sandbox.delete_mcp_connections_with_prefix(PREFIX)
+
+    assert first.called
+    assert third.called
+    assert not other.called
+
+
+@pytest.mark.parametrize("prefix", ["", "eval-", "digest-"])
+def test_delete_mcp_connections_with_prefix_refuses_a_prefix_without_a_session_id(
+    sandbox: SandboxApi, prefix: str
+):
+    with pytest.raises(ValueError, match="Refusing to delete MCP connections"):
+        sandbox.delete_mcp_connections_with_prefix(prefix)
+
+
 def test_snapshot_reads_each_flow_by_its_name_without_the_prefix(
     api: respx.MockRouter, sandbox: SandboxApi
 ):

@@ -22,6 +22,24 @@ from evals.scenario import Outcome, ScenarioInputs
 ScenarioCase = Case[ScenarioInputs, Outcome, None]
 
 
+def clean_up_prefix(sandbox: SandboxApi, prefix: str) -> list[str]:
+    """Delete the flows and MCP connections of `prefix`, and return each failure.
+
+    The two deletions run independently, so a flow that can't be deleted
+    doesn't leave the connections behind.
+    """
+    errors: list[str] = []
+    try:
+        sandbox.delete_flows_with_prefix(prefix)
+    except Exception as exc:
+        errors.append(f"Could not delete the flows named {prefix}*: {exc}")
+    try:
+        sandbox.delete_mcp_connections_with_prefix(prefix)
+    except Exception as exc:
+        errors.append(f"Could not delete the MCP connections named *{prefix}*: {exc}")
+    return errors
+
+
 @dataclass(frozen=True)
 class Run:
     """One run of one case: where the agent works, and the prefix of its flows."""
@@ -79,12 +97,13 @@ class Session:
 
 
 class SandboxLifecycle(CaseLifecycle[ScenarioInputs, Outcome, None]):
-    """Seeds the sandbox before a run, and deletes the run's flows after it.
+    """Seeds the sandbox before a run, and deletes its flows and connections after it.
 
     Pydantic Evals calls `teardown` after the task and the evaluators, also
-    when the task or `setup` raised, so the run's flows are deleted either
-    way. An error in `teardown` would stop the whole evaluation, so a failed
-    deletion is added to `Session.cleanup_errors` instead.
+    when the task or `setup` raised, so the run's flows and MCP connections
+    are deleted either way. An error in `teardown` would stop the whole
+    evaluation, so a failed deletion is added to `Session.cleanup_errors`
+    instead.
     """
 
     def __init__(self, case: ScenarioCase, session: Session) -> None:
@@ -118,9 +137,6 @@ class SandboxLifecycle(CaseLifecycle[ScenarioInputs, Outcome, None]):
             CURRENT_RUN.reset(self.token)
         if self.run is None:
             return
-        try:
-            self.session.sandbox.delete_flows_with_prefix(self.run.flow_prefix)
-        except Exception as exc:
-            self.session.cleanup_errors.append(
-                f"Could not delete the flows named {self.run.flow_prefix}*: {exc}"
-            )
+        self.session.cleanup_errors.extend(
+            clean_up_prefix(self.session.sandbox, self.run.flow_prefix)
+        )

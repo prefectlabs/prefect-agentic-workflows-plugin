@@ -14,8 +14,9 @@ from harness_plans import approval_plan, cyclic_plan
 
 from evals.record import FlowState, Reply, ToolCall, Transcript
 from evals.runner import SKILL_DIR
-from evals.scenario import Outcome
+from evals.scenario import Outcome, next_rule
 from evals.scenarios import (
+    mcp_connection_setup,
     no_infrastructure,
     rejected_approval,
     scheduled_edit,
@@ -79,6 +80,86 @@ def rejected(broken: bool) -> Outcome:
         flows = []
         replies = []
     return outcome(Transcript(tool_calls=calls, replies=replies), plan, flows)
+
+
+LINEAR_ID = "0199c3a2-0000-7000-8000-000000000001"
+STRIPE_ID = "0199c3a2-0000-7000-8000-000000000002"
+
+
+def created(connection_id: str, name: str, url: str, **arguments: Any) -> ToolCall:
+    """Return a `create_mcp_connection` call for a client that can't open links."""
+    return ToolCall(
+        "create_mcp_connection",
+        {"name": name, "url": url, **arguments},
+        {
+            "setup": "client_cannot_open_links",
+            "connection": {
+                "id": connection_id,
+                "name": name,
+                "setup_url": f"https://app.prefect.cloud/connections/{connection_id}/setup",
+            },
+        },
+        turn=1,
+    )
+
+
+def connection_plan(*servers: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "kind": "ExecutionPlan",
+        "nodes": {
+            "digest": {
+                "kind": "AgentNode",
+                "mcp": {"mcpServers": {f"server{n}": s for n, s in enumerate(servers)}},
+            }
+        },
+    }
+
+
+def connections(broken: bool) -> Outcome:
+    account = f"{PREFIX}acme"
+    linear, stripe = mcp_connection_setup.LINEAR_URL, mcp_connection_setup.STRIPE_URL
+    linear_call = created(LINEAR_ID, f"Linear ({account})", linear, oauth={})
+    stripe_call = created(
+        STRIPE_ID,
+        f"Stripe ({account})",
+        stripe,
+        headers=[{"name": "Authorization", "value_prefix": "Bearer "}],
+    )
+    plan = connection_plan(
+        {"type": "connection", "connection_id": LINEAR_ID},
+        {"type": "connection", "connection_id": STRIPE_ID},
+    )
+    discovers = [
+        ToolCall("discover_mcp_server", {"url": linear}, turn=1),
+        ToolCall("discover_mcp_server", {"url": stripe}, turn=1),
+    ]
+    links = [linear_call.result["connection"]["setup_url"]]
+    links.append(stripe_call.result["connection"]["setup_url"])
+    replies = [Reply(1, "design-approval", "")]
+    if broken:
+        discovers = discovers[:1]
+        linear_call.arguments.pop("oauth")
+        linear_call.arguments["headers"] = [{"name": "Authorization"}]
+        stripe_call.arguments["oauth"] = {}
+        # Each name is the other server's provider.
+        linear_call.arguments["name"] = f"Stripe ({account})"
+        stripe_call.arguments["name"] = f"Linear ({account})"
+        # Both creates are refused, so no setup link can count as sent.
+        linear_call.is_error = stripe_call.is_error = True
+        plan = connection_plan(
+            {"type": "connection", "connection_id": LINEAR_ID},
+            {"type": "http", "url": stripe},
+        )
+        replies.append(Reply(1, "secret-asked", ""))
+    calls = [*discovers, linear_call, stripe_call]
+    calls += published(plan, mcp_connection_setup.FLOW_NAME, turn=2)
+    transcript = Transcript(
+        tool_calls=calls,
+        agent_text=[f"Finish setup at {link}" for link in links],
+        replies=replies,
+    )
+    flows = [saved_flow(mcp_connection_setup.FLOW_NAME, plan)]
+    return outcome(transcript, plan, flows)
 
 
 def with_review_passes(plan: dict[str, Any]) -> dict[str, Any]:
@@ -278,6 +359,20 @@ SCENARIOS = {
             "validate_plan never called",
         ],
     ),
+    "mcp_connection_setup": (
+        mcp_connection_setup,
+        connections,
+        [
+            "discover_mcp_server called for https://mcp.stripe.com before its "
+            "connection is created",
+            "the Linear connection uses oauth",
+            "the Stripe connection uses an Authorization header with the Bearer prefix",
+            "each connection is named after its provider and the account",
+            "the agent never asks for the API key",
+            "the agent sends each setup link the client didn't open",
+            "the plan references both connections and no inline server for them",
+        ],
+    ),
     "release_notes_conversion": (
         release_notes,
         release,
@@ -290,6 +385,21 @@ SCENARIOS = {
         ],
     ),
 }
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "What is your Stripe API key?",
+        "Can you paste the restricted key here?",
+        "Please share the token so I can add it?",
+    ],
+)
+def test_mcp_connection_setup_hears_a_request_for_the_key(message: str):
+    rule = next_rule(mcp_connection_setup.USER, message, Transcript())
+
+    assert rule is not None
+    assert rule.label == "secret-asked"
 
 
 @pytest.mark.parametrize("broken", [False, True], ids=["expected", "broken"])
