@@ -5,12 +5,14 @@ script whose output later steps read, a stdio MCP server, a repeat-until-done
 loop, and a human approval. See `tests/fixtures/skills/README.md`.
 
 When the infrastructure check asks which business tools an agent can reach,
-the simulated user names the GitHub server and a tools server that needs no
-credentials, and says the Docker-based server runs only on their machine.
-The GitHub token is the sandbox's `eval-github-token` Secret block, which
-holds a placeholder value. When the report and design summary are separate,
-the user chooses substitutes before approving the design. The user turns down
-the test run.
+the simulated user names the GitHub server and says the Docker-based server
+runs only on their machine. The changes script is not hosted anywhere, so the
+user asks the agent to collect the changes with the GitHub tools. Cloud's MCP
+discovery reaches the real server at each URL, so the scenario names no
+server that isn't real. The GitHub token is the sandbox's `eval-github-token`
+Secret block, which holds a placeholder value. When the report and design
+summary are separate, the user chooses substitutes before approving the
+design. The user turns down the test run.
 
 Expected results:
 
@@ -46,9 +48,6 @@ from evals.scenario import (
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "skills" / "release-notes"
 FLOW_NAME = "release-notes"
 SECRET_BLOCK = "eval-github-token"
-# Cloud checks that every MCP server's hostname resolves when it saves a plan,
-# so the tools server is on a hostname that resolves.
-TOOLS_SERVER = "https://example.com/mcp"
 
 
 PROMPT = f"""\
@@ -59,11 +58,10 @@ https://api.githubcopilot.com/mcp/, and its token is in the Secret block
 """
 
 
-CONVERSION_CHOICES = f"""\
+CONVERSION_CHOICES = """\
 I accept every proposed substitute in the report.
-For the check loop, use two check-and-fix passes. The changes script is
-available as the `collect_changes` tool on our remote MCP server at
-{TOOLS_SERVER}, which needs no credentials.
+For the check loop, use two check-and-fix passes. The changes script is not
+hosted anywhere, so collect the changes with the GitHub tools.
 """
 
 DESIGN_APPROVAL = (
@@ -72,9 +70,8 @@ DESIGN_APPROVAL = (
 
 REACHABLE_SYSTEMS = f"""\
 GitHub is reachable through https://api.githubcopilot.com/mcp/ with the token
-in the Secret block `{SECRET_BLOCK}`. We also host a remote MCP server at
-{TOOLS_SERVER} that needs no credentials. The Docker-based server in the
-skill runs only on my machine. Nothing else is reachable.
+in the Secret block `{SECRET_BLOCK}`. The Docker-based server in the skill
+runs only on my machine. Nothing else is reachable.
 """
 
 REPORT_PARTS = {
