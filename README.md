@@ -337,7 +337,7 @@ your agent can ask before a tool writes.
 | `list_mcp_connections`, `get_mcp_connection` | List or read the workspace's MCP connections, with each one's status and setup link, never a credential |
 | `create_mcp_connection` | Save an MCP server as a connection, and open its Prefect Cloud setup page, where you sign in or enter its header values |
 | `check_mcp_connection` | Check a connection by listing the server's tools with its saved credentials |
-| `get_workspace` | Show the workspace the server uses, with its Prefect Cloud UI address |
+| `get_workspace` | Show the workspace the server uses, by name (such as `my-account/my-workspace`) and Prefect Cloud UI address |
 
 ## Development
 

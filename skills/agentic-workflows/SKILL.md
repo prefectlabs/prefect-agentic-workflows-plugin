@@ -9,6 +9,8 @@ An execution plan is a JSON graph of agent, human-input, and deployment nodes at
 
 ## Start
 
+When the user names a workspace, such as `Workspace: prefect-staging/eng-and-product (a63a76bd-…)`, call `get_workspace` before any other tool and confirm that its `name`, or the workspace ID in its `api_url`, matches. When `get_workspace` lists several workspaces, pass the matching one's `workspace_id` to it and to every later tool. When nothing matches, stop: tell the user which workspace the server uses, by its `name` or `app_url`, and ask them to switch the server to the one they named. Do nothing else until it matches.
+
 When building a workflow, or editing one to use a new system, run the [infrastructure check](references/infrastructure-check.md) first. The conversion guide runs it once it knows which systems the skill uses. Running, rolling back, or scheduling a published workflow skips it. Then:
 
 - **Converting an existing skill:** follow [references/conversion.md](references/conversion.md).

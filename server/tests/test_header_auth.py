@@ -18,10 +18,13 @@ from fastmcp.utilities.tests import run_server_async
 from support import (
     ACCOUNT_ID,
     API_KEY,
+    ME_WORKSPACES_URL,
     PLAN,
     WORKSPACE_API_URL,
     WORKSPACE_ID,
+    WORKSPACE_NAME,
     error_text,
+    me_workspace,
     schema_response,
 )
 
@@ -56,6 +59,9 @@ def cloud_api() -> Iterator[respx.MockRouter]:
         router.get(
             f"{PROFILE_API_URL}/execution-plans/schema", name="profile_schema"
         ).respond(200, json=schema_response())
+        router.get(ME_WORKSPACES_URL, name="me_workspaces").respond(
+            200, json=[me_workspace()]
+        )
         yield router
 
 
@@ -84,6 +90,9 @@ async def test_the_headers_are_used_instead_of_the_profile(
     assert request.headers["Authorization"] == f"Bearer {API_KEY}"
     assert not cloud_api.routes["profile_schema"].called
     assert workspace.structured_content is not None
+    assert workspace.structured_content["name"] == WORKSPACE_NAME
+    lookup = cloud_api.routes["me_workspaces"].calls.last.request
+    assert lookup.headers["Authorization"] == f"Bearer {API_KEY}"
     assert workspace.structured_content["api_url"] == WORKSPACE_API_URL
     assert workspace.structured_content["app_url"] == (
         f"https://app.prefect.cloud/account/{ACCOUNT_ID}/workspace/{WORKSPACE_ID}"
