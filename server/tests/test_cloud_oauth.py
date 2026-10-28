@@ -131,6 +131,7 @@ async def test_oauth_uses_the_granted_workspace_and_token(
         workspace = await client.call_tool("get_workspace", {})
         await client.call_tool("list_deployments", {})
     assert workspace.structured_content == {
+        "name": "test-account/test-workspace",
         "api_url": WORKSPACE_URL,
         "app_url": (
             f"https://app.prefect.dev/account/{ACCOUNT_ID}/workspace/{WORKSPACE_ID}"
@@ -158,6 +159,7 @@ async def test_get_workspace_resolves_its_grant_once(
 
     assert grant.call_count == 1
     assert result.structured_content == {
+        "name": "test-account/test-workspace",
         "api_url": WORKSPACE_URL,
         "app_url": (
             f"https://app.prefect.dev/account/{ACCOUNT_ID}/workspace/{WORKSPACE_ID}"
@@ -228,6 +230,7 @@ async def test_multiple_workspaces_require_an_explicit_choice(
         )
         await client.call_tool("list_deployments", {"workspace_id": OTHER_WORKSPACE_ID})
     assert workspace.structured_content is not None
+    assert workspace.structured_content["name"] == "test-account/other-workspace"
     assert workspace.structured_content["api_url"] == OTHER_WORKSPACE_URL
     workspace_calls = [
         c for c in cloud_api.calls if "/api/accounts/" in c.request.url.path

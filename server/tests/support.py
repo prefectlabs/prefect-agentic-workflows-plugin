@@ -20,6 +20,8 @@ WORKSPACE_API_URL = (
 )
 WORKSPACE_API_PATH = httpx.URL(WORKSPACE_API_URL).path
 API_KEY = "pnu_test_key"
+ME_WORKSPACES_URL = "https://api.prefect.cloud/api/me/workspaces"
+WORKSPACE_NAME = "test-account/test-workspace"
 
 FLOW_ID = "33333333-3333-3333-3333-333333333333"
 VERSION_ID = "44444444-4444-4444-4444-444444444444"
@@ -39,6 +41,20 @@ PLAN: dict[str, Any] = {
     "kind": "execution_plan",
     "nodes": {"summarize": {"kind": "agent", "prompt": "Summarize the failures."}},
 }
+
+
+def me_workspace(
+    account_id: str = ACCOUNT_ID, workspace_id: str = WORKSPACE_ID
+) -> dict[str, Any]:
+    """Return one entry of `GET /api/me/workspaces` in the shape Cloud returns."""
+    return {
+        "account_id": account_id,
+        "account_name": "Test Account",
+        "account_handle": "test-account",
+        "workspace_id": workspace_id,
+        "workspace_name": "Test Workspace",
+        "workspace_handle": "test-workspace",
+    }
 
 
 def schema_response(version: str = "0.1") -> dict[str, Any]:

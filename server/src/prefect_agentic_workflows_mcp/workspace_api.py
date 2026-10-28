@@ -197,6 +197,8 @@ class Credentials:
     api_key: str = field(repr=False)
     ui_url: str
     messages: AccessMessages
+    # `<account handle>/<workspace handle>`, when the credentials carry it.
+    name: str | None = None
 
 
 def is_cloud_workspace_api_url(api_url: str) -> bool:
@@ -252,6 +254,40 @@ def header_ui_url(api_url: str) -> str:
         .replace("/workspaces/", "/workspace/")
     )
     return str(url.copy_with(host=host, path=path))
+
+
+async def read_workspace_name(credentials: Credentials) -> str | None:
+    """Return `<account handle>/<workspace handle>` for a workspace API URL.
+
+    Cloud lists the workspaces an API key can use at `/api/me/workspaces`,
+    beside the account routes. Returns None when the request fails or the
+    list doesn't include the workspace, so callers fall back to the URLs.
+    """
+    base_url, _, path = credentials.api_url.partition("/accounts/")
+    workspace_id = path.partition("/workspaces/")[2].strip("/").lower()
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(
+                f"{base_url}/me/workspaces",
+                headers={"Authorization": f"Bearer {credentials.api_key}"},
+            )
+        workspaces = response.json() if response.is_success else []
+    except (httpx.HTTPError, ValueError):
+        return None
+    if not isinstance(workspaces, list):
+        return None
+    for workspace in cast("list[Any]", workspaces):
+        if not isinstance(workspace, dict):
+            continue
+        entry = cast("dict[str, Any]", workspace)
+        if str(entry.get("workspace_id", "")).lower() != workspace_id:
+            continue
+        account_handle = entry.get("account_handle")
+        workspace_handle = entry.get("workspace_handle")
+        if account_handle and workspace_handle:
+            return f"{account_handle}/{workspace_handle}"
+        return None
+    return None
 
 
 def response_detail(response: httpx.Response) -> str:
@@ -422,12 +458,20 @@ class WorkspaceApi:
         )
         return read_json(response, method, path)
 
-    async def current_workspace_urls(
+    async def current_workspace(
         self, workspace_id: UUID | None = None
-    ) -> tuple[str, str]:
-        """Return the authorized workspace API and UI URLs for this request."""
+    ) -> tuple[str, str, str | None]:
+        """Return the authorized workspace's API URL, UI URL, and name.
+
+        The name is `<account handle>/<workspace handle>`. An OAuth grant
+        carries it. Otherwise it is read from Cloud's list of the key's
+        workspaces, and is None when that list can't be read.
+        """
         credentials = await self._read_credentials(workspace_id)
-        return credentials.api_url, credentials.ui_url
+        name = credentials.name
+        if name is None and not self.oauth_settings.enabled:
+            name = await read_workspace_name(credentials)
+        return credentials.api_url, credentials.ui_url, name
 
     async def current_ui_url(self, workspace_id: UUID | None = None) -> str:
         """Return the authorized workspace's page in the Prefect Cloud UI."""
@@ -453,6 +497,7 @@ class WorkspaceApi:
                 api_key=token.token,
                 ui_url=header_ui_url(api_url),
                 messages=OAUTH_MESSAGES,
+                name=workspace.handle_name,
             )
         if workspace_id is not None:
             raise ToolError("workspace_id requires Prefect Cloud OAuth authentication.")

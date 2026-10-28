@@ -15,7 +15,13 @@ from typing import Any
 import pytest
 import respx
 from fastmcp import Client
-from support import API_KEY, WORKSPACE_API_URL, schema_response
+from support import (
+    API_KEY,
+    ME_WORKSPACES_URL,
+    WORKSPACE_API_URL,
+    me_workspace,
+    schema_response,
+)
 
 from prefect_agentic_workflows_mcp.server import build_server
 
@@ -44,11 +50,16 @@ def cloud_api() -> Iterator[respx.MockRouter]:
     The `schema` route reads the current schema, with no query parameters.
     It answers the preflight check, so tools in every group can run without
     extra setup. A test that needs a different preflight response replaces
-    it with `cloud_api.routes["schema"].respond(...)`.
+    it with `cloud_api.routes["schema"].respond(...)`. The `me_workspaces`
+    route lists the key's workspaces, which `get_workspace` reads for the
+    workspace's name.
     """
     with respx.mock(base_url=WORKSPACE_API_URL, assert_all_called=False) as router:
         router.get("/execution-plans/schema", params__eq={}, name="schema").respond(
             200, json=schema_response()
+        )
+        router.get(ME_WORKSPACES_URL, name="me_workspaces").respond(
+            200, json=[me_workspace()]
         )
         yield router
 

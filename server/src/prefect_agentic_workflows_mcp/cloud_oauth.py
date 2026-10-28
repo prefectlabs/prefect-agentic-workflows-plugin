@@ -80,10 +80,14 @@ class WorkspaceGrant(BaseModel):
     workspace_handle: str | None = None
 
     @property
-    def display_name(self) -> str:
+    def handle_name(self) -> str | None:
         if self.account_handle and self.workspace_handle:
             return f"{self.account_handle}/{self.workspace_handle}"
-        return str(self.workspace_id)
+        return None
+
+    @property
+    def display_name(self) -> str:
+        return self.handle_name or str(self.workspace_id)
 
 
 def build_auth_provider(settings: CloudOAuthSettings) -> RemoteAuthProvider | None:
