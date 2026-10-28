@@ -78,6 +78,12 @@ def test_next_rule(
         ("Which web addresses can this workflow use?", True),
         ("For each of these, do you have that address?", True),
         ("For Zendesk and Slack, do you have those addresses?", True),
+        ("For each of these, do you have such an address?", True),
+        (
+            "For this workflow, do you have a remote MCP server address for:\n"
+            "1. **Zendesk**, to read new tickets?\n2. **Slack**, to post?",
+            True,
+        ),
         ("I don't have that address. Do you approve the design?", False),
         ("We have those addresses. Should I build it?", False),
         ("The workflow has no business tools. Do you approve the design?", False),

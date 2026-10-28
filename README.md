@@ -153,29 +153,24 @@ Search the service's help pages for "MCP server". Prefect Cloud runs the agent
 steps, so it has to reach that address over the internet. A server that runs
 only on your own computer, or only inside your company network, doesn't work.
 
-**A Secret block.** The MCP server needs a credential, such as an access token,
-to act for you. You store the credential in Prefect Cloud as a Secret block,
-and the workflow refers to the block by its ID. The agent never sees the
-value. When a block is missing, the agent gives you the steps to create it.
+**An MCP connection.** The MCP server needs to know who you are before it acts
+for you. The agent saves the server in Prefect Cloud as an MCP connection and
+opens its setup page, where you sign in to the service or enter an API key.
+Prefect Cloud keeps the credential and refreshes a sign-in before it expires.
+The agent and the workflow never see the credential. The workflow refers to
+the connection by its ID.
 
-The workflow sends the credential as a fixed value with each request, so the
-MCP server has to accept a credential that way. Check the service's
-documentation before you plan on it. For example, Slack's
-[MCP server documentation](https://docs.slack.dev/ai/mcp-server) describes
-OAuth sign-in for MCP clients, and it doesn't describe sending a fixed token.
-Ask your Slack admin whether a token works before you build on it.
-
-When you have the web address and the Secret block, ask your agent:
+When you have the web address, ask your agent:
 
 ```text
 Change the customer-feedback-reply workflow: after the reply is final, post
 it to the #customer-replies Slack channel.
 ```
 
-The agent checks which MCP servers and Secret blocks the workflow can use, and
-tells you before the design when something is missing. The change publishes a
-new version of the workflow. The agent asks before it replaces the version
-that runs now.
+The agent checks which MCP connections the workflow can use, sets up the ones
+that are missing, and tells you before the design what it couldn't set up.
+The change publishes a new version of the workflow. The agent asks before it
+replaces the version that runs now.
 
 ## Install reference
 

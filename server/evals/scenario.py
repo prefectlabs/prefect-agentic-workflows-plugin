@@ -54,9 +54,12 @@ def next_rule(rules: list[Rule], message: str, transcript: Transcript) -> Rule |
     return next((rule for rule in rules if rule.applies(message, transcript)), None)
 
 
+# The last alternative needs no "?" in the same sentence, because agents
+# often end it with a list of tools, each with its own "?".
 INFRASTRUCTURE_QUESTION = (
     r"(remote MCP server|MCP|web address|business tool|reach)[^.!?\n]*\?"
     r"|\bdo you have (that address|(?:those|these) addresses)\?"
+    r"|\bdo you have (?:a |an |such an )(?:remote )?(?:MCP server )?address"
 )
 TEST_RUN_OFFER = r"test run|start (a|the) run|run it"
 
