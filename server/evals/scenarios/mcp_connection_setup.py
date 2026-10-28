@@ -194,21 +194,20 @@ def check_named_after_provider_and_account(
 
 def check_setup_links_sent(outcome: Outcome) -> Check:
     text = "\n".join(outcome.transcript.agent_text)
-    missing = []
-    for call in assertions.calls_to(
-        outcome.transcript.tool_calls, "create_mcp_connection"
-    ):
-        connection = created_connection(call)
-        if connection is None or call.result.get("setup") in ("opened", "not_needed"):
-            continue
-        if connection.get("setup_url", "") not in text:
-            missing.append(connection.get("name", "?"))
-    passed = (
-        bool(
-            assertions.calls_to(outcome.transcript.tool_calls, "create_mcp_connection")
+    created = [
+        (call, connection)
+        for call in assertions.calls_to(
+            outcome.transcript.tool_calls, "create_mcp_connection"
         )
-        and not missing
-    )
+        if (connection := created_connection(call)) is not None
+    ]
+    missing = [
+        connection.get("name", "?")
+        for call, connection in created
+        if call.result.get("setup") not in ("opened", "not_needed")
+        and connection.get("setup_url", "") not in text
+    ]
+    passed = bool(created) and not missing
     return Check(
         "the agent sends each setup link the client didn't open",
         passed,

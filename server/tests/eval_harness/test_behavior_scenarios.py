@@ -142,7 +142,8 @@ def connections(broken: bool) -> Outcome:
         linear_call.arguments["headers"] = [{"name": "Authorization"}]
         stripe_call.arguments["oauth"] = {}
         stripe_call.arguments["name"] = "Stripe"
-        links = links[:1]
+        # Both creates are refused, so no setup link can count as sent.
+        linear_call.is_error = stripe_call.is_error = True
         plan = connection_plan(
             {"type": "connection", "connection_id": LINEAR_ID},
             {"type": "http", "url": stripe},
