@@ -178,6 +178,13 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         block the plan references. So a plan that passed `validate_plan` can
         still come back with `errors`, or fail with the API's message.
 
+        A plan that references an MCP connection you have no access to comes
+        back with an `mcp_connection_access_denied` error. Its `path` points at
+        the reference, and its message names the connection. Tell the user to
+        ask a workspace owner for access. A
+        referenced connection that isn't set up yet still saves, and
+        `version.warnings` lists it with its `setup_url` for the user.
+
         When the version is saved but activation fails, `published` is true,
         `activated` is false, and `activation_error` says why. Fix the cause,
         then call `activate_plan_version` with the returned `version_id`.

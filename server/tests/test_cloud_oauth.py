@@ -366,6 +366,11 @@ TOOL_ARGUMENTS: dict[str, dict[str, Any]] = {
     "list_providers": {},
     "list_provider_connections": {},
     "connect_model_provider": {"provider": "anthropic"},
+    "discover_mcp_server": {"url": "https://mcp.linear.app/mcp"},
+    "list_mcp_connections": {},
+    "get_mcp_connection": {"connection_id": FLOW_ID},
+    "create_mcp_connection": {"name": "Linear", "url": "https://mcp.linear.app/mcp"},
+    "check_mcp_connection": {"connection_id": FLOW_ID},
 }
 
 
@@ -465,6 +470,26 @@ async def test_workspace_access_errors_give_oauth_instructions(
     assert "reconnect" in error_text(result).lower()
     assert "prefect cloud login" not in error_text(result)
     assert "API key" not in error_text(result)
+
+
+async def test_a_403_that_refuses_one_object_keeps_its_message(
+    server_url: str, signing_key: RSAKeyPair, cloud_api: respx.MockRouter
+):
+    message = (
+        "You do not have access to this MCP connection. "
+        "Ask a workspace owner for access."
+    )
+    cloud_api.post(f"{WORKSPACE_URL}/agentic/mcp-connections/{FLOW_ID}/check").respond(
+        403,
+        json={"detail": {"code": "mcp_connection_access_denied", "message": message}},
+    )
+    async with connect(server_url, access_token(signing_key)) as client:
+        result = await client.call_tool(
+            "check_mcp_connection", {"connection_id": FLOW_ID}, raise_on_error=False
+        )
+    assert "mcp_connection_access_denied" in error_text(result)
+    assert message in error_text(result)
+    assert "reconnect" not in error_text(result).lower()
 
 
 async def test_grant_network_failures_do_not_fall_back_to_the_profile(

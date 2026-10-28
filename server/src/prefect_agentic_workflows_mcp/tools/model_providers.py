@@ -1,21 +1,19 @@
 """Tools that find and add the model providers an agent node's `model` uses."""
 
-import uuid
 from typing import Any, Literal
 
 from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
-from mcp.types import (
-    ElicitRequest,
-    ElicitRequestURLParams,
-    ElicitResult,
-    InputRequiredResult,
-)
-from mcp_types.version import MODERN_PROTOCOL_VERSIONS
+from mcp.types import InputRequiredResult
 from pydantic import BaseModel, TypeAdapter
 
 from prefect_agentic_workflows_mcp.parameters import WorkspaceId
 from prefect_agentic_workflows_mcp.tools import tool
+from prefect_agentic_workflows_mcp.tools._url_elicitation import (
+    ask_client_to_open_url,
+    client_can_open_url,
+    client_opened_url,
+)
 from prefect_agentic_workflows_mcp.workspace_api import WorkspaceApi
 
 PROVIDER_CONNECTIONS_PATH = "/agentic/provider-connections"
@@ -184,44 +182,24 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         """
         if ctx.request_state is None:
             request = await new_connect_request(provider, workspace_id=workspace_id)
-            capabilities = ctx.session.client_capabilities
-            if (
-                capabilities is None
-                or capabilities.elicitation is None
-                or capabilities.elicitation.url is None
-            ):
+            if not client_can_open_url(ctx):
                 return request.outcome("client_cannot_open_links", [])
-            message = (
-                f"Add your {provider} connection in Prefect Cloud, then come back."
-            )
-            elicitation_id = str(uuid.uuid4())
-            # The 2026-07-28 protocol has no server-to-client requests mid-call:
-            # the tool returns the ask, and the client calls it again with the
-            # answer and the request state.
-            if ctx.session.protocol_version in MODERN_PROTOCOL_VERSIONS:
-                return InputRequiredResult(
-                    input_requests={
-                        CONNECT_INPUT_KEY: ElicitRequest(
-                            params=ElicitRequestURLParams(
-                                message=message,
-                                url=request.add_url,
-                                elicitation_id=elicitation_id,
-                            )
-                        )
-                    },
-                    request_state=request.model_dump_json(),
-                )
-            answer = await ctx.session.elicit_url(
-                message=message,
+            opened = await ask_client_to_open_url(
+                ctx,
+                key=CONNECT_INPUT_KEY,
+                message=(
+                    f"Add your {provider} connection in Prefect Cloud, then come back."
+                ),
                 url=request.add_url,
-                elicitation_id=elicitation_id,
-                related_request_id=ctx.request_id,
+                request_state=request.model_dump_json(),
             )
+            if isinstance(opened, InputRequiredResult):
+                return opened
         else:
             request = ConnectRequest.model_validate_json(ctx.request_state)
-            answer = (ctx.input_responses or {}).get(CONNECT_INPUT_KEY)
+            opened = client_opened_url(ctx, CONNECT_INPUT_KEY)
 
-        if not isinstance(answer, ElicitResult) or answer.action != "accept":
+        if not opened:
             return request.outcome("declined", [])
         new = [
             connection
