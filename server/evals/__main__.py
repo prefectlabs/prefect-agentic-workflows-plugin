@@ -11,7 +11,7 @@ from pathlib import Path
 from evals import summary
 from evals.dataset import CASE_NAMES, DATASET_NAME, build_dataset
 from evals.evaluators import DEFAULT_JUDGE_MODEL
-from evals.lifecycle import Session
+from evals.lifecycle import Session, clean_up_prefix
 from evals.runner import scenario_task
 from evals.sandbox import (
     Credentials,
@@ -134,14 +134,7 @@ async def evaluate(args: argparse.Namespace, credentials: Credentials) -> int:
         # Each run deletes its own flows and MCP connections. This also deletes
         # those of a run whose cleanup failed, or that was cancelled before its
         # teardown.
-        try:
-            sandbox.delete_flows_with_prefix(flow_prefix)
-            sandbox.delete_mcp_connections_with_prefix(flow_prefix)
-        except Exception as exc:
-            session.cleanup_errors.append(
-                f"Could not delete the flows and MCP connections of {flow_prefix}: "
-                f"{exc}"
-            )
+        session.cleanup_errors.extend(clean_up_prefix(sandbox, flow_prefix))
         sandbox.close()
 
     rendered = report.render(width=REPORT_WIDTH)

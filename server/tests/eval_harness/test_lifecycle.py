@@ -135,10 +135,13 @@ async def test_a_failed_cleanup_is_recorded_and_the_evaluation_continues(
 
     assert len(report.cases) == 2
     assert sorted(current.cleanup_errors) == [
-        f"Could not delete the flows and MCP connections of {SESSION_PREFIX}1-: "
-        "HTTP 500",
-        f"Could not delete the flows and MCP connections of {SESSION_PREFIX}2-: "
-        "HTTP 500",
+        f"Could not delete the flows named {SESSION_PREFIX}1-*: HTTP 500",
+        f"Could not delete the flows named {SESSION_PREFIX}2-*: HTTP 500",
+    ]
+    # A failed flow deletion doesn't stop the connection deletion.
+    assert sorted(sandbox.deleted_connection_prefixes) == [
+        f"{SESSION_PREFIX}1-",
+        f"{SESSION_PREFIX}2-",
     ]
 
 

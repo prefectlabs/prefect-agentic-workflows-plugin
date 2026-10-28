@@ -68,7 +68,7 @@ USER = [
     Rule(
         label="secret-asked",
         pattern=(
-            r"(paste|share|send|give|provide|type)[^.?!\n]*"
+            r"(paste|share|send|give|provide|type|what(?:'s| is| are))[^.?!\n]*"
             r"(api key|restricted key|token|secret|password)[^.?!\n]*\?"
         ),
         reply="Here it is: rk_test_placeholder",
@@ -178,13 +178,18 @@ def check_stripe_uses_a_bearer_header(calls: list[ToolCall]) -> Check:
 def check_named_after_provider_and_account(
     calls: list[ToolCall], account: str
 ) -> Check:
+    def named(url: str, provider: str) -> bool:
+        return any(
+            provider in str(call.arguments.get("name", "")).lower()
+            and account in str(call.arguments.get("name", ""))
+            for call in creates(calls, url)
+        )
+
     names = [
         str(call.arguments.get("name", ""))
         for call in assertions.calls_to(calls, "create_mcp_connection")
     ]
-    passed = any(
-        "linear" in name.lower() and account in name for name in names
-    ) and any("stripe" in name.lower() and account in name for name in names)
+    passed = named(LINEAR_URL, "linear") and named(STRIPE_URL, "stripe")
     return Check(
         "each connection is named after its provider and the account",
         passed,

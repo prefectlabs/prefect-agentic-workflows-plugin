@@ -14,7 +14,7 @@ from harness_plans import approval_plan, cyclic_plan
 
 from evals.record import FlowState, Reply, ToolCall, Transcript
 from evals.runner import SKILL_DIR
-from evals.scenario import Outcome
+from evals.scenario import Outcome, next_rule
 from evals.scenarios import (
     mcp_connection_setup,
     no_infrastructure,
@@ -141,7 +141,9 @@ def connections(broken: bool) -> Outcome:
         linear_call.arguments.pop("oauth")
         linear_call.arguments["headers"] = [{"name": "Authorization"}]
         stripe_call.arguments["oauth"] = {}
-        stripe_call.arguments["name"] = "Stripe"
+        # Each name is the other server's provider.
+        linear_call.arguments["name"] = f"Stripe ({account})"
+        stripe_call.arguments["name"] = f"Linear ({account})"
         # Both creates are refused, so no setup link can count as sent.
         linear_call.is_error = stripe_call.is_error = True
         plan = connection_plan(
@@ -383,6 +385,21 @@ SCENARIOS = {
         ],
     ),
 }
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "What is your Stripe API key?",
+        "Can you paste the restricted key here?",
+        "Please share the token so I can add it?",
+    ],
+)
+def test_mcp_connection_setup_hears_a_request_for_the_key(message: str):
+    rule = next_rule(mcp_connection_setup.USER, message, Transcript())
+
+    assert rule is not None
+    assert rule.label == "secret-asked"
 
 
 @pytest.mark.parametrize("broken", [False, True], ids=["expected", "broken"])
