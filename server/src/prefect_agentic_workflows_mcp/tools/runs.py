@@ -9,7 +9,7 @@ from asyncio import sleep
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from time import monotonic
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 import httpx
@@ -52,6 +52,56 @@ def awaits_input(run: dict[str, Any]) -> bool:
         (node.get("wait") or {}).get("kind") == "human_input"
         for node in run.get("nodes") or []
     )
+
+
+def settled(run: dict[str, Any]) -> bool:
+    """Return whether a run needs no more watching.
+
+    That is a finished or blocked run whose plan outputs are built, or a run
+    with a form waiting for an answer. Prefect Cloud builds plan outputs a
+    moment after the run finishes, so they can still be `waiting` then.
+    """
+    if awaits_input(run):
+        return True
+    return run.get("status") in STOP_WAITING_STATUSES and not any(
+        output.get("status") == "waiting" for output in run.get("outputs") or []
+    )
+
+
+def compact_run(run: dict[str, Any]) -> dict[str, Any]:
+    """Return the parts of a run observation needed to follow its progress.
+
+    Leaves out edges, task runs, and output result metadata, which make up
+    most of a full observation.
+    """
+    return {
+        "flow_run_id": (run.get("snapshot") or {}).get("flow_run_id"),
+        "status": run.get("status"),
+        "nodes": [
+            {
+                "node": node.get("node"),
+                "status": node.get("status"),
+                "activation_id": node.get("activation_id"),
+                "selected_outputs": [
+                    output.get("output")
+                    for output in node.get("outputs") or []
+                    if output.get("status") == "selected"
+                ],
+                "failure": node.get("failure"),
+                "wait": node.get("wait"),
+            }
+            for node in run.get("nodes") or []
+        ],
+        "outputs": [
+            {
+                "output": output.get("output"),
+                "status": output.get("status"),
+                "failure_code": output.get("failure_code"),
+            }
+            for output in run.get("outputs") or []
+        ],
+        "diagnostics": run.get("diagnostics") or [],
+    }
 
 
 def progress(run: dict[str, Any]) -> tuple[Any, ...]:
@@ -223,6 +273,27 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                 ),
             ),
         ] = None,
+        until: Annotated[
+            Literal["change", "settled"],
+            Field(
+                description=(
+                    "What ends a wait early. 'change' returns when the run's "
+                    "status or any node's status changes. 'settled' returns "
+                    "only when the run finishes or is blocked and its plan "
+                    "outputs are built, or when a form waits for an answer."
+                ),
+            ),
+        ] = "change",
+        compact: Annotated[
+            bool,
+            Field(
+                description=(
+                    "Return only the run status, each node's status, selected "
+                    "outputs, failure, and wait, the plan output statuses, and "
+                    "diagnostics. Use it to watch a run."
+                ),
+            ),
+        ] = False,
         workspace_id: WorkspaceId = None,
     ) -> dict[str, Any]:
         """Read the progress of an execution-plan run.
@@ -243,20 +314,34 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         when the run finishes or is blocked, when a node is already waiting
         for human input, or when the wait runs out. `wait` then reports
         `seconds_waited` and `status_changed`. Without `wait_seconds`, `wait`
-        is null.
+        is null. With `until` set to 'settled', node status changes don't end
+        the wait. To watch a run to its end, call this tool with
+        `wait_seconds` of 30, `until` set to 'settled', and `compact` set to
+        true until the run settles.
+
+        With `compact`, the result has `flow_run_id`, `status`, `nodes` (each
+        with `node`, `status`, `activation_id`, `selected_outputs`, `failure`,
+        and `wait`), `outputs` (each with `output`, `status`, and
+        `failure_code`), `diagnostics`, and `wait`.
 
         When a node waits for human input, show its form to the user and
         submit only what the user answers, with `submit_human_input`.
         """
+        shape = compact_run if compact else dict
         run = await read_run(flow_run_id, workspace_id=workspace_id)
         if wait_seconds is None:
-            return {**run, "wait": None}
+            return {**shape(run), "wait": None}
+
+        def done(run: dict[str, Any]) -> bool:
+            if until == "settled":
+                return settled(run)
+            return run["status"] in STOP_WAITING_STATUSES or awaits_input(run)
 
         started = monotonic()
         deadline = started + min(wait_seconds, MAX_WAIT_SECONDS)
         before = progress(run)
         changed = False
-        while run["status"] not in STOP_WAITING_STATUSES and not awaits_input(run):
+        while not done(run):
             remaining = deadline - monotonic()
             if remaining <= 0:
                 break
@@ -276,9 +361,10 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                 break
             if progress(run) != before:
                 changed = True
-                break
+                if until == "change":
+                    break
         return {
-            **run,
+            **shape(run),
             "wait": {
                 "seconds_waited": monotonic() - started,
                 "status_changed": changed,
