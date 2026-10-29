@@ -30,6 +30,20 @@ def test_check_flows_named_with_prefix():
     assert failed.detail == "get_or_create_flow called with ['digest']"
 
 
+def test_check_flows_named_with_prefix_skips_failed_calls():
+    calls = [
+        ToolCall(
+            "get_or_create_flow",
+            {"flow_name": "eval-abc123-1-digest"},
+            "Missing required argument",
+            is_error=True,
+        ),
+        ToolCall("get_or_create_flow", {"name": "eval-abc123-1-digest"}),
+    ]
+
+    assert assertions.check_flows_named_with_prefix(calls, "eval-abc123-1-").passed
+
+
 def test_check_flow_saved():
     saved = FlowState("flow-1", "eval-abc123-1-digest", version_ids=["version-1"])
     empty = FlowState("flow-1", "eval-abc123-1-digest")
