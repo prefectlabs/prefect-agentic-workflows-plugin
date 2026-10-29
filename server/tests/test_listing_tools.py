@@ -1,4 +1,4 @@
-"""Tests for `list_secret_blocks` and `list_deployments`, which read every page."""
+"""Tests for `list_secret_blocks`, `list_deployments`, and `get_deployment`."""
 
 from typing import Any
 
@@ -105,22 +105,19 @@ async def test_list_secret_blocks_reads_every_page(
 async def test_list_deployments_returns_ids_names_and_flow_names(
     mcp_client: Client[Any], cloud_api: respx.MockRouter
 ):
-    first_page = [
-        deployment(f"eeeeeeee-0000-0000-0000-{i:012d}", f"d-{i:03d}", LOAD_FLOW_ID)
-        for i in range(199)
-    ] + [
-        deployment(
-            GITHUB_ID,
-            "nightly",
-            LOAD_FLOW_ID,
-            "Loads orders",
-            parameters={"region": "us"},
-            parameter_openapi_schema=REGION_SCHEMA,
-        )
-    ]
-    last_page = [deployment(SLACK_TOKEN_ID, "weekly", REPORT_FLOW_ID)]
-    deployments_route = cloud_api.post("/deployments/filter").mock(
-        side_effect=pages(first_page, last_page)
+    deployments_route = cloud_api.post("/deployments/filter").respond(
+        200,
+        json=[
+            deployment(
+                GITHUB_ID,
+                "nightly",
+                LOAD_FLOW_ID,
+                "Loads orders",
+                parameters={"region": "us"},
+                parameter_openapi_schema=REGION_SCHEMA,
+            ),
+            deployment(SLACK_TOKEN_ID, "weekly", REPORT_FLOW_ID),
+        ],
     )
     flows_route = cloud_api.post("/flows/filter").respond(
         200,
@@ -132,26 +129,88 @@ async def test_list_deployments_returns_ids_names_and_flow_names(
 
     result = await mcp_client.call_tool("list_deployments", {})
 
-    assert result.structured_content is not None
-    assert result.structured_content["deployments"][-2:] == [
-        {
-            "id": GITHUB_ID,
-            "name": "nightly",
-            "flow_name": "load-orders",
-            "description": "Loads orders",
-        },
-        {
-            "id": SLACK_TOKEN_ID,
-            "name": "weekly",
-            "flow_name": "report",
-            "description": None,
-        },
-    ]
-    assert len(result.structured_content["deployments"]) == 201
-    assert offsets(deployments_route) == [0, 200]
-    assert request_body(deployments_route.calls.last.request)["sort"] == "NAME_ASC"
+    assert result.structured_content == {
+        "deployments": [
+            {
+                "id": GITHUB_ID,
+                "name": "nightly",
+                "flow_name": "load-orders",
+                "description": "Loads orders",
+            },
+            {
+                "id": SLACK_TOKEN_ID,
+                "name": "weekly",
+                "flow_name": "report",
+                "description": None,
+            },
+        ],
+        "has_more": False,
+    }
+    assert request_body(deployments_route.calls.last.request) == {
+        "sort": "NAME_ASC",
+        "limit": 51,
+    }
     flow_filter = request_body(flows_route.calls.last.request)["flows"]
     assert flow_filter == {"id": {"any_": [LOAD_FLOW_ID, REPORT_FLOW_ID]}}
+
+
+async def test_list_deployments_returns_50_and_says_there_are_more(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    deployments_route = cloud_api.post("/deployments/filter").respond(
+        200,
+        json=[
+            deployment(f"eeeeeeee-0000-0000-0000-{i:012d}", f"d-{i:03d}", LOAD_FLOW_ID)
+            for i in range(51)
+        ],
+    )
+    cloud_api.post("/flows/filter").respond(
+        200, json=[{"id": LOAD_FLOW_ID, "name": "load-orders"}]
+    )
+
+    result = await mcp_client.call_tool("list_deployments", {})
+
+    assert result.structured_content is not None
+    deployments = result.structured_content["deployments"]
+    assert len(deployments) == 50
+    assert deployments[-1]["name"] == "d-049"
+    assert result.structured_content["has_more"] is True
+    assert deployments_route.call_count == 1
+
+
+async def test_list_deployments_finds_deployments_by_deployment_or_flow_name(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    deployments_route = cloud_api.post("/deployments/filter").respond(200, json=[])
+
+    await mcp_client.call_tool("list_deployments", {"name": "Orders"})
+
+    body = request_body(deployments_route.calls.last.request)
+    assert body["deployments"] == {"flow_or_deployment_name": {"like_": "Orders"}}
+
+
+async def test_list_deployments_returns_the_first_line_of_each_description(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    cloud_api.post("/deployments/filter").respond(
+        200,
+        json=[
+            deployment(
+                GITHUB_ID, "nightly", LOAD_FLOW_ID, "\nLoads orders.\n\nRuns at 2am."
+            ),
+            deployment(SLACK_TOKEN_ID, "weekly", LOAD_FLOW_ID, "x" * 250),
+            deployment(LOAD_FLOW_ID, "blank", LOAD_FLOW_ID, "  \n"),
+        ],
+    )
+    cloud_api.post("/flows/filter").respond(
+        200, json=[{"id": LOAD_FLOW_ID, "name": "load-orders"}]
+    )
+
+    result = await mcp_client.call_tool("list_deployments", {})
+
+    assert result.structured_content is not None
+    descriptions = [d["description"] for d in result.structured_content["deployments"]]
+    assert descriptions == ["Loads orders.…", "x" * 200 + "…", None]
 
 
 async def test_list_deployments_skips_the_flow_lookup_when_there_are_none(
@@ -162,7 +221,7 @@ async def test_list_deployments_skips_the_flow_lookup_when_there_are_none(
 
     result = await mcp_client.call_tool("list_deployments", {})
 
-    assert result.structured_content == {"deployments": []}
+    assert result.structured_content == {"deployments": [], "has_more": False}
     assert not flows_route.called
 
 

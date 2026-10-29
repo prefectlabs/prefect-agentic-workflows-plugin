@@ -55,11 +55,12 @@ def next_rule(rules: list[Rule], message: str, transcript: Transcript) -> Rule |
 
 
 # The last alternative needs no "?" in the same sentence, because agents
-# often end it with a list of tools, each with its own "?".
+# often end it with a list of tools, with or without a "?".
 INFRASTRUCTURE_QUESTION = (
-    r"(remote MCP server|MCP|web address|business tool|reach)[^.!?\n]*\?"
+    r"(remote MCP server|MCP|web address|business tool|outside tool|reach)"
+    r"[^.!?\n]*\?"
     r"|\bdo you have (that address|(?:those|these) addresses)\?"
-    r"|\bdo you have (?:a |an |such an )(?:remote )?(?:MCP server )?address"
+    r"|\bdo you have (?:a |an |such an )?(?:remote )?(?:MCP server )?address"
 )
 TEST_RUN_OFFER = r"test run|start (a|the) run|run it"
 

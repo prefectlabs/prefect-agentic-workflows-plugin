@@ -112,6 +112,7 @@ class DiscoveredMcpServer(BaseModel):
 class McpConnectionStatus(BaseModel):
     state: str
     reason: str | None = None
+    access_expires_at: str | None = None
 
 
 class McpConnectionHeader(BaseModel):
@@ -240,9 +241,13 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         - `authorized` or `not_verified`: the connection can run.
           `not_verified` means it hasn't passed `check_mcp_connection` yet.
         - `refresh_delayed`: the provider is failing for now and Prefect Cloud
-          retries. Runs fail once the token expires.
+          retries. Runs fail after `status.access_expires_at`.
         - `authorization_needed` or `reauthorization_required`: runs fail
           until the user finishes setup or signs in again at `setup_url`.
+
+        `status.access_expires_at` is when the OAuth token that the
+        connection sends expires. It is null when the connection has no
+        token or the provider didn't say when the token expires.
 
         `created_by_actor_id` is the actor who created the connection.
         """

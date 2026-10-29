@@ -410,3 +410,18 @@ def test_scenario_checks(scenario: str, broken: bool):
     failed = [check.name for check in module.checks(build(broken)) if not check.passed]
 
     assert failed == (broken_checks if broken else [])
+
+
+def test_mcp_connection_setup_checks_fail_on_headers_sent_as_a_string():
+    result = connections(broken=False)
+    for call in result.transcript.tool_calls:
+        if call.name == "create_mcp_connection" and "headers" in call.arguments:
+            call.arguments["headers"] = json.dumps(call.arguments["headers"])
+
+    failed = [
+        check.name for check in mcp_connection_setup.checks(result) if not check.passed
+    ]
+
+    assert failed == [
+        "the Stripe connection uses an Authorization header with the Bearer prefix"
+    ]
