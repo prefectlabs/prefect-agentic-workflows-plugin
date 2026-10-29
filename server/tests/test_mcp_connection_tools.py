@@ -105,7 +105,7 @@ def connection_result(state: str = "authorization_needed", **overrides: Any):
         "name": "Linear (eddie)",
         "url": LINEAR_URL,
         "auth_method": "oauth",
-        "status": {"state": state, "reason": None},
+        "status": {"state": state, "reason": None, "access_expires_at": None},
         "headers": [{"name": "X-Tenant", "value_prefix": "", "has_value": False}],
         "oauth": {
             "bearer_token_source": "access_token",
@@ -170,6 +170,32 @@ async def test_list_mcp_connections_returns_connections_without_client_details(
     result = await mcp_client.call_tool("list_mcp_connections", {})
 
     assert result.structured_content == {"mcp_connections": [connection_result()]}
+
+
+async def test_get_mcp_connection_returns_when_the_token_expires(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    status = {
+        "state": "refresh_delayed",
+        "reason": None,
+        "since": "2026-10-27T12:10:00Z",
+        "access_expires_at": "2026-10-27T13:00:00Z",
+        "retry_after": "2026-10-27T12:11:00Z",
+    }
+    cloud_api.get(CONNECTION_PATH).respond(
+        200, json=connection_response("refresh_delayed", status=status)
+    )
+
+    result = await mcp_client.call_tool(
+        "get_mcp_connection", {"connection_id": CONNECTION_ID}
+    )
+
+    assert result.structured_content is not None
+    assert result.structured_content["status"] == {
+        "state": "refresh_delayed",
+        "reason": None,
+        "access_expires_at": "2026-10-27T13:00:00Z",
+    }
 
 
 async def test_get_mcp_connection_returns_its_status_check_and_setup_link(
@@ -345,7 +371,11 @@ async def test_check_mcp_connection_returns_the_saved_check(
     )
 
     assert result.structured_content == connection_result(
-        status={"state": "reauthorization_required", "reason": "credential_rejected"},
+        status={
+            "state": "reauthorization_required",
+            "reason": "credential_rejected",
+            "access_expires_at": None,
+        },
         last_check={
             "outcome": "authentication_failed",
             "checked_at": "2026-10-27T12:05:00Z",
