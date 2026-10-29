@@ -52,8 +52,7 @@
       },
       "orchestration": {
         "output_selection": "exactly_one",
-        "evaluate_when": "all_required_inputs_produced",
-        "on_failure": {"retry": {"max_attempts": 2, "delay_seconds": 10}}
+        "evaluate_when": "all_required_inputs_produced"
       }
     }
   },

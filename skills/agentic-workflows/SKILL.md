@@ -39,7 +39,7 @@ A design has two stops, where you end your turn and wait for the user's answer: 
 
 ## Node-splitting rule
 
-Start a new node only at a branch, a human approval, a change of tools or credentials, or a deterministic step (a Deployment node). Everything else stays in one agent node.
+Start a new node only at a branch, a human approval, a change of tools or credentials, a check that gates a later step, or a deterministic step (a Deployment node). Everything else stays in one agent node.
 
 ## Approvals
 
