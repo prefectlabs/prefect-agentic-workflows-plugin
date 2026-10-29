@@ -277,21 +277,15 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             Literal["change", "settled"],
             Field(
                 description=(
-                    "What ends a wait early. 'change' returns when the run's "
-                    "status or any node's status changes. 'settled' returns "
-                    "only when the run finishes or is blocked and its plan "
-                    "outputs are built, or when a form waits for an answer."
+                    "'settled' waits through node changes until the run ends "
+                    "with its outputs built, or a form waits."
                 ),
             ),
         ] = "change",
         compact: Annotated[
             bool,
             Field(
-                description=(
-                    "Return only the run status, each node's status, selected "
-                    "outputs, failure, and wait, the plan output statuses, and "
-                    "diagnostics. Use it to watch a run."
-                ),
+                description="Return only statuses, failures, waits, and diagnostics.",
             ),
         ] = False,
         workspace_id: WorkspaceId = None,
@@ -314,15 +308,8 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         when the run finishes or is blocked, when a node is already waiting
         for human input, or when the wait runs out. `wait` then reports
         `seconds_waited` and `status_changed`. Without `wait_seconds`, `wait`
-        is null. With `until` set to 'settled', node status changes don't end
-        the wait. To watch a run to its end, call this tool with
-        `wait_seconds` of 30, `until` set to 'settled', and `compact` set to
-        true until the run settles.
-
-        With `compact`, the result has `flow_run_id`, `status`, `nodes` (each
-        with `node`, `status`, `activation_id`, `selected_outputs`, `failure`,
-        and `wait`), `outputs` (each with `output`, `status`, and
-        `failure_code`), `diagnostics`, and `wait`.
+        is null. To watch a run to its end, repeat 30-second waits with
+        `until='settled'` and `compact=true`.
 
         When a node waits for human input, show its form to the user and
         submit only what the user answers, with `submit_human_input`.
