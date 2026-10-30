@@ -48,9 +48,12 @@ def clock(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeClock]:
     yield fake
 
 
-async def get_run(client: Client[Any], wait_seconds: float) -> dict[str, Any]:
+async def get_run(
+    client: Client[Any], wait_seconds: float | None, **arguments: Any
+) -> dict[str, Any]:
     result = await client.call_tool(
-        "get_run", {"flow_run_id": FLOW_RUN_ID, "wait_seconds": wait_seconds}
+        "get_run",
+        {"flow_run_id": FLOW_RUN_ID, "wait_seconds": wait_seconds, **arguments},
     )
     assert result.structured_content is not None
     return result.structured_content
@@ -166,6 +169,124 @@ async def test_get_run_returns_the_last_observation_when_a_poll_times_out(
 
     assert result["status"] == "running"
     assert result["wait"]["status_changed"] is False
+
+
+def with_outputs(observation: dict[str, Any], status: str) -> dict[str, Any]:
+    return {**observation, "outputs": [{"output": "summary", "status": status}]}
+
+
+async def test_get_run_until_settled_waits_through_node_changes(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter, clock: FakeClock
+):
+    observations = [
+        run_observation("running", [node_observation("running")]),
+        run_observation("running", [node_observation("completed")]),
+        with_outputs(run_observation("completed"), "waiting"),
+        with_outputs(run_observation("completed"), "available"),
+    ]
+    route = cloud_api.get(RUN_PATH).mock(
+        side_effect=[httpx.Response(200, json=body) for body in observations]
+    )
+
+    result = await get_run(mcp_client, 30, until="settled")
+
+    assert route.call_count == 4
+    assert result == {
+        **observations[-1],
+        "wait": {"seconds_waited": 6.0, "status_changed": True},
+    }
+
+
+async def test_get_run_until_settled_reports_outputs_built_as_a_change(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter, clock: FakeClock
+):
+    observations = [
+        with_outputs(run_observation("completed"), "waiting"),
+        with_outputs(run_observation("completed"), "available"),
+    ]
+    cloud_api.get(RUN_PATH).mock(
+        side_effect=[httpx.Response(200, json=body) for body in observations]
+    )
+
+    result = await get_run(mcp_client, 30, until="settled")
+
+    assert result["wait"]["status_changed"] is True
+
+
+async def test_get_run_until_settled_stops_when_a_form_waits(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter, clock: FakeClock
+):
+    waiting = node_observation(
+        "suspended",
+        node="approve",
+        kind="HumanInputNode",
+        wait={"kind": "human_input", "activation_id": ACTIVATION_ID},
+    )
+    observations = [
+        run_observation("running"),
+        run_observation("awaiting_external_progress", [waiting]),
+    ]
+    route = cloud_api.get(RUN_PATH).mock(
+        side_effect=[httpx.Response(200, json=body) for body in observations]
+    )
+
+    result = await get_run(mcp_client, 30, until="settled")
+
+    assert route.call_count == 2
+    assert result["status"] == "awaiting_external_progress"
+
+
+async def test_get_run_compact_leaves_out_edges_and_task_runs(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    node = node_observation(
+        "completed",
+        task_run={"id": ACTIVATION_ID, "state_type": "COMPLETED"},
+        outputs=[
+            {"output": "done", "status": "selected", "result": {"metadata": {}}},
+            {"output": "blocked", "status": "skipped"},
+        ],
+        failure=None,
+    )
+    observation = {
+        **run_observation("completed", [node]),
+        "edges": [{"edge": "a_to_b", "status": "produced"}],
+        "outputs": [
+            {
+                "output": "summary",
+                "status": "failed",
+                "failure_code": "required_field_missing",
+                "provenance": [{"field_name": "reply"}],
+            }
+        ],
+    }
+    cloud_api.get(RUN_PATH).respond(200, json=observation)
+
+    result = await get_run(mcp_client, None, compact=True)
+
+    assert result == {
+        "flow_run_id": FLOW_RUN_ID,
+        "status": "completed",
+        "nodes": [
+            {
+                "node": "summarize",
+                "status": "completed",
+                "activation_id": ACTIVATION_ID,
+                "selected_outputs": ["done"],
+                "failure": None,
+                "wait": None,
+            }
+        ],
+        "outputs": [
+            {
+                "output": "summary",
+                "status": "failed",
+                "failure_code": "required_field_missing",
+            }
+        ],
+        "diagnostics": [],
+        "wait": None,
+    }
 
 
 async def test_get_run_output_reports_a_missing_bucket_as_an_error(
