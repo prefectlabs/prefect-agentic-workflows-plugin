@@ -56,6 +56,7 @@ def available_output(value: Any) -> dict[str, Any]:
         "value": value,
         "output_status": "available",
         "reason": None,
+        "failure_code": None,
         "detail": None,
         "retry_after_seconds": None,
         "final": True,

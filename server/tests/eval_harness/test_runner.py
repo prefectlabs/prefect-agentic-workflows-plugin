@@ -84,11 +84,28 @@ def test_next_rule(
             "1. **Zendesk**, to read new tickets?\n2. **Slack**, to post?",
             True,
         ),
+        (
+            "For this workflow, do you have MCP server addresses for:\n"
+            "1. **Zendesk** (to read new tickets)\n2. **Slack** (to post)",
+            True,
+        ),
+        (
+            "Does this workflow need to use any outside tool, such as Slack or "
+            "a helpdesk, to read or write data?",
+            True,
+        ),
+        (
+            'Reply "yes" to confirm that, or name any tool the workflow should '
+            "use and give its remote MCP server address.",
+            True,
+        ),
         ("I don't have that address. Do you approve the design?", False),
         ("We have those addresses. Should I build it?", False),
         ("The workflow has no business tools. Do you approve the design?", False),
+        ("The workflow uses no outside tools. Do you approve the design?", False),
         ("No remote MCP server is needed. Should I build it?", False),
         ("The MCP inventory is empty.\n\nReply yes to approve this design.", False),
+        ("The plan uses the MCP server address you gave. Should I build it?", False),
     ],
 )
 def test_infrastructure_rule_answers_questions_not_design_summaries(

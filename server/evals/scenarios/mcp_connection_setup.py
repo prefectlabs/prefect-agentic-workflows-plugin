@@ -104,12 +104,23 @@ def for_server(call: ToolCall, url: str) -> bool:
 
 
 def creates(calls: list[ToolCall], url: str) -> list[ToolCall]:
-    """Return the `create_mcp_connection` calls for the server at `url`."""
+    """Return the `create_mcp_connection` calls for the server at `url`.
+
+    Calls the server rejected are left out, since they created nothing.
+    """
     return [
         call
         for call in assertions.calls_to(calls, "create_mcp_connection")
-        if for_server(call, url)
+        if for_server(call, url) and not call.is_error
     ]
+
+
+def headers(call: ToolCall) -> list[dict[str, Any]]:
+    """Return a call's `headers` argument, leaving out any that aren't objects."""
+    raw = call.arguments.get("headers")
+    if not isinstance(raw, list):
+        return []
+    return [header for header in raw if isinstance(header, dict)]
 
 
 def created_connection(call: ToolCall) -> dict[str, Any] | None:
@@ -146,7 +157,7 @@ def check_linear_uses_oauth(calls: list[ToolCall]) -> Check:
         call.arguments.get("oauth") is not None
         and not any(
             str(header.get("name", "")).lower() == "authorization"
-            for header in call.arguments.get("headers") or []
+            for header in headers(call)
         )
         for call in found
     )
@@ -164,7 +175,7 @@ def check_stripe_uses_a_bearer_header(calls: list[ToolCall]) -> Check:
         and any(
             str(header.get("name", "")).lower() == "authorization"
             and header.get("value_prefix") == "Bearer "
-            for header in call.arguments.get("headers") or []
+            for header in headers(call)
         )
         for call in found
     )
@@ -226,6 +237,7 @@ def check_plan_references_both_connections(outcome: Outcome) -> Check:
         server
         for node in graph.nodes(plan).values()
         for server in ((node.get("mcp") or {}).get("mcpServers") or {}).values()
+        if isinstance(server, dict)
     ]
     referenced = {
         server.get("connection_id")

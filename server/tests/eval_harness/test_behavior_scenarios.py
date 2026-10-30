@@ -275,6 +275,23 @@ def no_infra(broken: bool) -> Outcome:
     return outcome(transcript)
 
 
+def test_no_infrastructure_accepts_deployments_listed_before_the_follow_up():
+    def deployments_check(turn: int) -> bool:
+        transcript = Transcript(
+            tool_calls=[
+                ToolCall("list_secret_blocks", {}, turn=1),
+                ToolCall("list_deployments", {}, turn=turn),
+            ],
+            replies=[Reply(1, "no-remote-servers", "")],
+            turn_results=["Do you have a remote MCP server for Zendesk?", "", ""],
+        )
+        results = no_infrastructure.checks(outcome(transcript))
+        return next(c.passed for c in results if c.name == "list_deployments called")
+
+    assert deployments_check(turn=2)
+    assert not deployments_check(turn=3)
+
+
 def release(broken: bool) -> Outcome:
     plan = approval_plan()
     flow = release_notes.FLOW_NAME
@@ -312,6 +329,25 @@ def test_conversion_decisions_do_not_authorize_validation(approval_turn: int | N
 
     assert not by_name["nothing validated before the design approval"].passed
     assert by_name["design approved once"].passed is (approval_turn is not None)
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        "| 2 | PR lookup | S2 | GitHub MCP tools, in the draft node. | None. |",
+        "The `claude mcp add` setup command is dropped, since the plan connects "
+        "to the hosted server directly.",
+    ],
+)
+def test_conversion_report_can_name_the_stdio_server_replacement(row: str):
+    result = release(False)
+    result.transcript.agent_text = [
+        result.transcript.agent_text[0].replace("| 2 | stdio MCP server |", row)
+    ]
+
+    by_name = {check.name: check for check in release_notes.checks(result)}
+
+    assert by_name["conversion report lists every unsupported part"].passed
 
 
 SCENARIOS = {
@@ -410,3 +446,38 @@ def test_scenario_checks(scenario: str, broken: bool):
     failed = [check.name for check in module.checks(build(broken)) if not check.passed]
 
     assert failed == (broken_checks if broken else [])
+
+
+def test_mcp_connection_setup_checks_fail_on_headers_sent_as_a_string():
+    result = connections(broken=False)
+    for call in result.transcript.tool_calls:
+        if call.name == "create_mcp_connection" and "headers" in call.arguments:
+            call.arguments["headers"] = json.dumps(call.arguments["headers"])
+
+    failed = [
+        check.name for check in mcp_connection_setup.checks(result) if not check.passed
+    ]
+
+    assert failed == [
+        "the Stripe connection uses an Authorization header with the Bearer prefix"
+    ]
+
+
+def test_mcp_connection_setup_checks_skip_a_rejected_create():
+    result = connections(broken=False)
+    calls = result.transcript.tool_calls
+    retried = next(
+        call
+        for call in calls
+        if call.name == "create_mcp_connection" and "headers" in call.arguments
+    )
+    rejected = ToolCall(
+        "create_mcp_connection",
+        {**retried.arguments, "headers": json.dumps(retried.arguments["headers"])},
+        "Input should be a valid list",
+        is_error=True,
+        turn=retried.turn,
+    )
+    calls.insert(calls.index(retried), rejected)
+
+    assert all(check.passed for check in mcp_connection_setup.checks(result))
