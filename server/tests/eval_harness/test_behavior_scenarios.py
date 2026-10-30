@@ -275,6 +275,23 @@ def no_infra(broken: bool) -> Outcome:
     return outcome(transcript)
 
 
+def test_no_infrastructure_accepts_deployments_listed_before_the_follow_up():
+    def deployments_check(turn: int) -> bool:
+        transcript = Transcript(
+            tool_calls=[
+                ToolCall("list_secret_blocks", {}, turn=1),
+                ToolCall("list_deployments", {}, turn=turn),
+            ],
+            replies=[Reply(1, "no-remote-servers", "")],
+            turn_results=["Do you have a remote MCP server for Zendesk?", "", ""],
+        )
+        results = no_infrastructure.checks(outcome(transcript))
+        return next(c.passed for c in results if c.name == "list_deployments called")
+
+    assert deployments_check(turn=2)
+    assert not deployments_check(turn=3)
+
+
 def release(broken: bool) -> Outcome:
     plan = approval_plan()
     flow = release_notes.FLOW_NAME

@@ -9,6 +9,8 @@ Expected results:
 
 - the agent reads the workspace and asks which tools it can reach before it
   asks any design question
+- the agent lists deployments before it answers the user's reply, since
+  only that answer depends on them
 - after the user says they have no remote MCP servers, the agent says which
   steps that affects and offers a version without those tools
 - nothing is validated or published
@@ -69,8 +71,10 @@ def checks(outcome: Outcome) -> list[Check]:
     calls = transcript.tool_calls
     answer = transcript.first_reply("no-remote-servers")
     first_turn_calls = [call for call in calls if call.turn == 1]
+    follow_up_turn = answer.turn + 1 if answer else 1
+    calls_before_follow_up = [call for call in calls if call.turn <= follow_up_turn]
     first_question = transcript.final_message(1)
-    follow_up = transcript.final_message(answer.turn + 1) if answer else ""
+    follow_up = transcript.final_message(follow_up_turn) if answer else ""
     return [
         Check(
             "the agent's first question is the infrastructure check",
@@ -86,7 +90,9 @@ def checks(outcome: Outcome) -> list[Check]:
             first_turn_calls, "list_secret_blocks", where=lambda call: not call.is_error
         ),
         assertions.check_called(
-            first_turn_calls, "list_deployments", where=lambda call: not call.is_error
+            calls_before_follow_up,
+            "list_deployments",
+            where=lambda call: not call.is_error,
         ),
         assertions.check_text_mentions(
             "the agent explains the limit and offers a version without the tools",
