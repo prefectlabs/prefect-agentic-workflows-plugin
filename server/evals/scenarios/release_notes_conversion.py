@@ -77,8 +77,9 @@ runs only on my machine. Nothing else is reachable.
 REPORT_PARTS = {
     "local script": r"collect_changes",
     # When the tools check already settled the remote replacement, the report
-    # can name the replacement instead of the stdio server.
-    "stdio MCP server": r"stdio|docker run|GitHub MCP server|githubcopilot",
+    # can name the replacement or the dropped setup command instead of the
+    # stdio server.
+    "stdio MCP server": r"stdio|docker run|GitHub MCP|githubcopilot|claude mcp add",
     "repeat-until-done loop": r"loop|repeat|cycle|until",
     "human approval": r"approv",
 }

@@ -331,6 +331,25 @@ def test_conversion_decisions_do_not_authorize_validation(approval_turn: int | N
     assert by_name["design approved once"].passed is (approval_turn is not None)
 
 
+@pytest.mark.parametrize(
+    "row",
+    [
+        "| 2 | PR lookup | S2 | GitHub MCP tools, in the draft node. | None. |",
+        "The `claude mcp add` setup command is dropped, since the plan connects "
+        "to the hosted server directly.",
+    ],
+)
+def test_conversion_report_can_name_the_stdio_server_replacement(row: str):
+    result = release(False)
+    result.transcript.agent_text = [
+        result.transcript.agent_text[0].replace("| 2 | stdio MCP server |", row)
+    ]
+
+    by_name = {check.name: check for check in release_notes.checks(result)}
+
+    assert by_name["conversion report lists every unsupported part"].passed
+
+
 SCENARIOS = {
     "rejected_approval": (
         rejected_approval,
