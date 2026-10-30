@@ -121,6 +121,7 @@ def output_result(
     value: Any = None,
     output_status: str | None = None,
     reason: str | None = None,
+    failure_code: str | None = None,
     detail: str | None = None,
     retry_after_seconds: float | None = None,
 ) -> dict[str, Any]:
@@ -136,6 +137,7 @@ def output_result(
         "value": value,
         "output_status": output_status,
         "reason": reason,
+        "failure_code": failure_code,
         "detail": detail,
         "retry_after_seconds": retry_after_seconds,
         "final": available or output_status in FINAL_OUTPUT_STATUSES,
@@ -316,7 +318,8 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         Returns `available` and, when it is true, the output's `value`.
         When the output can't be read yet or at all, `available` is false and
         `output_status`, `reason`, and `detail` say why, as Prefect Cloud
-        reports them.
+        reports them. A `failed` plan output also has a `failure_code`, such as
+        `required_field_missing`.
 
         `final` says whether the answer can still change. When `final` is
         false, the output can still arrive: `output_status` is `waiting` or
@@ -351,6 +354,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
                 available=False,
                 output_status=body.get("output_status"),
                 reason=body.get("reason"),
+                failure_code=body.get("failure_code"),
                 detail=response_detail(response),
                 retry_after_seconds=retry_after_seconds(response),
             )
