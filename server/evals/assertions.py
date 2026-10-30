@@ -255,6 +255,7 @@ def check_flows_named_with_prefix(calls: list[ToolCall], prefix: str) -> Check:
     names = [
         str(call.arguments.get("name"))
         for call in calls_to(calls, "get_or_create_flow")
+        if not call.is_error
     ]
     wrong = sorted({name for name in names if not name.startswith(prefix)})
     return Check(
