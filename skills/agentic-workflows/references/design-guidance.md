@@ -28,7 +28,9 @@ Use a Deployment node for work that must run the same way every time. When a lat
 
 Before an approval or an outside write, a second agent node can check the first one's result and select `passed` or `failed`. It catches made-up links, wrong ranges, and empty results before a person spends time reviewing them. Have it run scripted checks for the mechanical rules, and use MCP tools for checks against the source system. Write each check to fail on empty input, since "no links, so no bad links" passes an empty result. Its outputs carry only its findings.
 
-Route each value from the node that produced it. Every later node that needs the draft, including the approval and the node that publishes it, takes it on an edge from the drafting node. The check's `passed` output joins as a second required input, so those nodes run only after the check passes. Don't ask an agent to pass a value through unchanged: it can shorten or replace the value, and the later nodes then act on what it wrote.
+Route each value from the node that produced it. Every later node that needs the draft, including the approval and the node that publishes it, takes it on an edge from the drafting node. The check's `passed` output joins as a second required input, so those nodes run only after the check passes. Don't ask an agent to pass a value through unchanged when a later node can take it on an edge instead: it can shorten or replace the value, and the later nodes then act on what it wrote.
+
+A plan output is the exception. Its fields take whole node outputs and can't wait on an approval, so a value that depends on a decision needs a node on that path to produce it. Keep that node copy-only, and also expose the original as a plan output so the reviewed version is on record. [customer-feedback-reply.plan.json](examples/customer-feedback-reply.plan.json) does this with `category`.
 
 For a join after a fan-out, set `orchestration.evaluate_when` to `all_reachable_terminal` and take the branch results through a `list` or `source_map` input.
 
