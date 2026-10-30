@@ -104,11 +104,14 @@ def for_server(call: ToolCall, url: str) -> bool:
 
 
 def creates(calls: list[ToolCall], url: str) -> list[ToolCall]:
-    """Return the `create_mcp_connection` calls for the server at `url`."""
+    """Return the `create_mcp_connection` calls for the server at `url`.
+
+    Calls the server rejected are left out, since they created nothing.
+    """
     return [
         call
         for call in assertions.calls_to(calls, "create_mcp_connection")
-        if for_server(call, url)
+        if for_server(call, url) and not call.is_error
     ]
 
 

@@ -442,3 +442,23 @@ def test_mcp_connection_setup_checks_fail_on_headers_sent_as_a_string():
     assert failed == [
         "the Stripe connection uses an Authorization header with the Bearer prefix"
     ]
+
+
+def test_mcp_connection_setup_checks_skip_a_rejected_create():
+    result = connections(broken=False)
+    calls = result.transcript.tool_calls
+    retried = next(
+        call
+        for call in calls
+        if call.name == "create_mcp_connection" and "headers" in call.arguments
+    )
+    rejected = ToolCall(
+        "create_mcp_connection",
+        {**retried.arguments, "headers": json.dumps(retried.arguments["headers"])},
+        "Input should be a valid list",
+        is_error=True,
+        turn=retried.turn,
+    )
+    calls.insert(calls.index(retried), rejected)
+
+    assert all(check.passed for check in mcp_connection_setup.checks(result))
