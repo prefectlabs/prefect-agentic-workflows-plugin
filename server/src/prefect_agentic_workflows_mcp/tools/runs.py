@@ -107,17 +107,19 @@ def compact_run(run: dict[str, Any]) -> dict[str, Any]:
 def progress(run: dict[str, Any]) -> tuple[Any, ...]:
     """Return the parts of a run observation that `get_run` waits to change.
 
-    These are the run's status and each node's status. A new human-input
-    form shows up as a node status change, because the node becomes
-    suspended.
+    These are the run's status, each node's status, and each plan output's
+    status. A new human-input form shows up as a node status change, because
+    the node becomes suspended.
     """
     nodes = run.get("nodes") or []
+    outputs = run.get("outputs") or []
     return (
         run.get("status"),
         tuple(
             (node.get("node"), node.get("activation_id"), node.get("status"))
             for node in nodes
         ),
+        tuple((output.get("output"), output.get("status")) for output in outputs),
     )
 
 

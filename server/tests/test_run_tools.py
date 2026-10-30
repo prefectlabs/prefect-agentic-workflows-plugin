@@ -197,6 +197,22 @@ async def test_get_run_until_settled_waits_through_node_changes(
     }
 
 
+async def test_get_run_until_settled_reports_outputs_built_as_a_change(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter, clock: FakeClock
+):
+    observations = [
+        with_outputs(run_observation("completed"), "waiting"),
+        with_outputs(run_observation("completed"), "available"),
+    ]
+    cloud_api.get(RUN_PATH).mock(
+        side_effect=[httpx.Response(200, json=body) for body in observations]
+    )
+
+    result = await get_run(mcp_client, 30, until="settled")
+
+    assert result["wait"]["status_changed"] is True
+
+
 async def test_get_run_until_settled_stops_when_a_form_waits(
     mcp_client: Client[Any], cloud_api: respx.MockRouter, clock: FakeClock
 ):
