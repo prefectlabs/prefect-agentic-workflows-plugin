@@ -185,11 +185,12 @@ async def test_get_run_output_reports_a_missing_bucket_as_an_error(
     assert "no object storage bucket" in error_text(result)
 
 
-def problem(output_status: str) -> dict[str, Any]:
+def problem(output_status: str, failure_code: str | None = None) -> dict[str, Any]:
     return {
         "detail": "Not yet.",
         "output_status": output_status,
         "reason": "incomplete",
+        "failure_code": failure_code,
     }
 
 
@@ -205,8 +206,12 @@ def problem(output_status: str) -> dict[str, Any]:
             {**problem("pending"), "retry_after_seconds": None, "final": False},
         ),
         (
-            httpx.Response(409, json=problem("failed")),
-            {**problem("failed"), "retry_after_seconds": None, "final": True},
+            httpx.Response(409, json=problem("failed", "required_field_missing")),
+            {
+                **problem("failed", "required_field_missing"),
+                "retry_after_seconds": None,
+                "final": True,
+            },
         ),
         (
             httpx.Response(409, json=problem("skipped")),
@@ -218,6 +223,7 @@ def problem(output_status: str) -> dict[str, Any]:
                 "detail": "Busy.",
                 "output_status": None,
                 "reason": None,
+                "failure_code": None,
                 "retry_after_seconds": 5.0,
                 "final": False,
             },
