@@ -134,10 +134,10 @@ When the run completes, click **Finish the reply**. Under **Outputs**, click
 unchanged. Click `revised_reply` if the manager rejected it. The other output
 shows **Not selected**.
 
-You can also ask your agent for the results. Paste the run's URL from the
-Prefect UI, and ask: "Show me the reply and the category from this run." The
-agent needs the run's URL or ID, because it can't look up runs you start in the
-UI.
+You can also ask your agent for the results: "Show me the reply and the
+category from the latest customer-feedback-reply run." The agent finds runs by
+the workflow's name, including runs you start in the UI. To ask about an older
+run, paste its URL from the Prefect UI.
 
 The `category` result holds the draft as well as the category, because a
 workflow result takes a whole step output.
@@ -327,6 +327,7 @@ your agent can ask before a tool writes.
 | `get_or_create_flow` | Find a flow by name, or create it |
 | `publish_plan`, `get_plan`, `list_plan_versions`, `activate_plan_version` | Publish a plan as a new version, read versions, and activate one, for example to roll back |
 | `start_run`, `get_run`, `get_run_output`, `submit_human_input` | Start a run of the active plan, watch its status, read outputs, and answer human-input forms |
+| `list_runs`, `get_run_activity` | List a flow's recent runs with what each produced, and read the tool calls of a run's agent nodes to explain a failure |
 | `create_schedule`, `list_schedules`, `get_schedule`, `update_schedule`, `delete_schedule` | Manage a flow's plan schedules |
 | `list_secret_blocks` | List Secret block names and IDs, never their values |
 | `list_deployments` | List deployment names and IDs, for Deployment nodes |

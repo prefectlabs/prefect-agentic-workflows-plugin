@@ -8,6 +8,11 @@ from uuid import UUID
 from fastmcp.exceptions import ToolError
 from pydantic import Field
 
+FlowRunId = Annotated[
+    UUID,
+    Field(description="ID of the run, from `start_run` or `list_runs`."),
+]
+
 WorkspaceId = Annotated[
     UUID | None,
     Field(

@@ -1,4 +1,5 @@
-"""Tools that start execution-plan runs, watch them, read outputs, and answer forms.
+"""Tools that start and list execution-plan runs, watch them, read outputs, and
+answer forms.
 
 A run always uses the flow's active plan version at the time it starts. There
 is no tool to cancel a run, because Prefect Cloud can only cancel runs of plans
@@ -6,26 +7,23 @@ made entirely of human-input nodes.
 """
 
 from asyncio import sleep
-from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime
 from time import monotonic
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-import httpx
 from fastmcp import FastMCP
-from fastmcp.exceptions import ToolError
 from pydantic import Field
 
-from prefect_agentic_workflows_mcp.parameters import WorkspaceId
+from prefect_agentic_workflows_mcp.parameters import FlowRunId, WorkspaceId
 from prefect_agentic_workflows_mcp.tools import tool
 from prefect_agentic_workflows_mcp.workspace_api import (
     NO_BUCKET_DETAIL,
-    HttpMethod,
     RequestTimedOutError,
     WorkspaceApi,
     read_json,
+    read_json_with_retry_hint,
     response_detail,
+    retry_after_seconds,
 )
 
 FlowId = Annotated[
@@ -33,11 +31,20 @@ FlowId = Annotated[
     Field(description="ID of the flow to run, from `get_or_create_flow`."),
 ]
 
-FlowRunId = Annotated[
-    UUID,
-    Field(description="ID of the run, from `start_run`."),
+StateType = Literal[
+    "SCHEDULED",
+    "PENDING",
+    "RUNNING",
+    "PAUSED",
+    "CANCELLING",
+    "COMPLETED",
+    "FAILED",
+    "CANCELLED",
+    "CRASHED",
 ]
 
+# The summaries route reads at most 100 runs in one request.
+MAX_LISTED_RUNS = 100
 MAX_WAIT_SECONDS = 30
 POLL_INTERVAL_SECONDS = 2.0
 # `get_run` returns at once for these: the run either can't change on its own
@@ -104,6 +111,33 @@ def compact_run(run: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def run_list_entry(flow_run: dict[str, Any], summary: dict[str, Any]) -> dict[str, Any]:
+    """Return one `list_runs` entry from a flow run and its run summary.
+
+    Leaves out each plan output's provenance, which `get_run` returns.
+    """
+    return {
+        "flow_run_id": flow_run["id"],
+        "name": flow_run["name"],
+        "state_type": flow_run["state_type"],
+        "state_name": flow_run["state_name"],
+        "created": flow_run["created"],
+        "start_time": flow_run["start_time"],
+        "status": summary.get("status"),
+        "execution_plan_version_id": summary.get("execution_plan_version_id"),
+        "outputs": [
+            {
+                "output": output["output"],
+                "status": output["status"],
+                "failure_code": output.get("failure_code"),
+            }
+            for output in summary.get("outputs", [])
+        ],
+        "last_nodes": summary.get("last_nodes", []),
+        "unavailable_reason": summary.get("unavailable_reason"),
+    }
+
+
 def progress(run: dict[str, Any]) -> tuple[Any, ...]:
     """Return the parts of a run observation that `get_run` waits to change.
 
@@ -121,50 +155,6 @@ def progress(run: dict[str, Any]) -> tuple[Any, ...]:
         ),
         tuple((output.get("output"), output.get("status")) for output in outputs),
     )
-
-
-def retry_after_seconds(response: httpx.Response) -> float | None:
-    """Return the `Retry-After` header of a response in seconds, or None.
-
-    The header holds either a number of seconds or an HTTP date.
-    """
-    value = response.headers.get("Retry-After")
-    if value is None:
-        return None
-    try:
-        return max(float(value), 0.0)
-    except ValueError:
-        pass
-    try:
-        retry_at = parsedate_to_datetime(value)
-    except (TypeError, ValueError):
-        return None
-    if retry_at.tzinfo is None:
-        retry_at = retry_at.replace(tzinfo=timezone.utc)
-    return max((retry_at - datetime.now(timezone.utc)).total_seconds(), 0.0)
-
-
-def format_seconds(seconds: float) -> str:
-    return f"{seconds:g}"
-
-
-def read_json_with_retry_hint(
-    response: httpx.Response, method: HttpMethod, path: str
-) -> Any:
-    """Return the JSON body of a response, like `read_json`.
-
-    When an error response has a `Retry-After` header, the error message
-    says how long to wait before trying again.
-    """
-    try:
-        return read_json(response, method, path)
-    except ToolError as exc:
-        retry_after = retry_after_seconds(response)
-        if retry_after is None:
-            raise
-        raise ToolError(
-            f"{exc} Retry in {format_seconds(retry_after)} seconds."
-        ) from exc
 
 
 def output_result(
@@ -246,6 +236,84 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             "created": response.status_code == 201,
             "flow_run_id": flow_run["id"],
             "flow_run": flow_run,
+        }
+
+    @tool(mcp, read_only=True)
+    async def list_runs(
+        flow_id: Annotated[
+            UUID,
+            Field(description="ID of the flow, from `get_flow`."),
+        ],
+        state_types: Annotated[
+            list[StateType] | None,
+            Field(
+                min_length=1,
+                description=(
+                    "Only runs in one of these Prefect state types, such as "
+                    "`FAILED` and `CRASHED` for failed runs. Omit it for runs "
+                    "in any state."
+                ),
+            ),
+        ] = None,
+        version_id: Annotated[
+            UUID | None,
+            Field(
+                description=(
+                    "Only runs of this plan version, from `list_plan_versions`. "
+                    "Omit it for runs of every version."
+                ),
+            ),
+        ] = None,
+        limit: Annotated[
+            int,
+            Field(ge=1, le=MAX_LISTED_RUNS, description="How many runs to return."),
+        ] = 10,
+        workspace_id: WorkspaceId = None,
+    ) -> dict[str, Any]:
+        """List a flow's execution-plan runs, with what each produced.
+
+        Use it to find a run the user started in the Prefect Cloud UI or on a
+        schedule, such as the latest failed run. The runs are in the order of
+        the flow's Runs tab in Prefect Cloud: the latest expected start time
+        first. Scheduled runs that haven't started yet come before the others,
+        with the `state_type` `SCHEDULED`. Returns `runs`, each with
+        `flow_run_id`, `name`, the Prefect `state_type` and `state_name`,
+        `created`, `start_time`, and the run's execution-plan `status` and
+        `execution_plan_version_id`. `outputs` lists each plan output's
+        `status` and any `failure_code`. Read an output's value with
+        `get_run_output`. `last_nodes` lists the completed nodes whose
+        selected outputs went to no other node, with those outputs, which is
+        usually the outcome the run ended on. When Prefect Cloud can't read a
+        run's plan, `unavailable_reason` says why and the execution-plan
+        fields are null. Read one run's nodes and failures with `get_run`.
+        """
+        body: dict[str, Any] = {"sort": "EXPECTED_START_TIME_DESC", "limit": limit}
+        if state_types is not None:
+            body["state"] = {"type": {"any_": state_types}}
+        if version_id is not None:
+            body["execution_plan_version_ids"] = [str(version_id)]
+        runs_path = f"/flows/{flow_id}/execution-plan/runs"
+        flow_runs: list[dict[str, Any]] = await api.call(
+            "POST", f"{runs_path}/filter", json=body, workspace_id=workspace_id
+        )
+        if not flow_runs:
+            return {"runs": []}
+        summaries_path = f"{runs_path}/summaries"
+        response = await api.request(
+            "POST",
+            summaries_path,
+            json={"flow_run_ids": [flow_run["id"] for flow_run in flow_runs]},
+            workspace_id=workspace_id,
+        )
+        summaries = {
+            summary["flow_run_id"]: summary
+            for summary in read_json_with_retry_hint(response, "POST", summaries_path)
+        }
+        return {
+            "runs": [
+                run_list_entry(flow_run, summaries.get(flow_run["id"], {}))
+                for flow_run in flow_runs
+            ]
         }
 
     async def read_run(

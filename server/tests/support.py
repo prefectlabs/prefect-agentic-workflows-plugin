@@ -30,11 +30,15 @@ FLOW_RUN_ID = "66666666-6666-6666-6666-666666666666"
 SNAPSHOT_ID = "77777777-7777-7777-7777-777777777777"
 ACTIVATION_ID = "88888888-8888-8888-8888-888888888888"
 SCHEDULE_ID = "99999999-9999-9999-9999-999999999999"
+# A session id is its agent attempt's id, a UUIDv7.
+SESSION_ID = "01a19e47-660c-7358-a65c-883f5130bbde"
 
 PLAN_PATH = f"/flows/{FLOW_ID}/execution-plan"
 VERSIONS_PATH = f"{PLAN_PATH}/versions"
 SCHEDULES_PATH = f"{PLAN_PATH}/schedules"
+RUNS_PATH = f"{PLAN_PATH}/runs"
 RUN_PATH = f"/flow_runs/{FLOW_RUN_ID}/execution-plan"
+EXECUTIONS_PATH = f"/flow_runs/{FLOW_RUN_ID}/agent-executions"
 
 PLAN: dict[str, Any] = {
     "schema_version": "0.1",
@@ -155,6 +159,9 @@ def flow_run_response(**overrides: Any) -> dict[str, Any]:
         "parameters": {},
         "idempotency_key": None,
         "state_type": "RUNNING",
+        "state_name": "Running",
+        "created": "2026-11-02T22:00:00Z",
+        "start_time": "2026-11-02T22:00:01Z",
         "execution_plan_snapshot_id": SNAPSHOT_ID,
         **overrides,
     }
@@ -188,6 +195,136 @@ def run_observation(
         "outputs": [{"output": "summary", "status": "waiting"}],
         "diagnostics": [],
     }
+
+
+def run_summary(flow_run_id: str = FLOW_RUN_ID, **overrides: Any) -> dict[str, Any]:
+    """Return one run summary from `POST .../execution-plan/runs/summaries`."""
+    return {
+        "flow_run_id": flow_run_id,
+        "execution_plan_version_id": VERSION_ID,
+        "status": "completed",
+        "outputs": [
+            {
+                "output": "reply",
+                "status": "available",
+                "provenance": [{"node": "draft", "output": "drafted"}],
+            }
+        ],
+        "last_nodes": [{"node": "draft", "selected_outputs": ["drafted"]}],
+        **overrides,
+    }
+
+
+def agent_execution(
+    session_id: str = SESSION_ID,
+    activation_id: str = ACTIVATION_ID,
+    session_status: str = "available",
+    **overrides: Any,
+) -> dict[str, Any]:
+    """Return one row of `GET /flow_runs/{id}/agent-executions` as Cloud returns it."""
+    return {
+        "execution": {
+            "id": session_id,
+            "attempt_ordinal": 1,
+            "invocation": {
+                "activation_id": activation_id,
+                "execution_plan_version_id": VERSION_ID,
+                "flow_id": FLOW_ID,
+                "flow_run_id": FLOW_RUN_ID,
+                "node_id": "draft",
+                "snapshot_id": SNAPSHOT_ID,
+                "task_run_id": activation_id,
+            },
+        },
+        "session": {
+            "id": session_id if session_status == "available" else None,
+            "status": session_status,
+        },
+        "status": "failed",
+        "started_at": "2026-11-02T22:00:41.740717Z",
+        "ended_at": "2026-11-02T22:00:55.957805Z",
+        **overrides,
+    }
+
+
+def executions_page(
+    executions: list[dict[str, Any]], next_cursor: str | None = None
+) -> dict[str, Any]:
+    """Return a page of `GET /flow_runs/{id}/agent-executions` as Cloud returns it."""
+    return {
+        "flow_run_id": FLOW_RUN_ID,
+        "executions": executions,
+        "history": {"coverage": "complete", "issues": []},
+        "next_cursor": next_cursor,
+        "observed_at": "2026-11-02T23:20:28.645927Z",
+    }
+
+
+def tool_call_item(
+    tool: str = "search",
+    *,
+    failed: bool = False,
+    in_flight: bool = False,
+    content: str = "available",
+    mcp_server: str | None = None,
+    arguments: str | None = '{"query": "refund policy"}',
+    result: str | None = "No results.",
+) -> dict[str, Any]:
+    """Return one `execute_tool` item of a session's activity as Cloud returns it.
+
+    Its span is in OTLP JSON, with the attributes the collector writes.
+    """
+    attributes: list[dict[str, Any]] = [
+        {
+            "key": "prefect.agent.activity.operation",
+            "value": {"stringValue": "execute_tool"},
+        },
+        {"key": "prefect.agent.activity.tool", "value": {"stringValue": tool}},
+    ]
+    if mcp_server is not None:
+        attributes.append(
+            {
+                "key": "prefect.agent.activity.mcp_server",
+                "value": {"stringValue": mcp_server},
+            }
+        )
+    if failed:
+        attributes += [
+            {
+                "key": "prefect.agent.activity.failure_type",
+                "value": {"stringValue": "tool_error"},
+            },
+            {"key": "prefect.agent.activity.retryable", "value": {"boolValue": True}},
+        ]
+    if arguments is not None:
+        attributes.append(
+            {"key": "gen_ai.tool.call.arguments", "value": {"stringValue": arguments}}
+        )
+    if result is not None:
+        attributes.append(
+            {"key": "gen_ai.tool.call.result", "value": {"stringValue": result}}
+        )
+    span: dict[str, Any] = {
+        "name": "prefect.agent.activity",
+        "attributes": attributes,
+        "startTimeUnixNano": "1793646051610300000",
+    }
+    if not in_flight:
+        span["endTimeUnixNano"] = "1793646051854886000"
+        span["status"] = {"code": 2 if failed else 0, "message": ""}
+    return {
+        "id": "01a19e47-d1a4-7c06-9a98-373c4c6fb620",
+        "kind": "operation_started" if in_flight else "operation_completed",
+        "content": content,
+        "operation": span,
+    }
+
+
+def activity_page(
+    items: list[dict[str, Any]], next_cursor: str | None = None
+) -> dict[str, Any]:
+    """Return a page of `GET /agent-sessions/{id}/activity` as Cloud returns it."""
+    return {"session_id": SESSION_ID, "activity": items, "next_cursor": next_cursor}
 
 
 def request_body(request: httpx.Request) -> Any:

@@ -96,6 +96,21 @@ async def test_a_one_node_agent_plan_runs_to_completion(mcp_client: Client[Any])
     assert node["node"] == "reply"
     assert node["status"] == "completed"
 
+    listed = await mcp_client.call_tool("list_runs", {"flow_id": flow_id})
+    assert listed.structured_content is not None
+    # Another run of the same flow can start while this test runs.
+    listed_runs = {run["flow_run_id"]: run for run in listed.structured_content["runs"]}
+    assert listed_runs[flow_run_id]["status"] == "completed"
+
+    # A workspace that doesn't record agent sessions returns no attempts.
+    activity = await mcp_client.call_tool(
+        "get_run_activity",
+        {"flow_run_id": flow_run_id, "activation_id": node["activation_id"]},
+    )
+    assert activity.structured_content is not None
+    for attempt in activity.structured_content["attempts"]:
+        assert attempt["node_id"] == "reply"
+
 
 async def test_a_human_input_plan_finishes_after_the_form_is_answered(
     mcp_client: Client[Any],

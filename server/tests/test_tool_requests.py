@@ -306,6 +306,11 @@ async def test_tool_sends_its_request_and_returns_the_result(
         ("get_run_output", {"flow_run_id": FLOW_RUN_ID, "output_name": ".."}, None),
         ("get_run_output", {"flow_run_id": FLOW_RUN_ID, "output_name": "a/b"}, None),
         ("get_flow", {"name": ".."}, "valid flow name"),
+        ("list_runs", {"flow_id": FLOW_ID, "limit": 0}, None),
+        ("list_runs", {"flow_id": FLOW_ID, "limit": 101}, None),
+        ("list_runs", {"flow_id": FLOW_ID, "state_types": ["DONE"]}, None),
+        ("list_runs", {"flow_id": FLOW_ID, "state_types": []}, None),
+        ("get_run_activity", {"flow_run_id": FLOW_RUN_ID, "activation_id": "x"}, None),
     ],
 )
 async def test_invalid_arguments_are_rejected_before_any_request(
