@@ -34,6 +34,56 @@ A plan output is the exception. Its fields take whole node outputs and can't wai
 
 For a join after a fan-out, set `orchestration.evaluate_when` to `all_reachable_terminal` and take the branch results through a `list` or `source_map` input.
 
+## Plan outputs
+
+Every plan has a plan output named `result` that records which outcome the run reached, so a person can tell runs apart by what they did without opening each one.
+
+- Name each output that ends a run for its outcome, such as `replied`, `reply_held`, or `pr_opened`. An output with no outgoing edge ends a run, so `blocked` outputs count too.
+- Give each of those outputs a required `summary` string in its schema, and tell the agent to set it to one sentence that a person reads in the runs list.
+- Give `result` one field for each of those outputs, named like the output, with a `node_output` source and the output's schema. When two of them have the same name, such as `blocked`, put the node ID in front of the field name: `classify_blocked`.
+- Leave `required` empty. A run reaches one outcome, so a required outcome field fails `result` on every other path.
+
+```json
+"result": {
+  "fields": {
+    "replied": {
+      "schema": {"type": "object", "properties": {"summary": {"type": "string"}}, "required": ["summary"]},
+      "source": {"type": "node_output", "node": "send_reply", "output": "replied"}
+    },
+    "reply_held": {
+      "schema": {"type": "object", "properties": {"summary": {"type": "string"}, "question": {"type": "string"}}, "required": ["summary", "question"]},
+      "source": {"type": "node_output", "node": "draft_reply", "output": "reply_held"}
+    },
+    "pr_opened": {
+      "schema": {"type": "object", "properties": {"summary": {"type": "string"}, "pr_url": {"type": "string"}}, "required": ["summary", "pr_url"]},
+      "source": {"type": "node_output", "node": "investigate_bug", "output": "pr_opened"}
+    }
+  },
+  "required": []
+}
+```
+
+Use a `one_of` source only to put one value in one field whichever output produced it, such as the reply text from `approved_reply` or `revised_reply` in [customer-feedback-reply.plan.json](examples/customer-feedback-reply.plan.json). Every source in it must be an output of the same node, and that node's `output_selection` must be `exactly_one` or `zero_or_one`. Otherwise one run can select two of them, and the whole plan output fails with `multiple_alternatives_produced`. `validate_plan` warns about such a field with `one_of_alternatives_not_exclusive`; give each source its own field instead. Don't use `one_of` to tell outcomes apart: separate fields already say which one the run reached.
+
+## Expectations
+
+In schema version 0.3, an AgentNode output can declare `expectations`: conditions that Prefect checks against the node's recorded tool calls and results before it releases the output to later nodes.
+
+- Add expectations only for a requirement the user states. Put them on the output that leads to the action the requirement guards, such as `reply_ready` before the step that sends the reply.
+- Write each `text` as a condition that the session's tool calls can show, such as "The reply links only to docs pages that a tool call in this session fetched." The agent's own statements aren't evidence.
+- Keep the output that the agent selects when it can't meet them, such as `reply_held`, free of expectations, so the run can still end there with the findings.
+- A key identifies its expectation across plan versions. Keep the key when only the text changes.
+
+```json
+"reply_ready": {
+  "schema": {"type": "object", "properties": {"reply": {"type": "string"}, "summary": {"type": "string"}}, "required": ["reply", "summary"]},
+  "expectations": {
+    "cites_fetched_docs": {"text": "The reply links only to docs pages that a tool call in this session fetched."},
+    "answers_the_question": {"text": "The reply answers the question in the issue, as the issue text read in this session shows."}
+  }
+}
+```
+
 ## Platform limits
 
 Last verified: 2026-10-27, against the Prefect Cloud API. When an error from `validate_plan` or `publish_plan` disagrees with this list, follow the error and tell the user this file may be out of date.
@@ -52,10 +102,11 @@ Last verified: 2026-10-27, against the Prefect Cloud API. When an error from `va
 - A Deployment node passes on only the child run's ID and state. The user who publishes and runs the plan needs permission to run the deployment, which seeing it doesn't prove, so name this in the summary.
 - A plan that validates can still fail to publish, for example when an MCP server's hostname doesn't resolve or you can't see a referenced Secret block or MCP connection.
 - Another user can activate a different version between your check and your activation or run.
+- Expectations validate and publish, but Prefect doesn't check them yet. A run of a plan with expectations doesn't start while checking is off for the account; `validate_plan` and `publish_plan` warn `verification_not_enabled`.
 
 ## Examples
 
-Both use schema version 0.2, which adds plan `outputs`. Replace all-zero placeholder IDs before publishing.
+Both use schema version 0.2, which adds plan `outputs`, and both declare `result`. Replace all-zero placeholder IDs before publishing.
 
 - [examples/customer-feedback-reply.plan.json](examples/customer-feedback-reply.plan.json): an agent drafts a reply, a person approves or rejects it with notes, and a rejection gets one revision. No MCP server, Secret block, or deployment. Start here for approvals and branches.
 - [examples/single-agent-with-mcp.plan.json](examples/single-agent-with-mcp.plan.json): one agent node uses an inline remote MCP server whose `Authorization` header references a Secret block holding `Bearer <token>`. Start here for tools, and replace the inline server with a connection reference when the workspace has MCP connections.

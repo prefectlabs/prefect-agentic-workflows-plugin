@@ -14,6 +14,7 @@ from evals.scenarios import (
     rejected_approval,
     release_notes_conversion,
     scheduled_edit,
+    support_triage,
     unsupported_loop,
 )
 
@@ -25,6 +26,7 @@ SCENARIOS: list[Scenario] = [
     scheduled_edit.SCENARIO,
     rejected_approval.SCENARIO,
     mcp_connection_setup.SCENARIO,
+    support_triage.SCENARIO,
 ]
 CASE_NAMES = [scenario.name for scenario in SCENARIOS]
 

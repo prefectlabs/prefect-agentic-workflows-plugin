@@ -61,6 +61,17 @@ def plan_outputs(plan: Plan) -> set[str]:
     return set(outputs) if isinstance(outputs, dict) else set()
 
 
+def ending_outputs(plan: Plan) -> set[tuple[str, str]]:
+    """Return `(node, output)` for each node output that no edge leaves from."""
+    routed = {(source, output) for source, output, _ in graph.node_edges(plan)}
+    return {
+        (node_id, output)
+        for node_id, node in graph.nodes(plan).items()
+        for output in graph.output_names(node)
+        if (node_id, output) not in routed
+    }
+
+
 # Checks on a plan.
 
 
@@ -114,6 +125,50 @@ def check_plan_outputs(plan: Plan, expected: set[str], *, exact: bool = False) -
         f"plan outputs include {sorted(expected)}",
         passed,
         "" if passed else f"found {sorted(found)}",
+    )
+
+
+def check_result_records_ending_outputs(plan: Plan) -> Check:
+    """Check that the `result` plan output has one optional `node_output` field
+    for each node output that ends a run."""
+    result = (plan.get("outputs") or {}).get("result") or {}
+    sources = {
+        (source.get("node"), source.get("output"))
+        for field in (result.get("fields") or {}).values()
+        if (source := field.get("source", {})).get("type") == "node_output"
+    }
+    problems = [
+        f"{node}.{output} has no field"
+        for node, output in sorted(ending_outputs(plan) - sources)
+    ]
+    if result.get("required"):
+        problems.append(f"required is {result['required']}")
+    return Check(
+        "result has one optional node_output field per ending output",
+        bool(result) and not problems,
+        "; ".join(problems) if result else "no result output",
+    )
+
+
+def check_one_of_reads_one_node(plan: Plan) -> Check:
+    """Check that each `one_of` plan-output field reads outputs of one node that
+    selects at most one output."""
+    nodes = graph.nodes(plan)
+    bad = []
+    for output_name, output in (plan.get("outputs") or {}).items():
+        for field_name, field in (output.get("fields") or {}).items():
+            source = field.get("source", {})
+            if source.get("type") != "one_of":
+                continue
+            source_nodes = {ref.get("node") for ref in source.get("one_of", [])}
+            node = nodes.get(source_nodes.pop(), {}) if len(source_nodes) == 1 else {}
+            selection = node.get("orchestration", {}).get("output_selection")
+            if selection not in {"exactly_one", "zero_or_one"}:
+                bad.append(f"{output_name}.{field_name}")
+    return Check(
+        "every one_of field reads one node that selects at most one output",
+        not bad,
+        f"fields {bad}" if bad else "",
     )
 
 

@@ -13,7 +13,7 @@ from evals.dataset import build_dataset
 from evals.evaluators import Judge
 from evals.record import FlowState, Reply, Transcript
 from evals.scenario import Judgement, Outcome, ScenarioInputs
-from evals.scenarios import no_infrastructure, rejected_approval
+from evals.scenarios import no_infrastructure, rejected_approval, support_triage
 from evals.scenarios import release_notes_conversion as release_notes
 
 PREFIX = "eval-abc123-1-"
@@ -147,6 +147,23 @@ def test_no_infrastructure_evidence_has_the_answers_after_the_reply():
     assert judgement.evidence(outcome()) == ""
 
 
+def test_support_triage_evidence_has_the_request_and_the_published_plan():
+    plan = approval_plan()
+    flow = FlowState(
+        "flow-1",
+        f"{PREFIX}{support_triage.FLOW_NAME}",
+        active_plan=plan,
+        version_ids=["version-1"],
+    )
+    [judgement] = support_triage.SCENARIO.judgements
+
+    evidence = judgement.evidence(outcome(flows={support_triage.FLOW_NAME: flow}))
+
+    assert "makes no promise about dates" in evidence
+    assert json.dumps(plan, indent=2) in evidence
+    assert judgement.evidence(outcome()) == ""
+
+
 def test_judges_are_added_only_with_a_judge_model():
     def judges(dataset: Dataset[ScenarioInputs, Outcome, None]) -> dict[str, int]:
         return {
@@ -162,4 +179,5 @@ def test_judges_are_added_only_with_a_judge_model():
         "scheduled_edit": 0,
         "rejected_approval": 1,
         "mcp_connection_setup": 0,
+        "support_triage": 1,
     }
