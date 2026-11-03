@@ -446,6 +446,23 @@ def support(broken: bool) -> Outcome:
 
 
 @pytest.mark.parametrize(
+    "message",
+    [
+        # Each message is from a support_triage run in CI on 2026-11-03.
+        "The workspace supports schema 0.2, so I couldn't write platform expectations.",
+        "Your two rules are enforced by the `check_reply` node, not by platform "
+        "expectations.",
+        "The workspace lists `0.2`, so this workspace can't check expectations yet.",
+        "**Expectations were not written.**",
+    ],
+)
+def test_support_triage_hears_that_requirements_are_not_checked(message: str):
+    found = support_outcome(support_plan(), versions=["0.2"], agent_text=[message])
+
+    assert all(check.passed for check in support_triage.checks(found))
+
+
+@pytest.mark.parametrize(
     ("plan_version", "versions", "failed"),
     [
         ("0.3", ["0.2", "0.3"], []),
