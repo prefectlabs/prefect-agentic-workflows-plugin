@@ -454,6 +454,10 @@ def support(broken: bool) -> Outcome:
         "expectations.",
         "The workspace lists `0.2`, so this workspace can't check expectations yet.",
         "**Expectations were not written.**",
+        "I'm not using expectations for your reply rule. The review step does the "
+        "same job.",
+        "**Reply rule:** I didn't use Prefect expectations, because this workflow "
+        "has no tools.",
     ],
 )
 def test_support_triage_hears_that_requirements_are_not_checked(message: str):

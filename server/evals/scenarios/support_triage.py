@@ -74,7 +74,7 @@ USER = [
 # The agent says the workspace can't check the requirements yet.
 CANNOT_CHECK = (
     r"(can't|cannot|can not|couldn't|could not|doesn't|does not|isn't|is not"
-    r"|not yet|unable|not by)"
+    r"|not yet|unable|not by|not using|didn't use|did not use|won't use)"
     r"[^.\n]*(check|verif|expectation|requirement)"
     r"|(expectation|requirement|check)[^.\n]*"
     r"(can't|cannot|not (yet )?(available|supported|enabled|checked|written)"
