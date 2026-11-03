@@ -315,6 +315,37 @@ version a run used. Credentials stay in Prefect
 Secret blocks. The agent refers to a block by its ID and never asks for a
 secret value.
 
+## Ask about runs
+
+Ask your agent about a workflow's runs, including runs you start in the UI or
+on a schedule. Name the workflow, or paste a run's URL from the Prefect UI. For
+example:
+
+- "Why did the latest customer-feedback-reply run fail?"
+- "This run failed. What went wrong?
+  https://app.prefect.cloud/account/.../workspace/.../runs/flow-run/..."
+- "The last customer-feedback-reply run completed, but the revised reply
+  ignored the manager's notes. Why?"
+- "Show me the full result of that failed tool call."
+- "How have the customer-feedback-reply runs gone since I published the new
+  version?"
+
+When a step fails, its panel on the run page in Prefect Cloud also has
+**Debug with agent**, which copies a prompt with the run's details for you to
+paste into your agent.
+
+The agent lists the workflow's runs and reads the failed run's steps. For each
+AI agent step, it reads the model calls and tool calls in order, and bases its
+answer on what they returned, for example a tool's error text or the output
+the model chose. It then says what you can change, such as an MCP connection's
+credential or the step's instructions, and asks before it publishes a change.
+
+To read what the calls sent and returned, your workspace role needs the "View
+agent prompts, outputs, and tool data" permission, which the Admin and
+Developer roles have. Without it, the agent sees only which tools were called
+and whether they failed. If your workspace doesn't record agent sessions, the
+agent explains the failure from the run's step statuses alone.
+
 ## Tools
 
 Every tool sets the MCP `readOnlyHint` and `destructiveHint` annotations, so
