@@ -185,7 +185,7 @@ and reports a run that the same key already started.
 | `scheduled_edit` | `scheduled_edit.py` | Changing a flow that has an active version and a schedule: the agent names the schedule before it asks to activate, activates the new version with the action items only after the yes, and leaves the schedule alone. |
 | `mcp_connection_setup` | `mcp_connection_setup.py` | A workflow that reads Linear and Stripe: the agent inspects each server before it saves an OAuth connection for Linear and an API-key header connection for Stripe, names them after the account, never asks for the key, sends the setup links, and publishes a plan that references both connections. |
 | `no_infrastructure` | `no_infrastructure.py` | A workflow that needs Zendesk and Slack, for a user with no remote MCP servers: the infrastructure check comes first, and the agent offers a version without those tools. |
-| `support_triage` | `support_triage.py` | The support workflow from a plain description, with no tools: a `result` output with one optional field per output that ends a run, `one_of` only over one node that selects at most one output, and expectations only when `get_schema` lists version 0.3. A judge checks that, without 0.3, the agent says Prefect won't check the requirements. |
+| `support_triage` | `support_triage.py` | The support workflow from a plain description, with no tools: every output that ends a run requires a `summary`, `one_of` only over one node that selects at most one output, and expectations only when `get_schema` lists version 0.3. A judge checks that, without 0.3, the agent says Prefect won't check the requirements. |
 
 ## Adding a case
 

@@ -99,7 +99,7 @@ def test_example_plans_follow_the_plan_output_rules():
         plan = json.loads(path.read_text())
 
         for check in (
-            assertions.check_result_records_ending_outputs(plan),
+            assertions.check_ending_outputs_carry_summary(plan),
             assertions.check_one_of_reads_one_node(plan),
         ):
             assert check.passed, f"{path.name}: {check.name}: {check.detail}"
@@ -126,4 +126,4 @@ def test_feedback_reply_example_needs_no_tools_and_revises_a_rejected_draft():
         {"node": source["node"], "output": source["output"]} for source in reply_sources
     ]
     assert set(plan["inputs"]) == {"feedback"}
-    assert set(plan["outputs"]) == {"reply", "category", "result"}
+    assert set(plan["outputs"]) == {"reply", "category"}

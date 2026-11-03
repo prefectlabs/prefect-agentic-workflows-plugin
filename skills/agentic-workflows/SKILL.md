@@ -25,7 +25,7 @@ When building a workflow, or editing one to use a new system, run the [infrastru
 | Tools | The systems the infrastructure check found reachable. |
 | Approvals | One before any step that writes to an outside system. |
 | Requirements | Only the conditions the user states for a step's result, such as "reply only when the answer cites the docs". Each one becomes an expectation on that step's output. |
-| Outputs | A `result` plan output with one field for each output that ends a run, as [Plan outputs](references/design-guidance.md#plan-outputs) says. Also one plan output for each thing the user asked the run to return, named after it. |
+| Outputs | One plan output for each thing the user asked the run to return, named after it. Only when they didn't say: one plan output, `result`, from the last node. |
 
 ## Pipeline
 

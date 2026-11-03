@@ -351,17 +351,20 @@ def test_conversion_report_can_name_the_stdio_server_replacement(row: str):
     assert by_name["conversion report lists every unsupported part"].passed
 
 
+SUMMARY = {
+    "type": "object",
+    "properties": {"summary": {"type": "string"}},
+    "required": ["summary"],
+}
+
+
 def agent_node(*outputs: str) -> dict[str, Any]:
     return {
         "kind": "AgentNode",
         "objective": "Decide.",
-        "outputs": {name: {"schema": {"type": "object"}} for name in outputs},
+        "outputs": {name: {"schema": SUMMARY} for name in outputs},
         "orchestration": orchestration(),
     }
-
-
-def result_field(node: str, output: str) -> dict[str, Any]:
-    return {"schema": {"type": "object"}, "source": from_node(node, output)}
 
 
 def support_plan(version: str = "0.2") -> dict[str, Any]:
@@ -382,17 +385,7 @@ def support_plan(version: str = "0.2") -> dict[str, Any]:
                 "issue",
             ),
         ],
-        "outputs": {
-            "result": {
-                "fields": {
-                    "blocked": result_field("classify", "blocked"),
-                    "reply_ready": result_field("draft_reply", "reply_ready"),
-                    "reply_held": result_field("draft_reply", "reply_held"),
-                    "bug_reported": result_field("report_bug", "bug_reported"),
-                },
-                "required": [],
-            }
-        },
+        "outputs": {},
     }
     if version == "0.3":
         plan["nodes"]["draft_reply"]["outputs"]["reply_ready"]["expectations"] = {
@@ -413,7 +406,9 @@ def support(broken: bool) -> Outcome:
     plan = support_plan()
     found = support_outcome(plan, versions=["0.2"])
     if broken:
-        plan["outputs"]["result"]["required"] = ["reply_ready"]
+        plan["nodes"]["report_bug"]["outputs"]["bug_reported"]["schema"] = {
+            "type": "object"
+        }
         plan["outputs"]["reply"] = {
             "fields": {
                 "reply": {
@@ -520,7 +515,7 @@ SCENARIOS = {
         support_triage,
         support,
         [
-            "result has one optional node_output field per ending output",
+            "every output that ends a run requires a summary",
             "every one_of field reads one node that selects at most one output",
             "expectations follow the schema versions get_schema lists",
             "the flow 'support-triage' has a saved plan version",

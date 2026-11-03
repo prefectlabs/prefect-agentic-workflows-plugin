@@ -128,25 +128,22 @@ def check_plan_outputs(plan: Plan, expected: set[str], *, exact: bool = False) -
     )
 
 
-def check_result_records_ending_outputs(plan: Plan) -> Check:
-    """Check that the `result` plan output has one optional `node_output` field
-    for each node output that ends a run."""
-    result = (plan.get("outputs") or {}).get("result") or {}
-    sources = {
-        (source.get("node"), source.get("output"))
-        for field in (result.get("fields") or {}).values()
-        if (source := field.get("source", {})).get("type") == "node_output"
-    }
-    problems = [
-        f"{node}.{output} has no field"
-        for node, output in sorted(ending_outputs(plan) - sources)
+def check_ending_outputs_carry_summary(plan: Plan) -> Check:
+    """Check that each node output that ends a run requires a `summary`."""
+    nodes = graph.nodes(plan)
+    missing = [
+        f"{node_id}.{output}"
+        for node_id, output in sorted(ending_outputs(plan))
+        if "summary"
+        not in (
+            ((nodes[node_id].get("outputs") or {}).get(output) or {}).get("schema")
+            or {}
+        ).get("required", [])
     ]
-    if result.get("required"):
-        problems.append(f"required is {result['required']}")
     return Check(
-        "result has one optional node_output field per ending output",
-        bool(result) and not problems,
-        "; ".join(problems) if result else "no result output",
+        "every output that ends a run requires a summary",
+        not missing,
+        f"no required summary on {missing}" if missing else "",
     )
 
 

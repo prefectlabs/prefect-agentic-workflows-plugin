@@ -95,7 +95,7 @@ of these if your prompt already answered them. Answer them like this:
 |---|---|
 | Which of your business tools the workflow can use, through a "remote MCP server" | "None. The workflow only uses the feedback I paste in." |
 | Anything else about the design | "The defaults are fine." |
-| Whether its summary of the workflow is right | Check that it has three steps: sort and draft, manager review, and finish the reply. Check that it has one input, `feedback`, and three results: `reply`, `category`, and `result`, which records whether the manager approved or rejected the draft. Then answer "Yes, build it." |
+| Whether its summary of the workflow is right | Check that it has three steps: sort and draft, manager review, and finish the reply. Check that it has one input, `feedback`, and two results, `reply` and `category`. Then answer "Yes, build it." |
 | Whether to start a test run | "No. I'll run it in Prefect Cloud." |
 
 The agent then saves the workflow as

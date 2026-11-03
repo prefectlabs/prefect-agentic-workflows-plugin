@@ -83,22 +83,6 @@
         }
       },
       "required": ["report"]
-    },
-    "result": {
-      "fields": {
-        "summary": {
-          "schema": {
-            "type": "object",
-            "properties": {
-              "issue_count": {"type": "integer", "minimum": 0},
-              "summary": {"type": "string"}
-            },
-            "required": ["issue_count", "summary"]
-          },
-          "source": {"type": "node_output", "node": "summarize_bugs", "output": "summary"}
-        }
-      },
-      "required": []
     }
   }
 }

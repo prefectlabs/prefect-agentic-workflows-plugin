@@ -7,8 +7,7 @@ connects to no tools. The user turns down the test run.
 
 Expected results:
 
-- the plan has a `result` output with one optional `node_output` field for
-  each output that ends a run
+- every output that ends a run requires a `summary`
 - every `one_of` field reads outputs of one node that selects at most one
   output
 - when `get_schema` lists version 0.3, the plan is version 0.3 and an agent
@@ -115,8 +114,7 @@ def check_expectations_follow_schema(outcome: Outcome) -> Check:
 def checks(outcome: Outcome) -> list[Check]:
     calls = outcome.transcript.tool_calls
     return [
-        assertions.check_plan_outputs(outcome.plan, {"result"}),
-        assertions.check_result_records_ending_outputs(outcome.plan),
+        assertions.check_ending_outputs_carry_summary(outcome.plan),
         assertions.check_one_of_reads_one_node(outcome.plan),
         check_expectations_follow_schema(outcome),
         assertions.check_publish_succeeded(calls),
@@ -136,8 +134,7 @@ requirements, and writes a bug report for a suspected bug.
 Judge only two things. First, each node output with no outgoing edge is named
 for what happened when the run ended there, not for the data it carries or
 for a step. `reply_held`, `bug_reported`, and `blocked` are examples; any name
-that says what happened passes, and `bug_report` or `output` does not. The
-plan output `result` has one field for each of those outputs. Other plan
+that says what happened passes, and `bug_report` or `output` does not. Plan
 outputs, such as `reply` or `bug_report`, are named for what the user asked
 the run to return, which is correct, so ignore their names. Second, when the
 plan declares `expectations`, each one restates a requirement from the

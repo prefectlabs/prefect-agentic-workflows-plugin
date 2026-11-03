@@ -34,34 +34,14 @@ A plan output is the exception. Its fields take whole node outputs and can't wai
 
 For a join after a fan-out, set `orchestration.evaluate_when` to `all_reachable_terminal` and take the branch results through a `list` or `source_map` input.
 
+## Outputs that end a run
+
+An output with no outgoing edge ends a run, so `blocked` outputs count too. The output a run ended on is what a person reads first when they review runs.
+
+- Name each one for what happened, such as `replied`, `reply_held`, or `pr_opened`. Name what happened (`bug_reported`), not the data it carries (`bug_report`).
+- Give each one a required `summary` string in its schema, and tell the agent to set it to one sentence that says what happened.
+
 ## Plan outputs
-
-Every plan has a plan output named `result` that records which outcome the run reached, so a person can tell runs apart by what they did without opening each one.
-
-- Name each output that ends a run for its outcome, such as `replied`, `reply_held`, or `pr_opened`. Name what happened (`bug_reported`), not the data it carries (`bug_report`). An output with no outgoing edge ends a run, so `blocked` outputs count too.
-- Give each of those outputs a required `summary` string in its schema, and tell the agent to set it to one sentence that a person reads in the runs list.
-- Give `result` one field for each of those outputs, named like the output, with a `node_output` source and the output's schema. When two of them have the same name, such as `blocked`, put the node ID in front of the field name: `classify_blocked`.
-- Leave `required` empty. A run reaches one outcome, so a required outcome field fails `result` on every other path.
-
-```json
-"result": {
-  "fields": {
-    "replied": {
-      "schema": {"type": "object", "properties": {"summary": {"type": "string"}}, "required": ["summary"]},
-      "source": {"type": "node_output", "node": "send_reply", "output": "replied"}
-    },
-    "reply_held": {
-      "schema": {"type": "object", "properties": {"summary": {"type": "string"}, "question": {"type": "string"}}, "required": ["summary", "question"]},
-      "source": {"type": "node_output", "node": "draft_reply", "output": "reply_held"}
-    },
-    "pr_opened": {
-      "schema": {"type": "object", "properties": {"summary": {"type": "string"}, "pr_url": {"type": "string"}}, "required": ["summary", "pr_url"]},
-      "source": {"type": "node_output", "node": "investigate_bug", "output": "pr_opened"}
-    }
-  },
-  "required": []
-}
-```
 
 Use a `one_of` source only to put one value in one field whichever output produced it, such as the reply text from `approved_reply` or `revised_reply` in [customer-feedback-reply.plan.json](examples/customer-feedback-reply.plan.json). Every source in it must be an output of the same node, and that node's `output_selection` must be `exactly_one` or `zero_or_one`. Otherwise one run can select two of them, and the whole plan output fails with `multiple_alternatives_produced`. `validate_plan` rejects such a field with `one_of_alternatives_not_exclusive`; give each source its own field instead. Don't use `one_of` to tell outcomes apart: separate fields already say which one the run reached.
 
@@ -106,7 +86,7 @@ Last verified: 2026-10-27, against the Prefect Cloud API. When an error from `va
 
 ## Examples
 
-Both use schema version 0.2, which adds plan `outputs`, and both declare `result`. Replace all-zero placeholder IDs before publishing.
+Both use schema version 0.2, which adds plan `outputs`. Replace all-zero placeholder IDs before publishing.
 
 - [examples/customer-feedback-reply.plan.json](examples/customer-feedback-reply.plan.json): an agent drafts a reply, a person approves or rejects it with notes, and a rejection gets one revision. No MCP server, Secret block, or deployment. Start here for approvals and branches.
 - [examples/single-agent-with-mcp.plan.json](examples/single-agent-with-mcp.plan.json): one agent node uses an inline remote MCP server whose `Authorization` header references a Secret block holding `Bearer <token>`. Start here for tools, and replace the inline server with a connection reference when the workspace has MCP connections.
