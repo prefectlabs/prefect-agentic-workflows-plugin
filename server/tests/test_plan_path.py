@@ -98,11 +98,13 @@ async def test_an_http_server_does_not_read_a_plan_file_from_its_own_disk(
     plan_file.write_text(json.dumps(PLAN))
     route = cloud_api.post("/execution-plans/validate").respond(200, json=VALID)
 
-    async with run_server_async(build_server(), transport="http") as url:
-        async with Client(StreamableHttpTransport(url)) as client:
-            result = await client.call_tool(
-                "validate_plan", {"plan_path": str(plan_file)}, raise_on_error=False
-            )
+    async with (
+        run_server_async(build_server(), transport="http") as url,
+        Client(StreamableHttpTransport(url)) as client,
+    ):
+        result = await client.call_tool(
+            "validate_plan", {"plan_path": str(plan_file)}, raise_on_error=False
+        )
 
     assert "can't read files on your machine" in error_text(result)
     assert not route.called
