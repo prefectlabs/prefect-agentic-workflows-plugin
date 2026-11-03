@@ -131,17 +131,19 @@ def checks(outcome: Outcome) -> list[Check]:
 OUTCOME_RUBRIC = """\
 The plan is a support workflow that sorts an issue into a question or a
 suspected bug, replies to questions, holds a reply that misses the user's
-requirements, and writes a bug report for a suspected bug. Each node output
-with no outgoing edge is named for the outcome it stands for, such as
-`reply_ready`, `reply_held`, `bug_reported`, or `blocked`, and not for a step
-or a data type, such as `output`, `done`, or `data`. The plan output `result`
-has one field for each of those outputs. When the plan declares
-`expectations`, each one restates a requirement from the request: the reply
-answers the question the customer asked, or it makes no promise about dates
-or refunds. A plan whose ending outputs have generic names or name the data
-they carry, such as `bug_report`, or whose expectations add a requirement the
-user didn't state, does not pass. Judge only the outputs and expectations,
-not the workflow's name.
+requirements, and writes a bug report for a suspected bug.
+
+Judge only two things. First, each node output with no outgoing edge is named
+for what happened when the run ended there, not for the data it carries or
+for a step. `reply_held`, `bug_reported`, and `blocked` are examples; any name
+that says what happened passes, and `bug_report` or `output` does not. The
+plan output `result` has one field for each of those outputs. Other plan
+outputs, such as `reply` or `bug_report`, are named for what the user asked
+the run to return, which is correct, so ignore their names. Second, when the
+plan declares `expectations`, each one restates a requirement from the
+request: the reply answers the question the customer asked, or it makes no
+promise about dates or refunds. A plan with no expectations passes this part.
+Ignore the workflow's name.
 """
 
 
