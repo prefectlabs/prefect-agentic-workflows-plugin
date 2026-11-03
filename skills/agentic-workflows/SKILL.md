@@ -14,7 +14,7 @@ When the user names a workspace, such as `Workspace: prefect-staging/eng-and-pro
 When building a workflow, or editing one to use a new system, run the [infrastructure check](references/infrastructure-check.md) first. The conversion guide runs it once it knows which systems the skill uses. Running, rolling back, or scheduling a published workflow skips it. Then:
 
 - **Converting an existing skill:** follow [references/conversion.md](references/conversion.md).
-- **The user describes the workflow:** fill the checklist below from the description and the defaults, and ask only about the gaps.
+- **The user describes the workflow:** fill the checklist below from the description and the defaults, and ask only about the gaps. Ask them after the user answers the infrastructure check's tools question, never in the same message.
 - **The user gives you nothing:** ask the checklist in one message, with each default beside its item. For a workflow with several branches, approvals, or systems, also ask per step what it decides, what it reads and hands on, and what happens when it fails or nobody answers.
 
 | Checklist item | Default |
