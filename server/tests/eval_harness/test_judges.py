@@ -11,7 +11,7 @@ from pydantic_evals import Case, Dataset
 
 from evals.dataset import build_dataset
 from evals.evaluators import Judge
-from evals.record import FlowState, Reply, Transcript
+from evals.record import FlowState, Reply, ToolCall, Transcript
 from evals.scenario import Judgement, Outcome, ScenarioInputs
 from evals.scenarios import no_infrastructure, rejected_approval, support_triage
 from evals.scenarios import release_notes_conversion as release_notes
@@ -155,12 +155,28 @@ def test_support_triage_evidence_has_the_request_and_the_published_plan():
         active_plan=plan,
         version_ids=["version-1"],
     )
-    [judgement] = support_triage.SCENARIO.judgements
+    judgement, _ = support_triage.SCENARIO.judgements
 
     evidence = judgement.evidence(outcome(flows={support_triage.FLOW_NAME: flow}))
 
     assert "makes no promise about dates" in evidence
     assert json.dumps(plan, indent=2) in evidence
+    assert judgement.evidence(outcome()) == ""
+
+
+def test_support_triage_report_evidence_has_the_schema_versions_and_messages():
+    transcript = Transcript(
+        tool_calls=[
+            ToolCall("get_schema", {}, {"supported_schema_versions": ["0.1", "0.2"]})
+        ],
+        turn_results=["Here is the design.", "I left out expectations."],
+    )
+    _, judgement = support_triage.SCENARIO.judgements
+
+    evidence = judgement.evidence(outcome(transcript))
+
+    assert "<SchemaVersions>\n0.1, 0.2\n</SchemaVersions>" in evidence
+    assert "I left out expectations." in evidence
     assert judgement.evidence(outcome()) == ""
 
 
@@ -179,5 +195,5 @@ def test_judges_are_added_only_with_a_judge_model():
         "scheduled_edit": 0,
         "rejected_approval": 1,
         "mcp_connection_setup": 0,
-        "support_triage": 1,
+        "support_triage": 2,
     }

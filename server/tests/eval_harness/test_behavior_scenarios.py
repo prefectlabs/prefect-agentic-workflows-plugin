@@ -401,26 +401,17 @@ def support_plan(version: str = "0.2") -> dict[str, Any]:
     return plan
 
 
-def support_outcome(
-    plan: dict[str, Any], *, versions: list[str], agent_text: list[str]
-) -> Outcome:
+def support_outcome(plan: dict[str, Any], *, versions: list[str]) -> Outcome:
     flow = support_triage.FLOW_NAME
     schema = ToolCall("get_schema", {}, {"supported_schema_versions": versions})
     calls = [schema, *published(plan, flow, turn=2)]
-    transcript = Transcript(
-        tool_calls=calls,
-        agent_text=agent_text,
-        replies=[Reply(1, "design-approval", "")],
-    )
+    transcript = Transcript(tool_calls=calls, replies=[Reply(1, "design-approval", "")])
     return outcome(transcript, plan, [saved_flow(flow, plan)])
-
-
-UNCHECKED = "This workspace can't check your requirements yet, so I left them out."
 
 
 def support(broken: bool) -> Outcome:
     plan = support_plan()
-    found = support_outcome(plan, versions=["0.2"], agent_text=[UNCHECKED])
+    found = support_outcome(plan, versions=["0.2"])
     if broken:
         plan["outputs"]["result"]["required"] = ["reply_ready"]
         plan["outputs"]["reply"] = {
@@ -440,30 +431,8 @@ def support(broken: bool) -> Outcome:
         plan["nodes"]["draft_reply"]["outputs"]["reply_ready"]["expectations"] = {
             "no_promises": {"text": "The reply makes no promise about dates."}
         }
-        found.transcript.agent_text.clear()
         found.flows.clear()
     return found
-
-
-@pytest.mark.parametrize(
-    "message",
-    [
-        # Each message is from a support_triage run in CI on 2026-11-03.
-        "The workspace supports schema 0.2, so I couldn't write platform expectations.",
-        "Your two rules are enforced by the `check_reply` node, not by platform "
-        "expectations.",
-        "The workspace lists `0.2`, so this workspace can't check expectations yet.",
-        "**Expectations were not written.**",
-        "I'm not using expectations for your reply rule. The review step does the "
-        "same job.",
-        "**Reply rule:** I didn't use Prefect expectations, because this workflow "
-        "has no tools.",
-    ],
-)
-def test_support_triage_hears_that_requirements_are_not_checked(message: str):
-    found = support_outcome(support_plan(), versions=["0.2"], agent_text=[message])
-
-    assert all(check.passed for check in support_triage.checks(found))
 
 
 @pytest.mark.parametrize(
@@ -481,9 +450,7 @@ def test_support_triage_hears_that_requirements_are_not_checked(message: str):
 def test_support_triage_expects_expectations_when_get_schema_lists_0_3(
     plan_version: str, versions: list[str], failed: list[str]
 ):
-    found = support_outcome(
-        support_plan(plan_version), versions=versions, agent_text=[]
-    )
+    found = support_outcome(support_plan(plan_version), versions=versions)
 
     checks = support_triage.checks(found)
 

@@ -146,6 +146,7 @@ fails without a call to the judge.
 | `no_infrastructure` | The request, the user's reply that no tool is reachable, and the agent's messages after it. | The agent offers a version of the workflow that runs without Zendesk and Slack tools. |
 | `unsupported_loop` | The published plan. | The plan makes two review-and-revise passes, as separate nodes or as steps in one node's objective, with no open-ended loop. |
 | `support_triage` | The request and the published plan. | The outputs that end a run are named for outcomes, and the expectations restate only the user's requirements. |
+| `support_triage` | The schema versions `get_schema` listed, and the agent's messages. | Without 0.3, the agent tells the user that Prefect won't check their requirements. |
 
 The judges use `anthropic:claude-haiku-5-5` by default. Each judge call sends
 the rubric and the evidence once, a few thousand tokens at most, so the
@@ -184,7 +185,7 @@ and reports a run that the same key already started.
 | `scheduled_edit` | `scheduled_edit.py` | Changing a flow that has an active version and a schedule: the agent names the schedule before it asks to activate, activates the new version with the action items only after the yes, and leaves the schedule alone. |
 | `mcp_connection_setup` | `mcp_connection_setup.py` | A workflow that reads Linear and Stripe: the agent inspects each server before it saves an OAuth connection for Linear and an API-key header connection for Stripe, names them after the account, never asks for the key, sends the setup links, and publishes a plan that references both connections. |
 | `no_infrastructure` | `no_infrastructure.py` | A workflow that needs Zendesk and Slack, for a user with no remote MCP servers: the infrastructure check comes first, and the agent offers a version without those tools. |
-| `support_triage` | `support_triage.py` | The support workflow from a plain description, with no tools: a `result` output with one optional field per output that ends a run, `one_of` only over one node that selects at most one output, and expectations only when `get_schema` lists version 0.3. Without 0.3, the agent says the workspace can't check the requirements. |
+| `support_triage` | `support_triage.py` | The support workflow from a plain description, with no tools: a `result` output with one optional field per output that ends a run, `one_of` only over one node that selects at most one output, and expectations only when `get_schema` lists version 0.3. A judge checks that, without 0.3, the agent says Prefect won't check the requirements. |
 
 ## Adding a case
 

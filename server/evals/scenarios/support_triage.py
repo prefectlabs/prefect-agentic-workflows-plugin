@@ -12,8 +12,9 @@ Expected results:
 - every `one_of` field reads outputs of one node that selects at most one
   output
 - when `get_schema` lists version 0.3, the plan is version 0.3 and an agent
-  node output carries expectations; otherwise the plan has no expectations,
-  and the agent tells the user that the workspace can't check them yet
+  node output carries expectations; otherwise the plan has no expectations
+- an LLM judge reads the agent's messages and finds that, without 0.3, it
+  tells the user that Prefect won't check the requirements
 - `publish_plan` is called only after `validate_plan` passes on the same plan
 - a version of the flow is saved
 - an LLM judge reads the plan and finds that the ending outputs are named for
@@ -21,7 +22,6 @@ Expected results:
 """
 
 import json
-import re
 
 from evals import assertions, graph
 from evals.assertions import Check
@@ -71,25 +71,6 @@ USER = [
     Rule(label="go-ahead", pattern=r"\?", reply="The defaults are fine.", max_uses=3),
 ]
 
-# The agent says the workspace can't check the requirements yet.
-CANNOT_CHECK = (
-    r"(can't|cannot|can not|couldn't|could not|doesn't|does not|isn't|is not"
-    r"|not yet|unable|not by|not using|didn't use|did not use|won't use)"
-    r"[^.\n]*(check|verif|expectation|requirement)"
-    r"|(expectation|requirement|check)[^.\n]*"
-    r"(can't|cannot|not (yet )?(available|supported|enabled|checked|written)"
-    r"|left out)"
-)
-
-
-def supports_expectations(calls: list[ToolCall]) -> bool:
-    """Return whether any `get_schema` result lists schema version 0.3."""
-    return any(
-        isinstance(call.result, dict)
-        and "0.3" in call.result.get("supported_schema_versions", [])
-        for call in assertions.calls_to(calls, "get_schema")
-    )
-
 
 def outputs_with_expectations(plan: graph.Plan) -> list[str]:
     return [
@@ -100,12 +81,23 @@ def outputs_with_expectations(plan: graph.Plan) -> list[str]:
     ]
 
 
+def schema_versions(calls: list[ToolCall]) -> list[str]:
+    """Return the schema versions the `get_schema` results list."""
+    return sorted(
+        {
+            version
+            for call in assertions.calls_to(calls, "get_schema")
+            if isinstance(call.result, dict)
+            for version in call.result.get("supported_schema_versions", [])
+        }
+    )
+
+
 def check_expectations_follow_schema(outcome: Outcome) -> Check:
-    """Check for expectations when `get_schema` lists 0.3, and otherwise for no
-    expectations and a message that the workspace can't check them."""
+    """Check for expectations when `get_schema` lists 0.3, and for none otherwise."""
     plan = outcome.plan
     found = outputs_with_expectations(plan)
-    if supports_expectations(outcome.transcript.tool_calls):
+    if "0.3" in schema_versions(outcome.transcript.tool_calls):
         problems = []
         if plan.get("schema_version") != "0.3":
             problems.append(f"version {plan.get('schema_version')}")
@@ -113,11 +105,6 @@ def check_expectations_follow_schema(outcome: Outcome) -> Check:
             problems.append("no output has expectations")
     else:
         problems = [f"expectations on {found} without 0.3"] if found else []
-        if not any(
-            re.search(CANNOT_CHECK, text, re.IGNORECASE)
-            for text in outcome.transcript.agent_text
-        ):
-            problems.append("no message says the requirements aren't checked")
     return Check(
         "expectations follow the schema versions get_schema lists",
         not problems,
@@ -156,6 +143,28 @@ expectations add a requirement the user didn't state, does not pass.
 """
 
 
+UNCHECKED_RUBRIC = """\
+The evidence lists the schema versions the workspace supports and the agent's
+messages to the user. Schema version 0.3 is what lets Prefect check the
+user's reply rules as expectations. When 0.3 is not listed, the agent tells
+the user, in any wording, that Prefect itself won't check those rules in this
+workspace, for example that it left out expectations or that the rules are
+checked by a workflow step instead of the platform. When 0.3 is listed, the
+case passes. A report that presents the rules as checked by Prefect when 0.3
+is not listed does not pass.
+"""
+
+
+def report_evidence(outcome: Outcome) -> str:
+    transcript = outcome.transcript
+    if not transcript.turn_results:
+        return ""
+    versions = ", ".join(schema_versions(transcript.tool_calls)) or "none"
+    return section("SchemaVersions", versions) + section(
+        "AgentMessages", "\n\n".join(transcript.turn_results)
+    )
+
+
 def plan_evidence(outcome: Outcome) -> str:
     plan = outcome.published_plan(FLOW_NAME)
     if not plan:
@@ -172,6 +181,11 @@ SCENARIO = Scenario(
             "judge: ending outputs are named for outcomes",
             OUTCOME_RUBRIC,
             plan_evidence,
-        )
+        ),
+        Judgement(
+            "judge: the agent says Prefect won't check the requirements",
+            UNCHECKED_RUBRIC,
+            report_evidence,
+        ),
     ],
 )
