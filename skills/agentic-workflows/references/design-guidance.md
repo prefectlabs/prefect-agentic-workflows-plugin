@@ -63,7 +63,7 @@ Every plan has a plan output named `result` that records which outcome the run r
 }
 ```
 
-Use a `one_of` source only to put one value in one field whichever output produced it, such as the reply text from `approved_reply` or `revised_reply` in [customer-feedback-reply.plan.json](examples/customer-feedback-reply.plan.json). Every source in it must be an output of the same node, and that node's `output_selection` must be `exactly_one` or `zero_or_one`. Otherwise one run can select two of them, and the whole plan output fails with `multiple_alternatives_produced`. `validate_plan` warns about such a field with `one_of_alternatives_not_exclusive`; give each source its own field instead. Don't use `one_of` to tell outcomes apart: separate fields already say which one the run reached.
+Use a `one_of` source only to put one value in one field whichever output produced it, such as the reply text from `approved_reply` or `revised_reply` in [customer-feedback-reply.plan.json](examples/customer-feedback-reply.plan.json). Every source in it must be an output of the same node, and that node's `output_selection` must be `exactly_one` or `zero_or_one`. Otherwise one run can select two of them, and the whole plan output fails with `multiple_alternatives_produced`. `validate_plan` rejects such a field with `one_of_alternatives_not_exclusive`; give each source its own field instead. Don't use `one_of` to tell outcomes apart: separate fields already say which one the run reached.
 
 ## Expectations
 
