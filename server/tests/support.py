@@ -32,6 +32,7 @@ ACTIVATION_ID = "88888888-8888-8888-8888-888888888888"
 SCHEDULE_ID = "99999999-9999-9999-9999-999999999999"
 # A session id is its agent attempt's id, a UUIDv7.
 SESSION_ID = "01a19e47-660c-7358-a65c-883f5130bbde"
+RECORD_ID = "01a19e47-d1a4-7c06-9a98-373c4c6fb620"
 
 PLAN_PATH = f"/flows/{FLOW_ID}/execution-plan"
 VERSIONS_PATH = f"{PLAN_PATH}/versions"
@@ -260,6 +261,51 @@ def executions_page(
     }
 
 
+def activity_item(
+    attributes: dict[str, Any],
+    *,
+    failed: bool = False,
+    in_flight: bool = False,
+    content: str = "available",
+    record_id: str = RECORD_ID,
+) -> dict[str, Any]:
+    """Return one item of a session's activity as Cloud returns it.
+
+    Its span is in OTLP JSON. `attributes` are the span's string and boolean
+    attributes, and a value of None leaves the attribute out.
+    """
+    span: dict[str, Any] = {
+        "name": "prefect.agent.activity",
+        "attributes": [
+            {
+                "key": key,
+                "value": {"boolValue": value}
+                if isinstance(value, bool)
+                else {"stringValue": value},
+            }
+            for key, value in attributes.items()
+            if value is not None
+        ],
+        "startTimeUnixNano": "1793646051610300000",
+    }
+    if not in_flight:
+        span["endTimeUnixNano"] = "1793646051854886000"
+        span["status"] = {"code": 2 if failed else 0, "message": ""}
+    return {
+        "id": record_id,
+        "kind": "operation_started" if in_flight else "operation_completed",
+        "content": content,
+        "operation": span,
+    }
+
+
+def failure_attributes(failure_type: str) -> dict[str, Any]:
+    return {
+        "prefect.agent.activity.failure_type": failure_type,
+        "prefect.agent.activity.retryable": True,
+    }
+
+
 def tool_call_item(
     tool: str = "search",
     *,
@@ -269,54 +315,79 @@ def tool_call_item(
     mcp_server: str | None = None,
     arguments: str | None = '{"query": "refund policy"}',
     result: str | None = "No results.",
+    record_id: str = RECORD_ID,
 ) -> dict[str, Any]:
-    """Return one `execute_tool` item of a session's activity as Cloud returns it.
-
-    Its span is in OTLP JSON, with the attributes the collector writes.
-    """
-    attributes: list[dict[str, Any]] = [
+    """Return one `execute_tool` item of a session's activity as Cloud returns it,
+    with the attributes the collector writes."""
+    return activity_item(
         {
-            "key": "prefect.agent.activity.operation",
-            "value": {"stringValue": "execute_tool"},
+            "prefect.agent.activity.operation": "execute_tool",
+            "prefect.agent.activity.tool": tool,
+            "prefect.agent.activity.mcp_server": mcp_server,
+            **(failure_attributes("tool_error") if failed else {}),
+            "gen_ai.tool.call.arguments": arguments,
+            "gen_ai.tool.call.result": result,
         },
-        {"key": "prefect.agent.activity.tool", "value": {"stringValue": tool}},
-    ]
-    if mcp_server is not None:
-        attributes.append(
-            {
-                "key": "prefect.agent.activity.mcp_server",
-                "value": {"stringValue": mcp_server},
-            }
-        )
-    if failed:
-        attributes += [
-            {
-                "key": "prefect.agent.activity.failure_type",
-                "value": {"stringValue": "tool_error"},
-            },
-            {"key": "prefect.agent.activity.retryable", "value": {"boolValue": True}},
-        ]
-    if arguments is not None:
-        attributes.append(
-            {"key": "gen_ai.tool.call.arguments", "value": {"stringValue": arguments}}
-        )
-    if result is not None:
-        attributes.append(
-            {"key": "gen_ai.tool.call.result", "value": {"stringValue": result}}
-        )
-    span: dict[str, Any] = {
-        "name": "prefect.agent.activity",
-        "attributes": attributes,
-        "startTimeUnixNano": "1793646051610300000",
+        failed=failed,
+        in_flight=in_flight,
+        content=content,
+        record_id=record_id,
+    )
+
+
+def model_output(*parts: dict[str, Any]) -> str:
+    """Return `gen_ai.output.messages` for one assistant message with `parts`."""
+    return json.dumps([{"role": "assistant", "parts": list(parts)}])
+
+
+def model_call_item(
+    output: str | None = None,
+    *,
+    failed: bool = False,
+    content: str = "available",
+    record_id: str = RECORD_ID,
+) -> dict[str, Any]:
+    """Return one `chat` item of a session's activity as Cloud returns it, with
+    the attributes the collector writes."""
+    if output is None and not failed:
+        output = model_output({"type": "text", "content": "Searching."})
+    return activity_item(
+        {
+            "prefect.agent.activity.operation": "chat",
+            "prefect.agent.activity.model": "claude-sonnet-4-5",
+            **(failure_attributes("rate_limit") if failed else {}),
+            "gen_ai.output.messages": output,
+        },
+        failed=failed,
+        content=content,
+        record_id=record_id,
+    )
+
+
+def activity_record(item: dict[str, Any], attributes: dict[str, str]) -> dict[str, Any]:
+    """Return the records route's answer for the span of an activity `item`,
+    with `attributes` added to the span."""
+    span = item["operation"]
+    span = {
+        **span,
+        "attributes": span["attributes"]
+        + [
+            {"key": key, "value": {"stringValue": value}}
+            for key, value in attributes.items()
+        ],
     }
-    if not in_flight:
-        span["endTimeUnixNano"] = "1793646051854886000"
-        span["status"] = {"code": 2 if failed else 0, "message": ""}
     return {
-        "id": "01a19e47-d1a4-7c06-9a98-373c4c6fb620",
-        "kind": "operation_started" if in_flight else "operation_completed",
-        "content": content,
-        "operation": span,
+        "session_id": SESSION_ID,
+        "record_id": item["id"],
+        "revision_id": item["id"],
+        "source_id": SESSION_ID,
+        "signal": "span",
+        "content": item["content"],
+        "otlp": {
+            "resourceSpans": [
+                {"resource": {}, "scopeSpans": [{"scope": {}, "spans": [span]}]}
+            ]
+        },
     }
 
 

@@ -348,6 +348,7 @@ TOOL_ARGUMENTS: dict[str, dict[str, Any]] = {
     "list_runs": {"flow_id": FLOW_ID},
     "get_run": {"flow_run_id": FLOW_RUN_ID},
     "get_run_activity": {"flow_run_id": FLOW_RUN_ID},
+    "get_activity_record": {"attempt_id": FLOW_RUN_ID, "record_id": FLOW_RUN_ID},
     "get_run_output": {"flow_run_id": FLOW_RUN_ID, "output_name": "summary"},
     "submit_human_input": {
         "flow_run_id": FLOW_RUN_ID,

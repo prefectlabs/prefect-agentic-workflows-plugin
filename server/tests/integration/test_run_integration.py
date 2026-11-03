@@ -110,6 +110,8 @@ async def test_a_one_node_agent_plan_runs_to_completion(mcp_client: Client[Any])
     assert activity.structured_content is not None
     for attempt in activity.structured_content["attempts"]:
         assert attempt["node_id"] == "reply"
+        for call in attempt["activity"] or []:
+            assert call["operation"] in {"chat", "execute_tool"}
 
 
 async def test_a_human_input_plan_finishes_after_the_form_is_answered(

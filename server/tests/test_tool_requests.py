@@ -311,6 +311,7 @@ async def test_tool_sends_its_request_and_returns_the_result(
         ("list_runs", {"flow_id": FLOW_ID, "state_types": ["DONE"]}, None),
         ("list_runs", {"flow_id": FLOW_ID, "state_types": []}, None),
         ("get_run_activity", {"flow_run_id": FLOW_RUN_ID, "activation_id": "x"}, None),
+        ("get_activity_record", {"attempt_id": FLOW_RUN_ID, "record_id": "x"}, None),
     ],
 )
 async def test_invalid_arguments_are_rejected_before_any_request(
