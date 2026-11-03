@@ -7,7 +7,11 @@ from typing import Any
 import pytest
 import respx
 from fastmcp import Client
+from fastmcp.client.transports import StreamableHttpTransport
+from fastmcp.utilities.tests import run_server_async
 from support import PLAN, error_text, request_body
+
+from prefect_agentic_workflows_mcp.server import build_server
 
 VALID = {"valid": True, "errors": []}
 
@@ -85,3 +89,20 @@ async def test_validate_plan_rejects_a_directory(
     )
 
     assert "not a regular file" in error_text(result)
+
+
+async def test_an_http_server_does_not_read_a_plan_file_from_its_own_disk(
+    cloud_api: respx.MockRouter, tmp_path: Path
+):
+    plan_file = tmp_path / "daily.plan.json"
+    plan_file.write_text(json.dumps(PLAN))
+    route = cloud_api.post("/execution-plans/validate").respond(200, json=VALID)
+
+    async with run_server_async(build_server(), transport="http") as url:
+        async with Client(StreamableHttpTransport(url)) as client:
+            result = await client.call_tool(
+                "validate_plan", {"plan_path": str(plan_file)}, raise_on_error=False
+            )
+
+    assert "can't read files on your machine" in error_text(result)
+    assert not route.called
