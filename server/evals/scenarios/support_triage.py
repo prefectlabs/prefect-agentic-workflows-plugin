@@ -138,8 +138,10 @@ or a data type, such as `output`, `done`, or `data`. The plan output `result`
 has one field for each of those outputs. When the plan declares
 `expectations`, each one restates a requirement from the request: the reply
 answers the question the customer asked, or it makes no promise about dates
-or refunds. A plan whose ending outputs have generic names, or whose
-expectations add a requirement the user didn't state, does not pass.
+or refunds. A plan whose ending outputs have generic names or name the data
+they carry, such as `bug_report`, or whose expectations add a requirement the
+user didn't state, does not pass. Judge only the outputs and expectations,
+not the workflow's name.
 """
 
 
@@ -169,7 +171,8 @@ def plan_evidence(outcome: Outcome) -> str:
     plan = outcome.published_plan(FLOW_NAME)
     if not plan:
         return ""
-    return section("Request", PROMPT) + section("Plan", json.dumps(plan, indent=2))
+    request = PROMPT.replace(FLOW_PREFIX, outcome.flow_prefix)
+    return section("Request", request) + section("Plan", json.dumps(plan, indent=2))
 
 
 SCENARIO = Scenario(

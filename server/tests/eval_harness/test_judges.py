@@ -160,6 +160,7 @@ def test_support_triage_evidence_has_the_request_and_the_published_plan():
     evidence = judgement.evidence(outcome(flows={support_triage.FLOW_NAME: flow}))
 
     assert "makes no promise about dates" in evidence
+    assert f"named\n{PREFIX}{support_triage.FLOW_NAME}." in evidence
     assert json.dumps(plan, indent=2) in evidence
     assert judgement.evidence(outcome()) == ""
 

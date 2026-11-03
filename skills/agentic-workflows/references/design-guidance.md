@@ -38,7 +38,7 @@ For a join after a fan-out, set `orchestration.evaluate_when` to `all_reachable_
 
 Every plan has a plan output named `result` that records which outcome the run reached, so a person can tell runs apart by what they did without opening each one.
 
-- Name each output that ends a run for its outcome, such as `replied`, `reply_held`, or `pr_opened`. An output with no outgoing edge ends a run, so `blocked` outputs count too.
+- Name each output that ends a run for its outcome, such as `replied`, `reply_held`, or `pr_opened`. Name what happened (`bug_reported`), not the data it carries (`bug_report`). An output with no outgoing edge ends a run, so `blocked` outputs count too.
 - Give each of those outputs a required `summary` string in its schema, and tell the agent to set it to one sentence that a person reads in the runs list.
 - Give `result` one field for each of those outputs, named like the output, with a `node_output` source and the output's schema. When two of them have the same name, such as `blocked`, put the node ID in front of the field name: `classify_blocked`.
 - Leave `required` empty. A run reaches one outcome, so a required outcome field fails `result` on every other path.
