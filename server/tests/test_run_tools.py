@@ -1,4 +1,5 @@
-"""Tests for run behavior beyond one request: long polling and output states."""
+"""Tests for run behavior beyond one request: listing runs, long polling, and
+output states."""
 
 from collections.abc import Iterator
 from typing import Any
@@ -11,11 +12,17 @@ from support import (
     ACTIVATION_ID,
     FLOW_ID,
     FLOW_RUN_ID,
+    OLDER_VERSION_ID,
     PLAN_PATH,
     RUN_PATH,
+    RUNS_PATH,
+    VERSION_ID,
     error_text,
+    flow_run_response,
     node_observation,
+    request_body,
     run_observation,
+    run_summary,
 )
 
 from prefect_agentic_workflows_mcp.tools import runs
@@ -399,3 +406,170 @@ async def test_submit_human_input_reports_a_form_that_is_already_answered(
     )
 
     assert detail in error_text(result)
+
+
+OTHER_FLOW_RUN_ID = "06ae907e-ebfe-7f61-8000-ede83bf32dc2"
+
+
+async def test_list_runs_merges_each_run_with_its_summary_in_filter_order(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    newer = flow_run_response(
+        id=OTHER_FLOW_RUN_ID,
+        name="amber-heron",
+        state_type="FAILED",
+        state_name="Failed",
+        created="2026-11-02T22:00:00Z",
+        start_time="2026-11-02T22:00:01Z",
+    )
+    older = flow_run_response(
+        state_type="FAILED",
+        state_name="Failed",
+        created="2026-11-01T09:00:00Z",
+        start_time="2026-11-01T09:00:01Z",
+    )
+    run_filter = cloud_api.post(f"{RUNS_PATH}/filter").respond(200, json=[newer, older])
+    # The summaries route answers in request order, but the tool must not
+    # depend on it.
+    summaries = cloud_api.post(f"{RUNS_PATH}/summaries").respond(
+        200,
+        json=[
+            run_summary(),
+            run_summary(
+                OTHER_FLOW_RUN_ID,
+                status="failed",
+                outputs=[
+                    {
+                        "output": "reply",
+                        "status": "failed",
+                        "failure_code": "required_field_missing",
+                    }
+                ],
+                last_nodes=[],
+            ),
+        ],
+    )
+
+    result = await mcp_client.call_tool(
+        "list_runs",
+        {
+            "flow_id": FLOW_ID,
+            "state_types": ["FAILED", "CRASHED"],
+            "version_id": OLDER_VERSION_ID,
+            "limit": 2,
+        },
+    )
+
+    assert request_body(run_filter.calls.last.request) == {
+        "sort": "EXPECTED_START_TIME_DESC",
+        "limit": 2,
+        "state": {"type": {"any_": ["FAILED", "CRASHED"]}},
+        "execution_plan_version_ids": [OLDER_VERSION_ID],
+    }
+    assert request_body(summaries.calls.last.request) == {
+        "flow_run_ids": [OTHER_FLOW_RUN_ID, FLOW_RUN_ID]
+    }
+    assert result.structured_content == {
+        "runs": [
+            {
+                "flow_run_id": OTHER_FLOW_RUN_ID,
+                "name": "amber-heron",
+                "state_type": "FAILED",
+                "state_name": "Failed",
+                "created": "2026-11-02T22:00:00Z",
+                "start_time": "2026-11-02T22:00:01Z",
+                "status": "failed",
+                "execution_plan_version_id": VERSION_ID,
+                "outputs": [
+                    {
+                        "output": "reply",
+                        "status": "failed",
+                        "failure_code": "required_field_missing",
+                    }
+                ],
+                "last_nodes": [],
+                "unavailable_reason": None,
+            },
+            {
+                "flow_run_id": FLOW_RUN_ID,
+                "name": "crimson-otter",
+                "state_type": "FAILED",
+                "state_name": "Failed",
+                "created": "2026-11-01T09:00:00Z",
+                "start_time": "2026-11-01T09:00:01Z",
+                "status": "completed",
+                "execution_plan_version_id": VERSION_ID,
+                "outputs": [
+                    {"output": "reply", "status": "available", "failure_code": None}
+                ],
+                "last_nodes": [{"node": "draft", "selected_outputs": ["drafted"]}],
+                "unavailable_reason": None,
+            },
+        ]
+    }
+
+
+async def test_list_runs_reports_a_run_whose_plan_cannot_be_read(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    cloud_api.post(f"{RUNS_PATH}/filter").respond(200, json=[flow_run_response()])
+    cloud_api.post(f"{RUNS_PATH}/summaries").respond(
+        200, json=[{"flow_run_id": FLOW_RUN_ID, "unavailable_reason": "no_snapshot"}]
+    )
+
+    result = await mcp_client.call_tool("list_runs", {"flow_id": FLOW_ID})
+
+    assert result.structured_content is not None
+    [run] = result.structured_content["runs"]
+    assert run["status"] is None
+    assert run["outputs"] == []
+    assert run["unavailable_reason"] == "no_snapshot"
+
+
+async def test_list_runs_sends_only_the_filter_for_a_flow_with_no_runs(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    run_filter = cloud_api.post(f"{RUNS_PATH}/filter").respond(200, json=[])
+    summaries = cloud_api.post(f"{RUNS_PATH}/summaries")
+
+    result = await mcp_client.call_tool("list_runs", {"flow_id": FLOW_ID})
+
+    assert request_body(run_filter.calls.last.request) == {
+        "sort": "EXPECTED_START_TIME_DESC",
+        "limit": 10,
+    }
+    assert not summaries.called
+    assert result.structured_content == {"runs": []}
+
+
+async def test_list_runs_says_when_to_retry_reading_summaries(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    cloud_api.post(f"{RUNS_PATH}/filter").respond(200, json=[flow_run_response()])
+    detail = "Execution plan snapshot loading is temporarily unavailable."
+    cloud_api.post(f"{RUNS_PATH}/summaries").respond(
+        503, headers={"Retry-After": "2"}, json={"detail": detail}
+    )
+
+    result = await mcp_client.call_tool(
+        "list_runs", {"flow_id": FLOW_ID}, raise_on_error=False
+    )
+
+    message = error_text(result)
+    assert detail in message
+    assert message.endswith("Retry in 2 seconds.")
+
+
+async def test_list_runs_keeps_a_run_that_has_no_summary(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    # A run deleted between the two requests is left out of the summaries.
+    cloud_api.post(f"{RUNS_PATH}/filter").respond(200, json=[flow_run_response()])
+    cloud_api.post(f"{RUNS_PATH}/summaries").respond(200, json=[])
+
+    result = await mcp_client.call_tool("list_runs", {"flow_id": FLOW_ID})
+
+    assert result.structured_content is not None
+    [run] = result.structured_content["runs"]
+    assert run["flow_run_id"] == FLOW_RUN_ID
+    assert (run["status"], run["outputs"], run["last_nodes"]) == (None, [], [])

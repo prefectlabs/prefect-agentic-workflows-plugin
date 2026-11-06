@@ -14,6 +14,8 @@ import hashlib
 import os
 from collections import OrderedDict
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, Literal, cast
 from uuid import UUID
 
@@ -349,6 +351,50 @@ def read_json(response: httpx.Response, method: HttpMethod, path: str) -> Any:
             NOT_JSON_MESSAGE.format(
                 method=method, path=path, status_code=response.status_code
             )
+        ) from exc
+
+
+def retry_after_seconds(response: httpx.Response) -> float | None:
+    """Return the `Retry-After` header of a response in seconds, or None.
+
+    The header holds either a number of seconds or an HTTP date.
+    """
+    value = response.headers.get("Retry-After")
+    if value is None:
+        return None
+    try:
+        return max(float(value), 0.0)
+    except ValueError:
+        pass
+    try:
+        retry_at = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if retry_at.tzinfo is None:
+        retry_at = retry_at.replace(tzinfo=timezone.utc)
+    return max((retry_at - datetime.now(timezone.utc)).total_seconds(), 0.0)
+
+
+def format_seconds(seconds: float) -> str:
+    return f"{seconds:g}"
+
+
+def read_json_with_retry_hint(
+    response: httpx.Response, method: HttpMethod, path: str
+) -> Any:
+    """Return the JSON body of a response, like `read_json`.
+
+    When an error response has a `Retry-After` header, the error message
+    says how long to wait before trying again.
+    """
+    try:
+        return read_json(response, method, path)
+    except ToolError as exc:
+        retry_after = retry_after_seconds(response)
+        if retry_after is None:
+            raise
+        raise ToolError(
+            f"{exc} Retry in {format_seconds(retry_after)} seconds."
         ) from exc
 
 
