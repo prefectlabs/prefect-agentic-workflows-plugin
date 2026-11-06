@@ -111,7 +111,7 @@
     "finish_reply": {
       "kind": "AgentNode",
       "label": "Finish the reply",
-      "objective": "Read the manager's answer in the `review` input and the draft in the `draft` input. When `review.decision` is `approved`, select the `approved_reply` output with the value of `draft.draft`, copied word for word. When `review.decision` is `rejected`, rewrite the draft once so it follows the manager's `review.notes`. Keep what the draft says about the customer's feedback, keep it under 150 words, and make no promise about dates or refunds. When the notes are empty, make the reply clearer and warmer. Select the `revised_reply` output with the new reply text.",
+      "objective": "Read the manager's answer in the `review` input and the draft in the `draft` input. When `review.decision` is `approved`, select the `approved_reply` output with `reply` set to `draft.draft`, copied word for word. When `review.decision` is `rejected`, rewrite the draft once so it follows the manager's `review.notes`. Keep what the draft says about the customer's feedback, keep it under 150 words, and make no promise about dates or refunds. When the notes are empty, make the reply clearer and warmer. Select the `revised_reply` output with the new reply text in `reply`. In either output, set `summary` to one sentence that says what happened to the reply, such as \"The manager approved the draft as written.\"",
       "model": {"connection_id": "00000000-0000-0000-0000-000000000000", "id": "claude-opus-5-5"},
       "inputs": {
         "draft": {
@@ -139,10 +139,24 @@
       },
       "outputs": {
         "approved_reply": {
-          "schema": {"type": "string"}
+          "schema": {
+            "type": "object",
+            "properties": {
+              "reply": {"type": "string"},
+              "summary": {"type": "string"}
+            },
+            "required": ["reply", "summary"]
+          }
         },
         "revised_reply": {
-          "schema": {"type": "string"}
+          "schema": {
+            "type": "object",
+            "properties": {
+              "reply": {"type": "string"},
+              "summary": {"type": "string"}
+            },
+            "required": ["reply", "summary"]
+          }
         }
       },
       "orchestration": {
@@ -182,7 +196,14 @@
     "reply": {
       "fields": {
         "reply": {
-          "schema": {"type": "string"},
+          "schema": {
+            "type": "object",
+            "properties": {
+              "reply": {"type": "string"},
+              "summary": {"type": "string"}
+            },
+            "required": ["reply", "summary"]
+          },
           "source": {
             "type": "one_of",
             "one_of": [

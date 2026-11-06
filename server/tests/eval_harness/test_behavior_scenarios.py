@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from harness_plans import approval_plan, cyclic_plan
+from harness_plans import approval_plan, cyclic_plan, edge, from_node, orchestration
 
 from evals.record import FlowState, Reply, ToolCall, Transcript
 from evals.runner import SKILL_DIR
@@ -20,6 +20,7 @@ from evals.scenarios import (
     no_infrastructure,
     rejected_approval,
     scheduled_edit,
+    support_triage,
     unsupported_loop,
 )
 from evals.scenarios import release_notes_conversion as release_notes
@@ -350,6 +351,107 @@ def test_conversion_report_can_name_the_stdio_server_replacement(row: str):
     assert by_name["conversion report lists every unsupported part"].passed
 
 
+SUMMARY = {
+    "type": "object",
+    "properties": {"summary": {"type": "string"}},
+    "required": ["summary"],
+}
+
+
+def agent_node(*outputs: str) -> dict[str, Any]:
+    return {
+        "kind": "AgentNode",
+        "objective": "Decide.",
+        "outputs": {name: {"schema": SUMMARY} for name in outputs},
+        "orchestration": orchestration(),
+    }
+
+
+def support_plan(version: str = "0.2") -> dict[str, Any]:
+    plan: dict[str, Any] = {
+        "kind": "ExecutionPlan",
+        "schema_version": version,
+        "nodes": {
+            "classify": agent_node("question", "suspected_bug", "blocked"),
+            "draft_reply": agent_node("reply_ready", "reply_held"),
+            "report_bug": agent_node("bug_reported"),
+        },
+        "edges": [
+            edge("question", from_node("classify", "question"), "draft_reply", "issue"),
+            edge(
+                "suspected_bug",
+                from_node("classify", "suspected_bug"),
+                "report_bug",
+                "issue",
+            ),
+        ],
+        "outputs": {},
+    }
+    if version == "0.3":
+        plan["nodes"]["draft_reply"]["outputs"]["reply_ready"]["expectations"] = {
+            "no_promises": {"text": "The reply makes no promise about dates."}
+        }
+    return plan
+
+
+def support_outcome(plan: dict[str, Any], *, versions: list[str]) -> Outcome:
+    flow = support_triage.FLOW_NAME
+    schema = ToolCall("get_schema", {}, {"supported_schema_versions": versions})
+    calls = [schema, *published(plan, flow, turn=2)]
+    transcript = Transcript(tool_calls=calls, replies=[Reply(1, "design-approval", "")])
+    return outcome(transcript, plan, [saved_flow(flow, plan)])
+
+
+def support(broken: bool) -> Outcome:
+    plan = support_plan()
+    found = support_outcome(plan, versions=["0.2"])
+    if broken:
+        plan["nodes"]["report_bug"]["outputs"]["bug_reported"]["schema"] = {
+            "type": "object"
+        }
+        plan["outputs"]["reply"] = {
+            "fields": {
+                "reply": {
+                    "schema": {"type": "object"},
+                    "source": {
+                        "type": "one_of",
+                        "one_of": [
+                            from_node("classify", "question"),
+                            from_node("draft_reply", "reply_ready"),
+                        ],
+                    },
+                }
+            }
+        }
+        plan["nodes"]["draft_reply"]["outputs"]["reply_ready"]["expectations"] = {
+            "no_promises": {"text": "The reply makes no promise about dates."}
+        }
+        found.flows.clear()
+    return found
+
+
+@pytest.mark.parametrize(
+    ("plan_version", "versions", "failed"),
+    [
+        ("0.3", ["0.2", "0.3"], []),
+        (
+            "0.2",
+            ["0.2", "0.3"],
+            ["expectations follow the schema versions get_schema lists"],
+        ),
+    ],
+    ids=["expectations-on-0.3", "no-expectations-on-0.3"],
+)
+def test_support_triage_expects_expectations_when_get_schema_lists_0_3(
+    plan_version: str, versions: list[str], failed: list[str]
+):
+    found = support_outcome(support_plan(plan_version), versions=versions)
+
+    checks = support_triage.checks(found)
+
+    assert [check.name for check in checks if not check.passed] == failed
+
+
 SCENARIOS = {
     "rejected_approval": (
         rejected_approval,
@@ -407,6 +509,16 @@ SCENARIOS = {
             "the agent never asks for the API key",
             "the agent sends each setup link the client didn't open",
             "the plan references both connections and no inline server for them",
+        ],
+    ),
+    "support_triage": (
+        support_triage,
+        support,
+        [
+            "every output that ends a run requires a summary",
+            "every one_of field reads one node that selects at most one output",
+            "expectations follow the schema versions get_schema lists",
+            "the flow 'support-triage' has a saved plan version",
         ],
     ),
     "release_notes_conversion": (

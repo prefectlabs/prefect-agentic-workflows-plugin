@@ -13,7 +13,7 @@ from typing import Any
 
 from fastmcp import Client
 
-from evals import graph
+from evals import assertions, graph
 
 SKILL_DIR = Path(__file__).resolve().parents[2] / "skills" / "agentic-workflows"
 
@@ -92,6 +92,17 @@ def test_example_plans_have_no_cycle():
         plan = json.loads(path.read_text())
 
         assert graph.find_cycle(plan) == [], path.name
+
+
+def test_example_plans_follow_the_plan_output_rules():
+    for path in example_plans():
+        plan = json.loads(path.read_text())
+
+        for check in (
+            assertions.check_ending_outputs_carry_summary(plan),
+            assertions.check_one_of_reads_one_node(plan),
+        ):
+            assert check.passed, f"{path.name}: {check.name}: {check.detail}"
 
 
 def test_feedback_reply_example_needs_no_tools_and_revises_a_rejected_draft():
