@@ -9,6 +9,7 @@ from pydantic_evals.evaluators import Evaluator
 from evals.evaluators import CommonChecks, Judge, ScenarioChecks
 from evals.scenario import Outcome, Scenario, ScenarioInputs
 from evals.scenarios import (
+    mcp_connection_service_identity,
     mcp_connection_setup,
     no_infrastructure,
     rejected_approval,
@@ -26,6 +27,7 @@ SCENARIOS: list[Scenario] = [
     scheduled_edit.SCENARIO,
     rejected_approval.SCENARIO,
     mcp_connection_setup.SCENARIO,
+    mcp_connection_service_identity.SCENARIO,
     support_triage.SCENARIO,
 ]
 CASE_NAMES = [scenario.name for scenario in SCENARIOS]

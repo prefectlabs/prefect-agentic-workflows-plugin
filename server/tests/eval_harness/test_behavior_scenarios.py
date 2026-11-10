@@ -6,10 +6,18 @@ that can never fail would make the scenario's pass rate meaningless.
 """
 
 import json
-from pathlib import Path
 from typing import Any
 
 import pytest
+from harness_outcomes import (
+    PREFIX,
+    VALID,
+    connection_plan,
+    created,
+    outcome,
+    published,
+    saved_flow,
+)
 from harness_plans import approval_plan, cyclic_plan, edge, from_node, orchestration
 
 from evals.record import FlowState, Reply, ToolCall, Transcript
@@ -25,47 +33,11 @@ from evals.scenarios import (
 )
 from evals.scenarios import release_notes_conversion as release_notes
 
-PREFIX = "eval-abc123-1-"
-VALID = {"valid": True, "errors": []}
 FEEDBACK_PLAN = SKILL_DIR / "references/examples/customer-feedback-reply.plan.json"
 
 
 def feedback_plan() -> dict[str, Any]:
     return json.loads(FEEDBACK_PLAN.read_text())
-
-
-def outcome(
-    transcript: Transcript,
-    plan: dict[str, Any] | None = None,
-    flows: list[FlowState] | None = None,
-) -> Outcome:
-    plans = {"workflow.plan.json": plan} if plan is not None else {}
-    by_name = {flow.name.removeprefix(PREFIX): flow for flow in flows or []}
-    return Outcome(transcript, plans, by_name, Path("."), PREFIX)
-
-
-def saved_flow(name: str, plan: dict[str, Any]) -> FlowState:
-    """Return a flow with one saved and active version of the plan."""
-    return FlowState(
-        id="flow-1",
-        name=f"{PREFIX}{name}",
-        active_version_id="version-1",
-        active_plan=plan,
-        version_ids=["version-1"],
-    )
-
-
-def published(plan: dict[str, Any], flow: str, turn: int = 1) -> list[ToolCall]:
-    return [
-        ToolCall("get_or_create_flow", {"name": f"{PREFIX}{flow}"}, turn=turn),
-        ToolCall("validate_plan", {"plan": plan}, VALID, turn=turn),
-        ToolCall(
-            "publish_plan",
-            {"plan": plan},
-            {"published": True, "activated": True},
-            turn=turn,
-        ),
-    ]
 
 
 def rejected(broken: bool) -> Outcome:
@@ -85,35 +57,6 @@ def rejected(broken: bool) -> Outcome:
 
 LINEAR_ID = "0199c3a2-0000-7000-8000-000000000001"
 STRIPE_ID = "0199c3a2-0000-7000-8000-000000000002"
-
-
-def created(connection_id: str, name: str, url: str, **arguments: Any) -> ToolCall:
-    """Return a `create_mcp_connection` call for a client that can't open links."""
-    return ToolCall(
-        "create_mcp_connection",
-        {"name": name, "url": url, **arguments},
-        {
-            "setup": "client_cannot_open_links",
-            "connection": {
-                "id": connection_id,
-                "name": name,
-                "setup_url": f"https://app.prefect.cloud/connections/{connection_id}/setup",
-            },
-        },
-        turn=1,
-    )
-
-
-def connection_plan(*servers: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "kind": "ExecutionPlan",
-        "nodes": {
-            "digest": {
-                "kind": "AgentNode",
-                "mcp": {"mcpServers": {f"server{n}": s for n, s in enumerate(servers)}},
-            }
-        },
-    }
 
 
 def connections(broken: bool) -> Outcome:
