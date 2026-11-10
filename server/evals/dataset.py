@@ -10,6 +10,7 @@ from evals.evaluators import CommonChecks, Judge, ScenarioChecks
 from evals.scenario import Outcome, Scenario, ScenarioInputs
 from evals.scenarios import (
     mcp_connection_setup,
+    mcp_tool_list,
     no_infrastructure,
     rejected_approval,
     release_notes_conversion,
@@ -26,6 +27,7 @@ SCENARIOS: list[Scenario] = [
     scheduled_edit.SCENARIO,
     rejected_approval.SCENARIO,
     mcp_connection_setup.SCENARIO,
+    mcp_tool_list.SCENARIO,
     support_triage.SCENARIO,
 ]
 CASE_NAMES = [scenario.name for scenario in SCENARIOS]
