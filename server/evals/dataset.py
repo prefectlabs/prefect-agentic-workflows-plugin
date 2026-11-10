@@ -11,6 +11,7 @@ from evals.scenario import Outcome, Scenario, ScenarioInputs
 from evals.scenarios import (
     mcp_connection_service_identity,
     mcp_connection_setup,
+    mcp_tool_list,
     no_infrastructure,
     rejected_approval,
     release_notes_conversion,
@@ -28,6 +29,7 @@ SCENARIOS: list[Scenario] = [
     rejected_approval.SCENARIO,
     mcp_connection_setup.SCENARIO,
     mcp_connection_service_identity.SCENARIO,
+    mcp_tool_list.SCENARIO,
     support_triage.SCENARIO,
 ]
 CASE_NAMES = [scenario.name for scenario in SCENARIOS]

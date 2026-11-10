@@ -25,6 +25,7 @@ from evals.runner import SKILL_DIR
 from evals.scenario import Outcome, next_rule
 from evals.scenarios import (
     mcp_connection_setup,
+    mcp_tool_list,
     no_infrastructure,
     rejected_approval,
     scheduled_edit,
@@ -104,6 +105,44 @@ def connections(broken: bool) -> Outcome:
     )
     flows = [saved_flow(mcp_connection_setup.FLOW_NAME, plan)]
     return outcome(transcript, plan, flows)
+
+
+DOCS_ID = "0199c3a2-0000-7000-8000-000000000003"
+
+
+def tool_list(broken: bool) -> Outcome:
+    name = f"{PREFIX}{mcp_tool_list.CONNECTION_NAME}"
+    create = created(DOCS_ID, name, mcp_tool_list.DOCS_URL)
+    create.result["setup"] = "not_needed"
+    check = ToolCall(
+        "check_mcp_connection",
+        {"connection_id": DOCS_ID},
+        {
+            "id": DOCS_ID,
+            "last_check": {
+                "outcome": "succeeded",
+                "tool_count": 3,
+                "tools": [
+                    {"name": "search_prefect", "read_only": True},
+                    {"name": "query_docs_filesystem_prefect", "read_only": True},
+                    {"name": "submit_feedback", "read_only": False},
+                ],
+            },
+        },
+        turn=1,
+    )
+    tools = ["search_prefect", "query_docs_filesystem_prefect"]
+    if broken:
+        create.arguments["name"] = "Prefect docs"
+        # The check stored no tool list, so the agent never read the names.
+        check.result["last_check"]["tools"] = None
+        tools.append("submit_feedback")
+    plan = connection_plan(
+        {"type": "connection", "connection_id": DOCS_ID, "tools": tools}
+    )
+    calls = [create, check, *published(plan, mcp_tool_list.FLOW_NAME, turn=2)]
+    transcript = Transcript(tool_calls=calls, replies=[Reply(1, "design-approval", "")])
+    return outcome(transcript, plan, [saved_flow(mcp_tool_list.FLOW_NAME, plan)])
 
 
 def with_review_passes(plan: dict[str, Any]) -> dict[str, Any]:
@@ -454,6 +493,15 @@ SCENARIOS = {
             "the plan references both connections and no inline server for them",
         ],
     ),
+    "mcp_tool_list": (
+        mcp_tool_list,
+        tool_list,
+        [
+            "the connection has the name the user gave",
+            "the agent reads the connection's tools before it validates a plan",
+            "the plan limits the docs connection to read-only tools",
+        ],
+    ),
     "support_triage": (
         support_triage,
         support,
@@ -501,6 +549,37 @@ def test_scenario_checks(scenario: str, broken: bool):
     failed = [check.name for check in module.checks(build(broken)) if not check.passed]
 
     assert failed == (broken_checks if broken else [])
+
+
+@pytest.mark.parametrize(
+    "server",
+    [
+        {"type": "connection", "connection_id": DOCS_ID},
+        {"type": "connection", "connection_id": DOCS_ID, "tools": []},
+        {"type": "http", "url": mcp_tool_list.DOCS_URL, "tools": ["search_prefect"]},
+    ],
+    ids=["no-tools", "empty-tools", "inline-server"],
+)
+def test_mcp_tool_list_checks_fail_on_a_server_that_is_not_limited(
+    server: dict[str, Any],
+):
+    result = tool_list(broken=False)
+    plan = connection_plan(server)
+    result.plans = {"workflow.plan.json": plan}
+    result.flows = {mcp_tool_list.FLOW_NAME: saved_flow(mcp_tool_list.FLOW_NAME, plan)}
+
+    failed = [check.name for check in mcp_tool_list.checks(result) if not check.passed]
+
+    assert failed == ["the plan limits the docs connection to read-only tools"]
+
+
+def test_mcp_tool_list_checks_accept_tools_read_with_get_mcp_connection():
+    result = tool_list(broken=False)
+    for call in result.transcript.tool_calls:
+        if call.name == "check_mcp_connection":
+            call.name = "get_mcp_connection"
+
+    assert all(check.passed for check in mcp_tool_list.checks(result))
 
 
 def test_mcp_connection_setup_checks_fail_on_headers_sent_as_a_string():
