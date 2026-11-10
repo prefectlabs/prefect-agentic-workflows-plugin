@@ -37,9 +37,32 @@ Add the connection to the agent node's `mcp.mcpServers` map under a short alias:
 
 Give a node only the connections it uses.
 
+## Limit a node to some of a connection's tools
+
+Without `tools`, the node's agent gets every tool the server lists. Add `tools` to the server entry to give it only the tools you name:
+
+```json
+"issues": {
+  "type": "connection",
+  "connection_id": "<id>",
+  "tools": ["search_issues", "get_issue"]
+}
+```
+
+1. Read the tools with `get_mcp_connection`. `last_check.tools` has each tool's `name`, `description`, and the server's `read_only` and `destructive` hints. When it is null, call `check_mcp_connection` first.
+2. Choose the tools the node's objective needs, and no others. A node that only reads gets only tools whose `read_only` is true. A hint is the server's own claim, and null means the server gave none, so read the description too.
+3. Write the names exactly as `name` gives them. The agent's tool names start with the server alias, but `tools` takes the server's own names.
+4. Tell the user which tools each node gets in the summary, and name every tool that makes changes or whose `destructive` is true.
+
+Leave `tools` out when the node needs most of the server's tools, or when the user wants the node to pick up tools the provider adds later. A node with `tools` never gets a new tool until you add its name and publish again.
+
+`tools` also works on an inline `http` server. No tool list is stored for one, so take the names from the provider's documentation.
+
 ## Access and repair
 
 - `mcp_connection_access_denied` from `validate_plan` or `publish_plan` means the user can't reference that connection. Its message names the connection. Tell the user to ask a workspace owner for access, or to create their own connection to the server.
 - Creating a connection needs permission to manage MCP connections, which the Owner and Developer roles have. When `create_mcp_connection` is refused, tell the user to ask a workspace owner.
+- A `mcp_tool_not_listed` warning from `publish_plan`, or a node that fails with that code, means the server has no tool by one of the node's `tools` names. Read the current names with `check_mcp_connection`, fix the plan, and publish again.
+- A node that fails with `tool_selection_not_enabled` has `tools`, and the account can't limit tools yet. Tell the user to ask Prefect to turn the feature on, or remove `tools` and publish again.
 - A run's node that fails with `mcp_connection_unavailable` or `mcp_authentication_failed` uses a connection that needs the user. Read the node's connections with `get_mcp_connection`, and send the `setup_url` of each one whose `status.state` is `authorization_needed` or `reauthorization_required`.
 - When `list_mcp_connections` says MCP connections aren't enabled for the account, use an inline `http` server instead, with its credential header as a Secret block reference. See [design-guidance.md](design-guidance.md).

@@ -206,6 +206,7 @@ async def test_get_mcp_connection_returns_its_status_check_and_setup_link(
         "outcome": "succeeded",
         "checked_at": "2026-10-27T12:05:00Z",
         "tool_count": 12,
+        "tools": None,
         "http_status": 200,
         "credential_revision": 2,
     }
@@ -223,8 +224,100 @@ async def test_get_mcp_connection_returns_its_status_check_and_setup_link(
             "outcome": "succeeded",
             "checked_at": "2026-10-27T12:05:00Z",
             "tool_count": 12,
+            "tools": None,
         },
     )
+
+
+# A check as Cloud returns it: one tool with both hints, one with one, one with none.
+CHECK_WITH_TOOLS = {
+    "outcome": "succeeded",
+    "checked_at": "2026-10-27T12:05:00Z",
+    "tool_count": 3,
+    "tools": [
+        {
+            "name": "search_issues",
+            "title": "Search issues",
+            "description": "Find issues by text.",
+            "annotations": {"readOnlyHint": True, "destructiveHint": False},
+        },
+        {
+            "name": "delete_issue",
+            "description": "Delete an issue.",
+            "annotations": {"destructiveHint": True},
+        },
+        {"name": "create_comment", "description": None, "annotations": None},
+    ],
+    "http_status": 200,
+    "credential_revision": 2,
+}
+TOOLS_RESULT = [
+    {
+        "name": "search_issues",
+        "description": "Find issues by text.",
+        "read_only": True,
+        "destructive": False,
+    },
+    {
+        "name": "delete_issue",
+        "description": "Delete an issue.",
+        "read_only": None,
+        "destructive": True,
+    },
+    {
+        "name": "create_comment",
+        "description": None,
+        "read_only": None,
+        "destructive": None,
+    },
+]
+
+
+@pytest.mark.parametrize(
+    ("tool", "method"),
+    [("get_mcp_connection", "GET"), ("check_mcp_connection", "POST")],
+)
+async def test_a_connection_lists_its_tools_with_the_servers_hints(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter, tool: str, method: str
+):
+    path = CONNECTION_PATH if method == "GET" else f"{CONNECTION_PATH}/check"
+    cloud_api.route(method=method, path=path).respond(
+        200, json=connection_response("authorized", last_check=CHECK_WITH_TOOLS)
+    )
+
+    result = await mcp_client.call_tool(tool, {"connection_id": CONNECTION_ID})
+
+    assert result.structured_content is not None
+    assert result.structured_content["last_check"]["tools"] == TOOLS_RESULT
+
+
+async def test_list_mcp_connections_leaves_out_each_connections_tools(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    cloud_api.get(CONNECTIONS_PATH).respond(
+        200,
+        json=[
+            connection_response("authorized", last_check=CHECK_WITH_TOOLS),
+            connection_response("authorization_needed"),
+        ],
+    )
+
+    result = await mcp_client.call_tool("list_mcp_connections", {})
+
+    assert result.structured_content is not None
+    checks = [
+        connection["last_check"]
+        for connection in result.structured_content["mcp_connections"]
+    ]
+    assert checks == [
+        {
+            "outcome": "succeeded",
+            "checked_at": "2026-10-27T12:05:00Z",
+            "tool_count": 3,
+            "tools": None,
+        },
+        None,
+    ]
 
 
 async def test_create_mcp_connection_skips_setup_for_a_server_without_auth(
@@ -381,6 +474,7 @@ async def test_check_mcp_connection_returns_the_saved_check(
             "outcome": "authentication_failed",
             "checked_at": "2026-10-27T12:05:00Z",
             "tool_count": None,
+            "tools": None,
         },
     )
 
