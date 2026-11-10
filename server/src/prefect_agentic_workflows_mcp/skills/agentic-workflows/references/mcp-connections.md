@@ -1,6 +1,6 @@
 # MCP connections
 
-An MCP connection saves a remote MCP server and its sign-in in Prefect Cloud. An agent node names the connection by ID, and Prefect Cloud adds the credentials when the node starts, so the plan holds no credential and you never see one. Prefect Cloud also refreshes OAuth tokens, so a server that needs a browser sign-in works too.
+An MCP connection saves a remote MCP server and its credential in Prefect Cloud: a person's sign-in, a fixed credential such as an API key, or a service account the connection acts as. An agent node names the connection by ID, and Prefect Cloud adds the credentials when the node starts, so the plan holds no credential and you never see one. Prefect Cloud also refreshes tokens, so a server that needs a browser sign-in works too.
 
 ## Find or create a connection
 
@@ -12,13 +12,14 @@ An MCP connection saves a remote MCP server and its sign-in in Prefect Cloud. An
    | `requires_auth` is false | no `oauth` and no `headers` |
    | `oauth` is set | `oauth`, usually `{}` |
    | `requires_auth` is true and `oauth` is null | `headers`, with the header name and prefix from the provider's documentation, such as `Authorization` with `value_prefix` `Bearer ` |
+   | a Google Cloud API on `googleapis.com`, such as `https://bigquery.googleapis.com/mcp` | `service_identity` with `type` `google_service_account`, unless the user asks to sign in themselves |
 
-   When the user says to use an API key for a server that also offers OAuth, follow the user and create it with `headers`. Don't send `Authorization` as a header on an OAuth connection; Prefect Cloud sets it from the token.
+   When the user says to use an API key for a server that also offers OAuth, follow the user and create it with `headers`. When the user names a service account or asks for a machine identity, create it with `service_identity`; Prefect Cloud accepts that only for `googleapis.com` URLs. Don't send `Authorization` as a header on an OAuth or service identity connection; Prefect Cloud sets it from the token.
 3. Name the connection after the provider and the account, such as `GitHub (eddie-park)`. Names are unique in the workspace. Ask the user for the account name when you don't know it.
-4. `create_mcp_connection` opens the setup page, where the user signs in or enters each header value. When `setup` is `client_cannot_open_links` or `declined`, send the user `connection.setup_url` and say what they'll do there. When `oauth.supports_dcr` from `discover_mcp_server` was false, tell them first that they need the client ID, and the secret if it has one, of an OAuth app they registered at the provider.
+4. `create_mcp_connection` opens the setup page, where the user signs in, enters each header value, or pastes the service account's key file and names the Google Cloud project to bill. When `setup` is `client_cannot_open_links` or `declined`, send the user `connection.setup_url` and say what they'll do there. When `oauth.supports_dcr` from `discover_mcp_server` was false, tell them first that they need the client ID, and the secret if it has one, of an OAuth app they registered at the provider.
 5. After the user finishes, call `check_mcp_connection`. `succeeded` means the server listed its tools with the credentials. It doesn't show that each tool call is allowed.
 
-Never ask the user to type a token, key, or password in this conversation. If they paste one, don't use it: tell them to rotate it and to enter the new one on the setup page.
+Never ask the user to type a token, key, key file, or password in this conversation. If they paste one, don't use it: tell them to rotate it and to enter the new one on the setup page.
 
 The user can finish setup after the design: a plan that references a connection that isn't set up yet still publishes. `publish_plan` lists it in `version.warnings` with its `setup_url`, and runs fail until the user finishes it.
 

@@ -112,6 +112,7 @@ def connection_result(state: str = "authorization_needed", **overrides: Any):
             "scopes": ["read"],
             "issuer": "https://mcp.linear.app",
             "supports_dcr": True,
+            "service_identity": None,
         },
         "last_check": None,
         "setup_url": SETUP_URL,

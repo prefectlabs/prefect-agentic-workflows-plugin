@@ -1,8 +1,9 @@
 """Tools that save MCP servers as connections and check that they work.
 
 An agent node references a connection by ID instead of embedding a server URL
-and its credentials. No tool takes or returns a secret: the user signs in, or
-enters header values, on the connection's setup page in Prefect Cloud.
+and its credentials. No tool takes or returns a secret: the user signs in,
+enters header values, or pastes a service account key, on the connection's
+setup page in Prefect Cloud.
 """
 
 from typing import Annotated, Any, Literal
@@ -80,6 +81,27 @@ class McpOAuthSettings(BaseModel):
     )
 
 
+class McpServiceIdentitySettings(BaseModel):
+    """A machine account the connection acts as. Its key is saved on the setup page."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["google_service_account"] = Field(
+        description=(
+            "The credential the user will save. `google_service_account` is a "
+            "Google service account key file, for servers on `googleapis.com`."
+        )
+    )
+    scopes: list[str] | None = Field(
+        None,
+        description=(
+            "Scopes of the token minted from the key. Omit for the default, "
+            "`https://www.googleapis.com/auth/cloud-platform`, which covers "
+            "every Google Cloud API."
+        ),
+    )
+
+
 class McpHeaderSpec(BaseModel):
     """A header the connection sends. The user enters its value on the setup page."""
 
@@ -121,11 +143,19 @@ class McpConnectionHeader(BaseModel):
     has_value: bool
 
 
+class McpServiceIdentity(BaseModel):
+    type: str
+    has_key: bool
+    client_email: str | None
+    project_id: str | None
+
+
 class McpConnectionOAuth(BaseModel):
     bearer_token_source: str
     scopes: list[str]
     issuer: str | None
     supports_dcr: bool | None
+    service_identity: McpServiceIdentity | None = None
 
 
 class McpTool(BaseModel):
@@ -177,6 +207,22 @@ class SetupRequest(BaseModel):
     """What the first round of `create_mcp_connection` hands to the second."""
 
     connection_id: UUID
+
+
+def reject_credentials_beside_identity(
+    oauth: McpOAuthSettings | None, headers: list[McpHeaderSpec] | None
+) -> None:
+    """Refuse the settings Cloud would refuse, before any request is sent."""
+    if oauth is not None:
+        raise ToolError(
+            "A connection acts as a signed-in person (`oauth`) or as a service "
+            "identity (`service_identity`), not both. Send one of them."
+        )
+    if any(header.name.lower() == "authorization" for header in headers or []):
+        raise ToolError(
+            "Don't send an `Authorization` header with `service_identity`: "
+            "Prefect Cloud sets it from the token it mints from the key."
+        )
 
 
 def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
@@ -231,6 +277,9 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         - `requires_auth` is true and `oauth` is null: the server needs a
           fixed credential, such as an API key. Create the connection with
           `headers`, using the header name from the provider's documentation.
+          A Google Cloud API on `googleapis.com` answers this way too; there,
+          create the connection with `service_identity` unless the user asks
+          to sign in themselves.
         """
         return DiscoveredMcpServer.model_validate(
             await call(
@@ -250,6 +299,11 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         account instead of creating another. Never ask the user for a
         connection ID.
 
+        `auth_method` is `oauth` (a signed-in person), `headers` (a fixed
+        credential such as an API key), `service_identity` (a machine account;
+        `oauth.service_identity.client_email` is the account it runs as, once
+        the user saved its key), or `none`.
+
         `status.state` is one of:
 
         - `authorized` or `not_verified`: the connection can run.
@@ -259,9 +313,9 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         - `authorization_needed` or `reauthorization_required`: runs fail
           until the user finishes setup or signs in again at `setup_url`.
 
-        `status.access_expires_at` is when the OAuth token that the
-        connection sends expires. It is null when the connection has no
-        token or the provider didn't say when the token expires.
+        `status.access_expires_at` is when the token that the connection
+        sends expires. It is null when the connection has no token or the
+        provider didn't say when the token expires.
 
         `created_by_actor_id` is the actor who created the connection.
 
@@ -285,9 +339,10 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
     ) -> McpConnection:
         """Read one MCP connection, with its status, setup link, and tools.
 
-        `list_mcp_connections` describes each `status.state`. When the user
-        has to act, send them `setup_url`; the page asks them to sign in to
-        Prefect Cloud, and the link grants nothing by itself.
+        `list_mcp_connections` describes each `auth_method` and
+        `status.state`. When the user has to act, send them `setup_url`; the
+        page asks them to sign in to Prefect Cloud, and the link grants
+        nothing by itself.
 
         `last_check.tools` lists the tools the server had at the last check,
         each with its `name`, `description`, and the server's `read_only` and
@@ -319,15 +374,32 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             list[McpHeaderSpec] | None,
             Field(description="Headers whose values the user enters."),
         ] = None,
+        service_identity: Annotated[
+            McpServiceIdentitySettings | None,
+            Field(
+                description=(
+                    "Set it to act as a machine account instead of a signed-in "
+                    "person. Not with `oauth`, and not with an `Authorization` "
+                    "header."
+                )
+            ),
+        ] = None,
         workspace_id: WorkspaceId = None,
     ) -> McpConnectionSetup | InputRequiredResult:
         """Save an MCP server as a connection, and have the user finish its setup.
 
-        Call `discover_mcp_server` first and choose `oauth` or `headers` from
-        its answer. Neither holds a secret: the user signs in, or enters each
-        header value, on the connection's setup page in Prefect Cloud, outside
-        this conversation. Never ask the user for a token, key, or password.
-        When you don't know the account to name the connection after, ask.
+        Call `discover_mcp_server` first and choose `oauth`, `headers`, or
+        `service_identity` from its answer and from the user. None of them
+        holds a secret: the user signs in, enters each header value, or pastes
+        the service account's key file, on the connection's setup page in
+        Prefect Cloud, outside this conversation. Never ask the user for a
+        token, key, key file, or password. When you don't know the account to
+        name the connection after, ask.
+
+        Choose `service_identity` when the user names a service account or
+        asks for a machine identity, or when the server is a Google Cloud API
+        on `googleapis.com` and the user doesn't ask to sign in themselves.
+        Prefect Cloud accepts it only for `googleapis.com` URLs.
 
         When the connection needs setup, the tool opens its setup page for the
         user and returns the connection after they come back. `setup` says
@@ -344,17 +416,22 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         roles have.
         """
         if ctx.request_state is None:
-            connection = McpConnection.model_validate(
-                await call(
-                    "POST",
-                    json={
-                        "name": name,
-                        "url": url,
-                        "oauth": oauth.model_dump() if oauth is not None else None,
-                        "headers": [header.model_dump() for header in headers or []],
-                    },
-                    workspace_id=workspace_id,
+            if service_identity is not None:
+                reject_credentials_beside_identity(oauth, headers)
+            body: dict[str, Any] = {
+                "name": name,
+                "url": url,
+                "oauth": oauth.model_dump() if oauth is not None else None,
+                "headers": [header.model_dump() for header in headers or []],
+            }
+            if service_identity is not None:
+                # Sent only when set: a Cloud deploy that predates service
+                # identities rejects the field.
+                body["service_identity"] = service_identity.model_dump(
+                    exclude_none=True
                 )
+            connection = McpConnection.model_validate(
+                await call("POST", json=body, workspace_id=workspace_id)
             )
             if connection.status.state != "authorization_needed":
                 return McpConnectionSetup(setup="not_needed", connection=connection)

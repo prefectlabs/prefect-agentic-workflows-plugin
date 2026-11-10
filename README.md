@@ -159,8 +159,9 @@ only on your own computer, or only inside your company network, doesn't work.
 
 **An MCP connection.** The MCP server needs to know who you are before it acts
 for you. The agent saves the server in Prefect Cloud as an MCP connection and
-opens its setup page, where you sign in to the service or enter an API key.
-Prefect Cloud keeps the credential and refreshes a sign-in before it expires.
+opens its setup page, where you sign in to the service, enter an API key, or
+save a service account key. Prefect Cloud keeps the credential and refreshes
+a sign-in or a token before it expires.
 The agent and the workflow never see the credential. The workflow refers to
 the connection by its ID.
 
@@ -379,7 +380,7 @@ your agent can ask before a tool writes.
 | `connect_model_provider` | Have you add a connection to your own provider account in Prefect Cloud, and return it |
 | `discover_mcp_server` | Report how an MCP server signs in: OAuth, a fixed credential such as an API key, or none |
 | `list_mcp_connections`, `get_mcp_connection` | List or read the workspace's MCP connections, with each one's status and setup link, never a credential |
-| `create_mcp_connection` | Save an MCP server as a connection, and open its Prefect Cloud setup page, where you sign in or enter its header values |
+| `create_mcp_connection` | Save an MCP server as a connection, and open its Prefect Cloud setup page, where you sign in, enter its header values, or save a service account key |
 | `check_mcp_connection` | Check a connection by listing the server's tools with its saved credentials |
 | `get_workspace` | Show the workspace the server uses, by name (such as `my-account/my-workspace`) and Prefect Cloud UI address |
 
