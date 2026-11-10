@@ -231,8 +231,12 @@ def check_setup_links_sent(outcome: Outcome) -> Check:
     )
 
 
-def check_plan_references_both_connections(outcome: Outcome) -> Check:
-    plan = outcome.published_plan(FLOW_NAME)
+def check_plan_references_connections(
+    outcome: Outcome, flow_name: str, count: int, inline_hosts: str, name: str
+) -> Check:
+    """Check that the plan references each created connection, `count` in all,
+    and has no inline `http` server whose URL matches `inline_hosts`."""
+    plan = outcome.published_plan(flow_name)
     servers = [
         server
         for node in graph.nodes(plan).values()
@@ -255,11 +259,11 @@ def check_plan_references_both_connections(outcome: Outcome) -> Check:
         server.get("url")
         for server in servers
         if server.get("type") == "http"
-        and re.search(r"linear\.app|stripe\.com", str(server.get("url", "")))
+        and re.search(inline_hosts, str(server.get("url", "")))
     ]
-    passed = len(created) == 2 and created <= referenced and not inline
+    passed = len(created) == count and created <= referenced and not inline
     return Check(
-        "the plan references both connections and no inline server for them",
+        name,
         passed,
         ""
         if passed
@@ -283,7 +287,13 @@ def checks(outcome: Outcome) -> list[Check]:
             "the agent asked the user to type a credential",
         ),
         check_setup_links_sent(outcome),
-        check_plan_references_both_connections(outcome),
+        check_plan_references_connections(
+            outcome,
+            FLOW_NAME,
+            2,
+            r"linear\.app|stripe\.com",
+            "the plan references both connections and no inline server for them",
+        ),
         assertions.check_publish_succeeded(calls),
         assertions.check_published_only_after_valid(calls),
         assertions.check_validated_only_after_approval(

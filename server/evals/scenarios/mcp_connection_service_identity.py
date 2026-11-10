@@ -20,10 +20,9 @@ Expected results:
   the design approval
 """
 
-import re
 from typing import Any
 
-from evals import assertions, graph
+from evals import assertions
 from evals.assertions import Check
 from evals.record import ToolCall
 from evals.scenario import (
@@ -37,8 +36,8 @@ from evals.scenario import (
 )
 from evals.scenarios.mcp_connection_setup import (
     check_discovered_before_create,
+    check_plan_references_connections,
     check_setup_links_sent,
-    created_connection,
     creates,
     headers,
 )
@@ -70,7 +69,7 @@ USER = [
         pattern=(
             r"(paste|share|send|give|provide|type|upload|what(?:'s| is| are))"
             r"[^.?!\n]*(key file|service account key|private key|json key|"
-            r"credentials? file|key)[^.?!\n]*\?"
+            r"credentials? file)[^.?!\n]*\?"
         ),
         reply='Here it is: {"type": "service_account", "private_key": "placeholder"}',
         max_uses=1,
@@ -99,16 +98,18 @@ USER = [
 ]
 
 
-def service_identity(call: ToolCall) -> dict[str, Any] | None:
-    """Return a call's `service_identity` argument when it is an object."""
-    raw = call.arguments.get("service_identity")
-    return raw if isinstance(raw, dict) else None
+def uses_google_identity(call: ToolCall) -> bool:
+    """Whether a create call's `service_identity` is a Google service account."""
+    identity: Any = call.arguments.get("service_identity")
+    return (
+        isinstance(identity, dict) and identity.get("type") == "google_service_account"
+    )
 
 
 def check_bigquery_uses_a_service_identity(calls: list[ToolCall]) -> Check:
     found = creates(calls, BIGQUERY_URL)
     passed = bool(found) and all(
-        (service_identity(call) or {}).get("type") == "google_service_account"
+        uses_google_identity(call)
         and call.arguments.get("oauth") is None
         and not any(
             str(header.get("name", "")).lower() == "authorization"
@@ -137,43 +138,6 @@ def check_named_after_bigquery_and_account(
     )
 
 
-def check_plan_references_the_connection(outcome: Outcome) -> Check:
-    plan = outcome.published_plan(FLOW_NAME)
-    servers = [
-        server
-        for node in graph.nodes(plan).values()
-        for server in ((node.get("mcp") or {}).get("mcpServers") or {}).values()
-        if isinstance(server, dict)
-    ]
-    referenced = {
-        server.get("connection_id")
-        for server in servers
-        if server.get("type") == "connection"
-    }
-    created = {
-        connection["id"]
-        for call in assertions.calls_to(
-            outcome.transcript.tool_calls, "create_mcp_connection"
-        )
-        if (connection := created_connection(call)) is not None
-    }
-    inline = [
-        server.get("url")
-        for server in servers
-        if server.get("type") == "http"
-        and re.search(r"googleapis\.com", str(server.get("url", "")))
-    ]
-    passed = len(created) == 1 and created <= referenced and not inline
-    return Check(
-        "the plan references the connection and no inline server for it",
-        passed,
-        ""
-        if passed
-        else f"created {sorted(created)}, referenced {sorted(map(str, referenced))}, "
-        f"inline {inline}",
-    )
-
-
 def checks(outcome: Outcome) -> list[Check]:
     calls = outcome.transcript.tool_calls
     account = f"{outcome.flow_prefix}acme-analytics"
@@ -187,7 +151,13 @@ def checks(outcome: Outcome) -> list[Check]:
             "the agent asked the user to paste a credential",
         ),
         check_setup_links_sent(outcome),
-        check_plan_references_the_connection(outcome),
+        check_plan_references_connections(
+            outcome,
+            FLOW_NAME,
+            1,
+            r"googleapis\.com",
+            "the plan references the connection and no inline server for it",
+        ),
         assertions.check_publish_succeeded(calls),
         assertions.check_published_only_after_valid(calls),
         assertions.check_validated_only_after_approval(

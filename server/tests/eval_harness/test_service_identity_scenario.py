@@ -101,11 +101,14 @@ def test_the_simulated_user_hears_a_request_for_the_key(message: str):
     assert rule.label == "secret-asked"
 
 
-def test_the_simulated_user_does_not_mistake_setup_talk_for_a_request():
-    rule = next_rule(
-        scenario.USER,
+@pytest.mark.parametrize(
+    "message",
+    [
         "You will paste the key file on the setup page in Prefect Cloud. Go on?",
-        Transcript(),
-    )
+        "Should I provide the setup link for the key?",
+    ],
+)
+def test_the_simulated_user_does_not_mistake_setup_talk_for_a_request(message: str):
+    rule = next_rule(scenario.USER, message, Transcript())
 
     assert rule is None or rule.label != "secret-asked"
