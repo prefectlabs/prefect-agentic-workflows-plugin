@@ -7,7 +7,7 @@ that session in OTLP JSON. The agent session routes serve them.
 
 import json
 from asyncio import gather
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -65,7 +65,7 @@ def span_time(unix_nano: str | None) -> str | None:
     """Return an OTLP JSON time in nanoseconds as an ISO 8601 time in UTC."""
     if unix_nano is None:
         return None
-    return datetime.fromtimestamp(int(unix_nano) / 1e9, tz=timezone.utc).isoformat()
+    return datetime.fromtimestamp(int(unix_nano) / 1e9, tz=UTC).isoformat()
 
 
 def cut_content(value: str | None, limit: int) -> str | None:

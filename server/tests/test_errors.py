@@ -4,7 +4,7 @@ Every tool reads responses through the same helper, so `get_run` stands in for
 all of them. The run tools also pass on `Retry-After`.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
 from typing import Any
 
@@ -96,7 +96,7 @@ async def test_an_error_response_is_reported_with_its_detail(
 async def test_a_retry_after_date_is_turned_into_seconds(
     mcp_client: Client[Any], cloud_api: respx.MockRouter
 ):
-    retry_at = datetime.now(timezone.utc) + timedelta(seconds=60)
+    retry_at = datetime.now(UTC) + timedelta(seconds=60)
     cloud_api.get(RUN_PATH).respond(
         503,
         headers={"Retry-After": format_datetime(retry_at, usegmt=True)},

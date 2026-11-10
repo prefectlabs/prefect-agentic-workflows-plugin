@@ -4,7 +4,8 @@ import importlib
 import pkgutil
 from typing import Any
 
-from fastmcp import FastMCP
+from fastmcp import FastMCP, Skill
+from fastmcp.skills.provider import SkillCatalogProvider
 
 from prefect_agentic_workflows_mcp import __version__, tools
 from prefect_agentic_workflows_mcp.cloud_oauth import (
@@ -14,6 +15,7 @@ from prefect_agentic_workflows_mcp.cloud_oauth import (
 from prefect_agentic_workflows_mcp.workspace_api import WorkspaceApi
 
 SERVER_NAME = "prefect-agentic-workflows"
+SKILL_NAME = "agentic-workflows"
 
 INSTRUCTIONS = """\
 Tools for authoring, publishing, and running Prefect Cloud execution plans.
@@ -31,11 +33,14 @@ authorization or the workspace, relay them to the user.
 Set `model` on every agent node. Every workspace has a `prefect` provider
 connection, which runs Prefect's models with no API key. When the user hasn't
 picked a model, ask which to use; Prefect's models are the easiest start.
+
+This server provides the `agentic-workflows` skill, which explains how to
+design, publish, and debug execution plans with these tools.
 """
 
 
 def build_server() -> FastMCP[Any]:
-    """Return a server with every tool group in the `tools` package."""
+    """Return a server with every tool group and the `agentic-workflows` skill."""
     oauth_settings = CloudOAuthSettings()
     mcp: FastMCP[Any] = FastMCP(
         SERVER_NAME,
@@ -51,4 +56,6 @@ def build_server() -> FastMCP[Any]:
             continue
         module = importlib.import_module(f"{tools.__name__}.{module_info.name}")
         module.register(mcp, api)
+    skill = Skill.from_package("prefect_agentic_workflows_mcp", f"skills/{SKILL_NAME}")
+    mcp.add_provider(SkillCatalogProvider([skill]))
     return mcp

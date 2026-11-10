@@ -19,8 +19,12 @@ Claude Code, build these workflows for you and publish them to Prefect Cloud.
   ask you.
 
 Prefect calls a workflow of this kind an *execution plan*: a JSON graph of
-agent, human-input, and deployment nodes attached to a flow. You install the
-server and the skill separately.
+agent, human-input, and deployment nodes attached to a flow.
+
+The server also serves the skill over MCP. An agent app that supports the
+[MCP Skills extension](https://modelcontextprotocol.io/seps/2640-skills-extension)
+gets the skill when it connects to the server. For any other app, install the
+skill separately.
 
 ## Quickstart: reply to customer feedback
 
@@ -186,6 +190,8 @@ replaces the version that runs now.
   provides `uvx`, to run the server.
 - Node.js, which provides `npx`, if you install the skill with the `skills`
   CLI.
+- Python 3.11 or later, if you install the server into your own environment.
+  `uvx` downloads a suitable Python for you.
 
 The server uses the workspace and API key in your active Prefect profile. If
 you have not logged in to Prefect Cloud on this machine, log in and pick the
@@ -253,6 +259,12 @@ The command starts the server and waits for input, so stop it with Ctrl-C once
 it has started.
 
 ### Install the skill
+
+The server serves the skill at `skill://agentic-workflows/SKILL.md`. If your
+agent app supports the
+[MCP Skills extension](https://modelcontextprotocol.io/seps/2640-skills-extension),
+it loads the skill from the server and you can skip this section. Otherwise,
+install the skill with the `skills` CLI:
 
 ```sh
 npx skills add prefectlabs/prefect-agentic-workflows-plugin

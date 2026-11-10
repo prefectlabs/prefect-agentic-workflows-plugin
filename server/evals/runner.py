@@ -38,7 +38,7 @@ from prefect_agentic_workflows_mcp.server import SERVER_NAME
 SERVER_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = SERVER_DIR.parent
 SKILL_NAME = "agentic-workflows"
-SKILL_DIR = REPO_ROOT / "skills" / SKILL_NAME
+SKILL_DIR = SERVER_DIR / "src" / "prefect_agentic_workflows_mcp" / "skills" / SKILL_NAME
 SERVER_TOOL_PREFIX = f"mcp__{SERVER_NAME}__"
 
 ALLOWED_TOOLS = [
@@ -179,7 +179,7 @@ async def talk(
             final = await asyncio.wait_for(
                 record_turn(agent, transcript, turn), AGENT_TURN_TIMEOUT_SECONDS
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             transcript.errors.append(f"turn {turn} timed out")
             return
         if transcript.errors:
