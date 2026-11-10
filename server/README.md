@@ -124,6 +124,24 @@ override it, and failed OAuth never falls back to the server's profile or key.
 To keep an existing profile or paired-header deployment, leave
 `PREFECT_MCP_CLOUD_ENABLED` unset or set it to `false`.
 
+## The skill
+
+The server serves the `agentic-workflows` skill with the
+[MCP Skills extension](https://modelcontextprotocol.io/seps/2640-skills-extension).
+The skill's files are in
+[`src/prefect_agentic_workflows_mcp/skills/agentic-workflows/`](src/prefect_agentic_workflows_mcp/skills/agentic-workflows/)
+and ship in the package. `skills/agentic-workflows` at the repository root is a
+link to that directory, for the `skills` CLI.
+
+A client that supports the extension finds the skill with `skills/list`. Any
+client can read the files as resources under `skill://agentic-workflows/`, and
+`skill://agentic-workflows/_manifest` lists them with their hashes. To see what
+the server serves:
+
+```sh
+uv run fastmcp list --command "uv run prefect-agentic-workflows-mcp" --skills
+```
+
 ## Development
 
 Run these commands from this directory.

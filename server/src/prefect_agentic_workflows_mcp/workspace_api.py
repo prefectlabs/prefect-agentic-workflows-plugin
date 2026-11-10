@@ -14,7 +14,7 @@ import hashlib
 import os
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any, Literal, cast
 from uuid import UUID
@@ -371,8 +371,8 @@ def retry_after_seconds(response: httpx.Response) -> float | None:
     except (TypeError, ValueError):
         return None
     if retry_at.tzinfo is None:
-        retry_at = retry_at.replace(tzinfo=timezone.utc)
-    return max((retry_at - datetime.now(timezone.utc)).total_seconds(), 0.0)
+        retry_at = retry_at.replace(tzinfo=UTC)
+    return max((retry_at - datetime.now(UTC)).total_seconds(), 0.0)
 
 
 def format_seconds(seconds: float) -> str:

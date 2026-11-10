@@ -1,8 +1,8 @@
 """Checks that the agentic-workflows skill matches the server it drives.
 
-The skill is Markdown in `skills/` at the repo root. These tests read it as
-text and fail when it names a tool the server doesn't register or links to a
-file that doesn't exist. They also check the example plans offline. The
+The skill is Markdown in the server package's `skills/` directory. These tests
+read it as text and fail when it names a tool the server doesn't register or
+links to a file that doesn't exist. They also check the example plans offline. The
 integration suite validates the example plans against Cloud.
 """
 
@@ -15,7 +15,13 @@ from fastmcp import Client
 
 from evals import assertions, graph
 
-SKILL_DIR = Path(__file__).resolve().parents[2] / "skills" / "agentic-workflows"
+SKILL_DIR = (
+    Path(__file__).resolve().parents[1]
+    / "src"
+    / "prefect_agentic_workflows_mcp"
+    / "skills"
+    / "agentic-workflows"
+)
 
 # A backticked name that starts with one of these verbs is read as a tool name.
 TOOL_NAME = re.compile(
