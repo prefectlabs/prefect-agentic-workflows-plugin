@@ -183,7 +183,10 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         the reference, and its message names the connection. Tell the user to
         ask a workspace owner for access. A
         referenced connection that isn't set up yet still saves, and
-        `version.warnings` lists it with its `setup_url` for the user.
+        `version.warnings` lists it with its `setup_url` for the user. A
+        `mcp_tool_not_listed` warning names the `tools` of a node's server
+        entry that the connection's last check did not list. Runs of that
+        node fail until you fix the names or the server has the tools.
 
         When the version is saved but activation fails, `published` is true,
         `activated` is false, and `activation_error` says why. Fix the cause,

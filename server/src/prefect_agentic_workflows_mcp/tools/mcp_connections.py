@@ -11,7 +11,7 @@ from uuid import UUID
 from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
 from mcp.types import InputRequiredResult
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasPath, BaseModel, ConfigDict, Field
 
 from prefect_agentic_workflows_mcp.parameters import WorkspaceId
 from prefect_agentic_workflows_mcp.tools import tool
@@ -128,10 +128,24 @@ class McpConnectionOAuth(BaseModel):
     supports_dcr: bool | None
 
 
+class McpTool(BaseModel):
+    """A tool the server listed. A hint is null when the server gave none."""
+
+    name: str
+    description: str | None = None
+    read_only: bool | None = Field(
+        default=None, validation_alias=AliasPath("annotations", "readOnlyHint")
+    )
+    destructive: bool | None = Field(
+        default=None, validation_alias=AliasPath("annotations", "destructiveHint")
+    )
+
+
 class McpConnectionCheck(BaseModel):
     outcome: str
     checked_at: str
     tool_count: int | None = None
+    tools: list[McpTool] | None = None
 
 
 class McpConnection(BaseModel):
@@ -250,11 +264,18 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         token or the provider didn't say when the token expires.
 
         `created_by_actor_id` is the actor who created the connection.
+
+        `last_check.tools` is always null here. Read a connection's tools
+        with `get_mcp_connection`.
         """
+        connections = await call("GET", workspace_id=workspace_id)
+        for connection in connections:
+            # A workspace's connections can list hundreds of tools between them.
+            if connection["last_check"] is not None:
+                connection["last_check"]["tools"] = None
         return McpConnectionList(
             mcp_connections=[
-                McpConnection.model_validate(connection)
-                for connection in await call("GET", workspace_id=workspace_id)
+                McpConnection.model_validate(connection) for connection in connections
             ]
         )
 
@@ -262,11 +283,18 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
     async def get_mcp_connection(
         connection_id: ConnectionId, workspace_id: WorkspaceId = None
     ) -> McpConnection:
-        """Read one MCP connection, with its status and setup link.
+        """Read one MCP connection, with its status, setup link, and tools.
 
         `list_mcp_connections` describes each `status.state`. When the user
         has to act, send them `setup_url`; the page asks them to sign in to
         Prefect Cloud, and the link grants nothing by itself.
+
+        `last_check.tools` lists the tools the server had at the last check,
+        each with its `name`, `description`, and the server's `read_only` and
+        `destructive` hints. Use these names to limit an agent node to some
+        of the server's tools, with `tools` on the node's server entry. It is
+        null when the check failed or stored no list: call
+        `check_mcp_connection` to load it.
         """
         return await read_connection(connection_id, workspace_id=workspace_id)
 
@@ -370,7 +398,8 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         `last_check.outcome` is one of:
 
         - `succeeded`: the server accepted the credentials and listed
-          `tool_count` tools. It doesn't show that every tool call is allowed.
+          `tool_count` tools, which `last_check.tools` describes. It doesn't
+          show that every tool call is allowed.
         - `authentication_failed`: the server rejected the credentials. Send
           the user to `setup_url` to sign in again or replace the header value.
         - `unavailable` or `invalid_configuration`: the server didn't answer

@@ -10,7 +10,7 @@ Every port has a JSON Schema. `validate_plan` checks schema compatibility only f
 
 ## Node kinds
 
-- **AgentNode.** Write the `objective` as the decision: what to read, which tools to use, and which output to select with which fields. Give it only the MCP servers it needs. Use `output_selection` `exactly_one` for a branch, and `one_or_more` or `zero_or_more` for a fan-out where several next steps run.
+- **AgentNode.** Write the `objective` as the decision: what to read, which tools to use, and which output to select with which fields. Give it only the MCP servers it needs, and when it needs only a few of a server's tools, only those tools: see [mcp-connections.md](mcp-connections.md). Use `output_selection` `exactly_one` for a branch, and `one_or_more` or `zero_or_more` for a fan-out where several next steps run.
 
   Give every agent node an output for when it can't do its job, such as `blocked` with a `reason`, and say in the objective when to select it. With only success outputs, an agent that hits a missing permission or bad input writes its error text into a success output, and the next node treats it as real data. An output with no outgoing edge is valid; selecting it ends that branch.
 
