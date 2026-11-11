@@ -101,6 +101,21 @@ def test_the_simulated_user_hears_a_request_for_the_key(message: str):
     assert rule.label == "secret-asked"
 
 
+def test_the_simulated_user_asks_for_the_publish_when_the_agent_waits_for_the_key():
+    validated = Transcript(
+        tool_calls=[ToolCall("validate_plan", {}, {"valid": True}, turn=2)]
+    )
+
+    rule = next_rule(
+        scenario.USER,
+        "The plan validates. Publishing waits until the key is pasted.",
+        validated,
+    )
+
+    assert rule is not None
+    assert rule.label == "publish-now"
+
+
 @pytest.mark.parametrize(
     "message",
     [

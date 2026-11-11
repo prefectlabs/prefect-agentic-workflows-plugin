@@ -4,7 +4,8 @@ The user wants a daily summary of a BigQuery query, run as their analytics
 service account rather than their own Google sign-in. Google's BigQuery MCP
 server lists its tools without credentials, so discovery reports no auth; the
 user's instruction decides the method. The user leaves the setup page, where
-the key file is pasted, for later. The user turns down the test run.
+the key file is pasted, for later, and asks for the version to be published
+now if the agent waits for the key. The user turns down the test run.
 
 Expected results:
 
@@ -49,8 +50,7 @@ BIGQUERY_URL = "https://bigquery.googleapis.com/mcp"
 PROMPT = f"""\
 Use the agentic-workflows skill to build a Prefect workflow named
 {FLOW_PREFIX}{FLOW_NAME}. Each run queries yesterday's revenue by region from
-the `billing.revenue` table in BigQuery and returns a short summary. It only
-reads.
+the `billing.revenue` table in BigQuery and returns a short summary.
 
 BigQuery's MCP server is {BIGQUERY_URL}. Run it as our analytics service
 account, `bq-agent@{ACCOUNT}.iam.gserviceaccount.com`, not as me. The Google
@@ -92,6 +92,16 @@ USER = [
         after_tool="create_mcp_connection",
         before_tool="validate_plan",
         reply=f"{SETUP_LATER} Go on.",
+        max_uses=1,
+    ),
+    # The agent may wait to publish until the key is saved, so it can limit the
+    # node to some of the server's tools. The user wants the version now.
+    Rule(
+        label="publish-now",
+        after_tool="validate_plan",
+        before_tool="publish_plan",
+        pattern=r"publish",
+        reply="Publish it now. I'll narrow the tools after I paste the key.",
         max_uses=1,
     ),
     Rule(label="go-ahead", pattern=r"\?", reply="The defaults are fine.", max_uses=3),
