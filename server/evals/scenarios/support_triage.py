@@ -133,8 +133,9 @@ requirements, and writes a bug report for a suspected bug.
 
 Judge only two things. First, each node output with no outgoing edge is named
 for what happened when the run ended there, not for the data it carries or
-for a step. `reply_held`, `bug_reported`, and `blocked` are examples; any name
-that says what happened passes, and `bug_report` or `output` does not. Plan
+for a step. `reply_held`, `bug_reported`, `reply_ready`, and `blocked` are
+examples; any name that says what happened, including what became ready, such
+as `summary_ready`, passes, and `bug_report` or `output` does not. Plan
 outputs, such as `reply` or `bug_report`, are named for what the user asked
 the run to return, which is correct, so ignore their names. Second, when the
 plan declares `expectations`, each one restates a requirement from the
