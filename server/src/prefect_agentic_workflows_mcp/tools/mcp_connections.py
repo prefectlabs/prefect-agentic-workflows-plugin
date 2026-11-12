@@ -277,9 +277,11 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         - `requires_auth` is true and `oauth` is null: the server needs a
           fixed credential, such as an API key. Create the connection with
           `headers`, using the header name from the provider's documentation.
-          A Google Cloud API on `googleapis.com` answers this way too; there,
-          create the connection with `service_identity` unless the user asks
-          to sign in themselves.
+
+        A Google Cloud API on `googleapis.com` lists its tools without
+        credentials, so `requires_auth` is false there although every tool
+        call needs a Google identity. Create its connection with
+        `service_identity` unless the user asks to sign in themselves.
         """
         return DiscoveredMcpServer.model_validate(
             await call(

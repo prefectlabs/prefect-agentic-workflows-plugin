@@ -196,6 +196,7 @@ def test_judges_are_added_only_with_a_judge_model():
         "scheduled_edit": 0,
         "rejected_approval": 1,
         "mcp_connection_setup": 0,
+        "mcp_connection_service_identity": 0,
         "mcp_tool_list": 0,
         "support_triage": 2,
     }
