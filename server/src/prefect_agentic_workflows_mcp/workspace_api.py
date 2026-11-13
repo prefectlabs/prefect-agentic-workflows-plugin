@@ -72,11 +72,10 @@ FORBIDDEN_MESSAGE = (
 FEATURE_NOT_ENABLED_MESSAGE = (
     "Prefect Cloud returned 404 for the execution-plan API at {api_url}. "
     "Either the account and workspace in the active Prefect profile don't "
-    "exist, or execution plans are not enabled for the account. Check the "
+    "exist, or agentic workflows are not enabled for the account. Check the "
     "workspace with `prefect cloud workspace ls` and switch with "
     "`prefect cloud workspace set`. If the workspace is right, ask your "
-    "Prefect contact to turn on the `execution-plans` feature for the "
-    "account. Then call this tool again."
+    "Prefect contact to turn them on. Then call this tool again."
 )
 # Settings in the MCP server's own configuration override the profile, so the
 # profile fixes above don't change them. Every setup error ends with this note.
@@ -117,10 +116,9 @@ HEADER_FORBIDDEN_MESSAGE = (
 HEADER_FEATURE_NOT_ENABLED_MESSAGE = (
     "Prefect Cloud returned 404 for the execution-plan API at {api_url}. "
     "Either the account and workspace in the X-Prefect-Api-Url header don't "
-    "exist, or execution plans are not enabled for the account. Check the "
+    "exist, or agentic workflows are not enabled for the account. Check the "
     "header in the MCP client's configuration. If the workspace is right, ask "
-    "your Prefect contact to turn on the `execution-plans` feature for the "
-    "account. Then call this tool again."
+    "your Prefect contact to turn them on. Then call this tool again."
 )
 NO_BUCKET_DETAIL = "object storage bucket has not been provisioned"
 NO_BUCKET_MESSAGE = (
@@ -605,7 +603,7 @@ class WorkspaceApi:
         self, client: httpx.AsyncClient, api_url: str, messages: AccessMessages
     ) -> None:
         # Cloud answers 404 on every execution-plan route when the account
-        # does not have the `execution-plans` feature flag. Reading the
+        # does not have agentic workflows turned on. Reading the
         # current schema is the cheapest request on those routes.
         try:
             response = await client.get("/execution-plans/schema")
