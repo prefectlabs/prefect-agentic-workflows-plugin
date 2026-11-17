@@ -199,4 +199,5 @@ def test_judges_are_added_only_with_a_judge_model():
         "mcp_connection_service_identity": 0,
         "mcp_tool_list": 0,
         "support_triage": 2,
+        "failed_run_diagnosis": 1,
     }

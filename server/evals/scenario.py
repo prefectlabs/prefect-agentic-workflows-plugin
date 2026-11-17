@@ -118,20 +118,25 @@ class ScenarioInputs:
     every flow it creates with that prefix. `user` is the simulated user's
     rules. `files` copies files or directories into the agent's working
     directory, by the relative path they get there. `setup` adds state to
-    the sandbox before the agent starts, such as a flow or a Secret block.
-    It gets the `SandboxApi` and the run's flow prefix, and must name every
-    flow it creates with that prefix. `max_turns` caps the number of agent
-    turns in the conversation.
+    the sandbox before the agent starts, such as a flow, a Secret block, or
+    a run. It gets the `SandboxApi` and the run's flow prefix, and must name
+    every flow it creates with that prefix. It can return values for the
+    prompt, such as the ID of a run it started: the runner replaces each
+    `{key}` in the prompt with the value of `key`. `max_turns` caps the
+    number of agent turns in the conversation.
     """
 
     prompt: str
     user: list[Rule]
     files: dict[str, Path] = field(default_factory=dict)
-    setup: Callable[[SandboxApi, str], None] | None = None
+    setup: Callable[[SandboxApi, str], dict[str, str] | None] | None = None
     max_turns: int = 12
 
-    def prompt_for(self, flow_prefix: str) -> str:
-        return self.prompt.replace(FLOW_PREFIX, flow_prefix)
+    def prompt_for(self, flow_prefix: str, values: dict[str, str] | None = None) -> str:
+        prompt = self.prompt.replace(FLOW_PREFIX, flow_prefix)
+        for key, value in (values or {}).items():
+            prompt = prompt.replace(f"{{{key}}}", value)
+        return prompt
 
 
 @dataclass(frozen=True)

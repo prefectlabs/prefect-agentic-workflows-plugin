@@ -5,10 +5,11 @@ session's prefix, such as `eval-3f9a1c-2-`. Runs that happen at the same
 time, and repeats of one case, never read or delete each other's flows.
 """
 
+import asyncio
 import itertools
 from collections.abc import Iterator
 from contextvars import ContextVar, Token
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from pydantic_evals import Case
@@ -42,11 +43,15 @@ def clean_up_prefix(sandbox: SandboxApi, prefix: str) -> list[str]:
 
 @dataclass(frozen=True)
 class Run:
-    """One run of one case: where the agent works, and the prefix of its flows."""
+    """One run of one case: where the agent works, and the prefix of its flows.
+
+    `prompt_values` has the values the case's `setup` returned for its prompt.
+    """
 
     sandbox: SandboxApi
     flow_prefix: str
     directory: Path
+    prompt_values: dict[str, str] = field(default_factory=dict)
 
 
 CURRENT_RUN: ContextVar[Run] = ContextVar("CURRENT_RUN")
@@ -113,11 +118,17 @@ class SandboxLifecycle(CaseLifecycle[ScenarioInputs, Outcome, None]):
         self.token: Token[Run] | None = None
 
     async def setup(self) -> None:
+        # `teardown` reads `self.run`, so it is set before seeding can raise.
         self.run = self.session.new_run(self.case.name or "case")
-        self.token = CURRENT_RUN.set(self.run)
         seed = self.case.inputs.setup
         if seed is not None:
-            seed(self.run.sandbox, self.run.flow_prefix)
+            # A seed can wait for a run to end, so it runs in a thread, and
+            # the other cases keep running meanwhile.
+            values = await asyncio.to_thread(
+                seed, self.run.sandbox, self.run.flow_prefix
+            )
+            self.run = replace(self.run, prompt_values=values or {})
+        self.token = CURRENT_RUN.set(self.run)
 
     async def prepare_context(
         self, ctx: EvaluatorContext[ScenarioInputs, Outcome, None]
@@ -125,6 +136,10 @@ class SandboxLifecycle(CaseLifecycle[ScenarioInputs, Outcome, None]):
         transcript = ctx.output.transcript
         ctx.metrics["agent_cost_usd"] = transcript.cost_usd
         ctx.metrics["agent_turns"] = len(transcript.turn_results)
+        ctx.metrics["agent_tool_calls"] = len(transcript.tool_calls)
+        ctx.metrics["prefect_tool_calls"] = sum(
+            call.prefect_tool for call in transcript.tool_calls
+        )
         return ctx
 
     async def teardown(

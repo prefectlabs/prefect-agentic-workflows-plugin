@@ -36,7 +36,8 @@ def results(checks: list[Check]) -> dict[str, EvaluationReason]:
 def common_checks(outcome: Outcome) -> list[Check]:
     """Return the checks that apply to every case.
 
-    Every scenario checks authoring only, so none of them starts a run.
+    The agent never starts a run. A scenario that needs a run starts it in
+    its `setup`.
     """
     calls = outcome.transcript.tool_calls
     return [

@@ -149,6 +149,7 @@ async def record_turn(agent: Agent, transcript: Transcript, turn: int) -> str:
                         block.name.removeprefix(SERVER_TOOL_PREFIX),
                         block.input,
                         turn=turn,
+                        prefect_tool=block.name.startswith(SERVER_TOOL_PREFIX),
                     )
                     pending[block.id] = call
                     transcript.tool_calls.append(call)
@@ -249,7 +250,7 @@ def scenario_task(model: str | None) -> Callable[[ScenarioInputs], Awaitable[Out
         run = current_run()
         return await converse(
             run.directory,
-            inputs.prompt_for(run.flow_prefix),
+            inputs.prompt_for(run.flow_prefix, run.prompt_values),
             inputs.user,
             sandbox=run.sandbox,
             flow_prefix=run.flow_prefix,
