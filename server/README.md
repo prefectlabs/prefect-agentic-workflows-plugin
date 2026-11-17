@@ -8,8 +8,8 @@ release.
 
 By default, the server uses the Prefect Cloud workspace in your active Prefect
 profile. Hosted servers can use each client's API key or Prefect Cloud OAuth.
-Execution plans are only available in Prefect Cloud, and your account needs the
-`execution-plans` feature.
+Execution plans are only available in Prefect Cloud, and your account needs
+agentic workflows turned on.
 
 Run it from the GitHub repository with `uvx`:
 
@@ -159,7 +159,7 @@ Prefect Cloud API with `respx`. They need no credentials.
 
 The integration tests in `tests/integration/` call a real Cloud workspace. They
 skip unless you opt in and your active profile points at a Cloud workspace whose
-account has the `execution-plans` feature:
+account has agentic workflows turned on:
 
 ```sh
 PREFECT_AGENTIC_WORKFLOWS_INTEGRATION=1 uv run pytest tests/integration

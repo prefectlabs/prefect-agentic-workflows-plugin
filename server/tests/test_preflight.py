@@ -104,7 +104,7 @@ async def test_a_profile_that_is_not_a_cloud_workspace_sends_no_request(
 @pytest.mark.parametrize(
     ("response", "expected"),
     [
-        (httpx.Response(404), ["not enabled", "`execution-plans`", OVERRIDE]),
+        (httpx.Response(404), ["agentic workflows are not enabled", OVERRIDE]),
         (
             httpx.Response(401),
             ["rejected the API key", "prefect cloud login", OVERRIDE],
