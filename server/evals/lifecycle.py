@@ -16,17 +16,22 @@ from pydantic_evals.evaluators import EvaluatorContext
 from pydantic_evals.lifecycle import CaseLifecycle
 from pydantic_evals.reporting import ReportCase, ReportCaseFailure
 
+from evals.record import Transcript
 from evals.sandbox import SandboxApi
 from evals.scenario import Outcome, ScenarioInputs
 
 ScenarioCase = Case[ScenarioInputs, Outcome, None]
 
 
-def clean_up_prefix(sandbox: SandboxApi, prefix: str) -> list[str]:
+def clean_up_prefix(
+    sandbox: SandboxApi, prefix: str, connection_ids: list[str]
+) -> list[str]:
     """Delete the flows and MCP connections of `prefix`, and return each failure.
 
-    The two deletions run independently, so a flow that can't be deleted
-    doesn't leave the connections behind.
+    `connection_ids` are the connections the agent created, which are deleted
+    also when their names leave out the prefix. The two deletions run
+    independently, so a flow that can't be deleted doesn't leave the
+    connections behind.
     """
     errors: list[str] = []
     try:
@@ -34,19 +39,21 @@ def clean_up_prefix(sandbox: SandboxApi, prefix: str) -> list[str]:
     except Exception as exc:
         errors.append(f"Could not delete the flows named {prefix}*: {exc}")
     try:
-        sandbox.delete_mcp_connections_with_prefix(prefix)
+        sandbox.delete_mcp_connections(prefix, connection_ids)
     except Exception as exc:
-        errors.append(f"Could not delete the MCP connections named *{prefix}*: {exc}")
+        errors.append(f"Could not delete the MCP connections of {prefix}: {exc}")
     return errors
 
 
 @dataclass(frozen=True)
 class Run:
-    """One run of one case: where the agent works, and the prefix of its flows."""
+    """One run of one case: where the agent works, the prefix of its flows, and
+    the transcript the conversation records into."""
 
     sandbox: SandboxApi
     flow_prefix: str
     directory: Path
+    transcript: Transcript = field(default_factory=Transcript)
 
 
 CURRENT_RUN: ContextVar[Run] = ContextVar("CURRENT_RUN")
@@ -138,5 +145,9 @@ class SandboxLifecycle(CaseLifecycle[ScenarioInputs, Outcome, None]):
         if self.run is None:
             return
         self.session.cleanup_errors.extend(
-            clean_up_prefix(self.session.sandbox, self.run.flow_prefix)
+            clean_up_prefix(
+                self.session.sandbox,
+                self.run.flow_prefix,
+                self.run.transcript.created_connection_ids(),
+            )
         )

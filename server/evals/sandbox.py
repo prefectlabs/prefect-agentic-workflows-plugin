@@ -3,9 +3,10 @@
 The harness uses these to seed the state a scenario starts from, to record
 the state of a run's flows after the conversation, and to delete the flows
 and MCP connections of a test session. Every flow the harness creates or
-deletes has a name that starts with the session's prefix, and every MCP
-connection it deletes has the prefix in its name, so other flows and
-connections in the workspace are never changed.
+deletes has a name that starts with the session's prefix. Every MCP
+connection it deletes has the prefix in its name, or was created by the
+agent in a run of the session. Other flows and connections in the workspace
+are never changed.
 
 Deleting a flow also deletes its execution plan, its plan versions, and its
 schedules.
@@ -249,20 +250,28 @@ class SandboxApi:
             for flow in self.flows_with_prefix(prefix)
         }
 
-    def delete_mcp_connections_with_prefix(self, prefix: str) -> list[str]:
-        """Delete each MCP connection whose name contains `prefix`, and return names.
+    def delete_mcp_connections(
+        self, prefix: str, connection_ids: list[str]
+    ) -> list[str]:
+        """Delete each MCP connection whose name contains `prefix` or whose ID is
+        in `connection_ids`, and return their names.
 
         A connection's name is the provider and the account, so a scenario
         puts the run's prefix in the account name, such as
-        `Linear (eval-3f9a1c-2-acme)`. Raises `ValueError` for a prefix that
-        isn't an evaluation prefix. Tries every connection before it raises
-        `RuntimeError` for the ones it couldn't delete.
+        `Linear (eval-3f9a1c-2-acme)`. The agent names the connections it
+        creates, so a name can leave out the prefix; a run passes their IDs
+        too. Raises `ValueError` for a prefix that isn't an evaluation prefix.
+        Tries every connection before it raises `RuntimeError` for the ones it
+        couldn't delete.
         """
         require_eval_prefix(prefix, "MCP connections")
         deleted: list[str] = []
         failed: list[str] = []
         for connection in self.send("GET", "/agentic/mcp-connections").json():
-            if prefix not in connection["name"]:
+            if (
+                prefix not in connection["name"]
+                and connection["id"] not in connection_ids
+            ):
                 continue
             response = self.client.delete(
                 f"/agentic/mcp-connections/{connection['id']}"

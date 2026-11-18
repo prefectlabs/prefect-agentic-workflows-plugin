@@ -23,6 +23,14 @@ class ToolCall:
     turn: int = 0
 
 
+def created_connection(call: ToolCall) -> dict[str, Any] | None:
+    """Return the connection a `create_mcp_connection` call saved, or None."""
+    if call.is_error or not isinstance(call.result, dict):
+        return None
+    connection = call.result.get("connection")
+    return connection if isinstance(connection, dict) else None
+
+
 @dataclass
 class Reply:
     """One message the simulated user sent, and the rule of the script it came from."""
@@ -40,6 +48,15 @@ class Transcript:
     replies: list[Reply] = field(default_factory=list)
     cost_usd: float = 0.0
     errors: list[str] = field(default_factory=list)
+
+    def created_connection_ids(self) -> list[str]:
+        """Return the ID of each MCP connection the agent created."""
+        return [
+            connection["id"]
+            for call in self.tool_calls
+            if call.name == "create_mcp_connection"
+            and (connection := created_connection(call)) is not None
+        ]
 
     def replies_labeled(self, label: str) -> list[Reply]:
         return [reply for reply in self.replies if reply.label == label]

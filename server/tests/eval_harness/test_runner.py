@@ -445,6 +445,7 @@ async def test_converse_snapshots_the_run_prefix(
         runner, "ClaudeSDKClient", stub_client(clients, [result("Done.")])
     )
     sandbox = StubSandbox()
+    transcript = Transcript()
 
     outcome = await converse(
         tmp_path,
@@ -452,8 +453,10 @@ async def test_converse_snapshots_the_run_prefix(
         [Rule(label="end", reply=None)],
         sandbox=sandbox,
         flow_prefix="eval-abc123-1-",
+        transcript=transcript,
     )
 
+    assert outcome.transcript is transcript
     assert sandbox.snapshot_prefixes == ["eval-abc123-1-"]
     assert list(outcome.flows) == ["digest"]
     assert outcome.flow_prefix == "eval-abc123-1-"
@@ -483,6 +486,7 @@ async def test_converse_collects_a_nested_plan(
         [Rule(label="end", reply=None)],
         sandbox=StubSandbox(),
         flow_prefix="eval-abc123-1-",
+        transcript=Transcript(),
         files={name: source},
     )
 
@@ -503,6 +507,7 @@ async def test_converse_saves_the_transcript_when_the_agent_raises(
             [],
             sandbox=StubSandbox(),
             flow_prefix="eval-abc123-1-",
+            transcript=Transcript(),
         )
 
     assert (tmp_path / "transcript.json").exists()

@@ -86,16 +86,6 @@ def listed_tools(call: ToolCall) -> list[Any] | None:
     return tools if isinstance(tools, list) else None
 
 
-def created_connection_ids(calls: list[ToolCall]) -> set[str]:
-    return {
-        call.result["connection"]["id"]
-        for call in assertions.calls_to(calls, "create_mcp_connection")
-        if not call.is_error
-        and isinstance(call.result, dict)
-        and isinstance(call.result.get("connection"), dict)
-    }
-
-
 def check_connection_named(calls: list[ToolCall], name: str) -> Check:
     names = [
         str(call.arguments.get("name", ""))
@@ -124,7 +114,7 @@ def check_tools_read_before_validate(calls: list[ToolCall]) -> Check:
 
 
 def check_limited_to_read_only_tools(outcome: Outcome) -> Check:
-    created = created_connection_ids(outcome.transcript.tool_calls)
+    created = outcome.transcript.created_connection_ids()
     servers = [
         server
         for node in graph.nodes(outcome.published_plan(FLOW_NAME)).values()
