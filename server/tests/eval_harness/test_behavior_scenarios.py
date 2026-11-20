@@ -537,6 +537,7 @@ def test_mcp_connection_setup_hears_a_request_for_the_key(message: str):
         "`eval-ebf8b1-16-acme`?",
         "Should I reuse the existing Linear MCP connection?",
         "The workspace already has connections for both servers. Use them?",
+        "The Linear connection is already configured. Should I use it?",
     ],
 )
 def test_mcp_connection_setup_turns_down_existing_connections(message: str):

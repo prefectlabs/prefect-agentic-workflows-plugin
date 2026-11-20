@@ -81,19 +81,17 @@ DECLINE_TEST_RUN = Rule(
 # other runs created for the same server. Another run's teardown can delete
 # them during this run, so the simulated user turns them down. The agent can
 # ask once for each server, also after it created another server's connection,
-# so the rule applies until the plan is validated. A question matches up to "?"
-# or a line break, because account names such as
-# `bq-agent@acme.iam.gserviceaccount.com` contain dots.
-_USE = r"\b(?:use|reuse|re-use)\b"
-_EXISTING = r"\b(?:existing|already|listed)\b"
-_CONNECTION = r"\bconnections?\b"
+# so the rule applies until the plan is validated. A question matches when it
+# has "use", "existing" (or "already", "listed"), and "connection", in any
+# order, before its "?". It can span sentences on one line, because account
+# names such as `bq-agent@acme.iam.gserviceaccount.com` contain dots.
 DECLINE_EXISTING_CONNECTIONS = Rule(
     label="existing-connections",
     before_tool="validate_plan",
     pattern=(
-        rf"{_USE}[^?\n]*(?:{_CONNECTION}[^?\n]*{_EXISTING}|{_EXISTING}[^?\n]*"
-        rf"{_CONNECTION})[^?\n]*\?"
-        rf"|{_EXISTING}[^?\n]*{_CONNECTION}[^?\n]*{_USE}[^?\n]*\?"
+        r"(?=[^?\n]*\b(?:use|reuse|re-use)\b)"
+        r"(?=[^?\n]*\b(?:existing|already|listed)\b)"
+        r"[^?\n]*\bconnections?\b[^?\n]*\?"
     ),
     # The agent can also ask about a connection it created in this run, so the
     # reply is right for both kinds of question.
