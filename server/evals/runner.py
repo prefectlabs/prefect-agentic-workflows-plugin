@@ -202,6 +202,7 @@ async def converse(
     *,
     sandbox: SandboxApi,
     flow_prefix: str,
+    transcript: Transcript,
     files: dict[str, Path] | None = None,
     max_turns: int = 12,
     model: str | None = None,
@@ -210,15 +211,15 @@ async def converse(
 
     `workspace` must be an empty directory. The agent works in
     `workspace/agent`, and its Prefect home is `workspace/prefect-home`. The
-    transcript is saved to `workspace/transcript.json`, also when the agent
-    raises. After the conversation, the state of each flow whose name starts
-    with `flow_prefix` is read into the outcome.
+    conversation is recorded into `transcript`, so the caller can read it
+    also when the agent raises. The transcript is saved to
+    `workspace/transcript.json` too. After the conversation, the state of each
+    flow whose name starts with `flow_prefix` is read into the outcome.
     """
     agent_dir = workspace / "agent"
     prefect_home = workspace / "prefect-home"
     prefect_home.mkdir(parents=True)
     prepare_workspace(agent_dir, files or {})
-    transcript = Transcript()
     options = agent_options(
         agent_dir, prefect_environment(sandbox.credentials, prefect_home), model
     )
@@ -254,6 +255,7 @@ def scenario_task(model: str | None) -> Callable[[ScenarioInputs], Awaitable[Out
             inputs.user,
             sandbox=run.sandbox,
             flow_prefix=run.flow_prefix,
+            transcript=run.transcript,
             files=inputs.files,
             max_turns=inputs.max_turns,
             model=model,
