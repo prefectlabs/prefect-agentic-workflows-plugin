@@ -575,6 +575,23 @@ def test_mcp_connection_setup_does_not_mistake_setup_talk_for_reuse():
     assert rule.label == "setup-later"
 
 
+def test_mcp_connection_setup_asks_for_the_publish_when_the_agent_waits():
+    validated = Transcript(
+        tool_calls=[ToolCall("validate_plan", {}, {"valid": True}, turn=2)]
+    )
+
+    # From an eval run where the agent stopped before publishing.
+    rule = next_rule(
+        mcp_connection_setup.USER,
+        "Once both connections are signed in, I'll read their tool lists and limit "
+        "the agent to read-only tools. Then I'll validate and publish the plan.",
+        validated,
+    )
+
+    assert rule is not None
+    assert rule.label == "publish-now"
+
+
 def test_mcp_connection_setup_answers_the_infrastructure_check():
     rule = next_rule(
         mcp_connection_setup.USER,

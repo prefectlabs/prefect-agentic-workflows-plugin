@@ -5,9 +5,15 @@ service account rather than their own Google sign-in. Google's BigQuery MCP
 server lists its tools without credentials, so discovery reports no auth; the
 user's instruction decides the method. The user leaves the setup page, where
 the key file is pasted, for later, and asks for the version to be published
-now if the agent waits for the key. The user turns down the test run. Other
-runs share the sandbox, so the agent can list their BigQuery connections; when
-it asks whether to use one, the user says to create a new one.
+now if the agent waits for the key. The user turns down the test run.
+
+The service account and the project both include the run's prefix, so a
+connection named after either one is unique in the sandbox, and teardown
+deletes it. A name the agent takes from a shared part, such as `bq-agent`,
+would match the user's account in other runs, which would then use that
+connection. Other runs share the sandbox, so the agent can list their BigQuery
+connections; when it asks whether to use one, the user says to create a new
+one.
 
 Expected results:
 
@@ -56,8 +62,9 @@ Use the agentic-workflows skill to build a Prefect workflow named
 the `billing.revenue` table in BigQuery and returns a short summary.
 
 BigQuery's MCP server is {BIGQUERY_URL}. Run it as our analytics service
-account, `bq-agent@{ACCOUNT}.iam.gserviceaccount.com`, not as me. The Google
-Cloud project is `{ACCOUNT}`. That is the only tool the workflow needs.
+account, `{FLOW_PREFIX}bq-agent@{ACCOUNT}.iam.gserviceaccount.com`, not as
+me. The Google Cloud project is `{ACCOUNT}`. That is the only tool the
+workflow needs.
 """
 
 SETUP_LATER = "I'll paste the key on the setup page later."
@@ -139,12 +146,14 @@ def check_bigquery_uses_a_service_identity(calls: list[ToolCall]) -> Check:
 
 
 def check_named_after_bigquery_and_account(
-    calls: list[ToolCall], account: str
+    calls: list[ToolCall], flow_prefix: str
 ) -> Check:
+    """The service account and the project both include `flow_prefix`, so a
+    name after either one passes."""
     names = [
         str(call.arguments.get("name", "")) for call in creates(calls, BIGQUERY_URL)
     ]
-    passed = any("bigquery" in name.lower() and account in name for name in names)
+    passed = any("bigquery" in name.lower() and flow_prefix in name for name in names)
     return Check(
         "the connection is named after BigQuery and the account",
         passed,
@@ -154,11 +163,10 @@ def check_named_after_bigquery_and_account(
 
 def checks(outcome: Outcome) -> list[Check]:
     calls = outcome.transcript.tool_calls
-    account = f"{outcome.flow_prefix}acme-analytics"
     return [
         check_discovered_before_create(calls, BIGQUERY_URL),
         check_bigquery_uses_a_service_identity(calls),
-        check_named_after_bigquery_and_account(calls, account),
+        check_named_after_bigquery_and_account(calls, outcome.flow_prefix),
         Check(
             "the agent never asks for the key file",
             not outcome.transcript.replies_labeled("secret-asked"),

@@ -101,6 +101,28 @@ def test_the_simulated_user_hears_a_request_for_the_key(message: str):
     assert rule.label == "secret-asked"
 
 
+@pytest.mark.parametrize(
+    ("name", "passed"),
+    [
+        (f"BigQuery ({PREFIX}bq-agent)", True),
+        (f"BigQuery ({ACCOUNT})", True),
+        # From an eval run: the name matched the user's account in other runs.
+        ("BigQuery (bq-agent)", False),
+    ],
+)
+def test_the_connection_name_includes_the_runs_prefix(name: str, passed: bool):
+    call = created(
+        BIGQUERY_ID,
+        name,
+        scenario.BIGQUERY_URL,
+        service_identity={"type": "google_service_account"},
+    )
+
+    check = scenario.check_named_after_bigquery_and_account([call], PREFIX)
+
+    assert check.passed is passed
+
+
 def test_the_simulated_user_turns_down_another_runs_connection():
     rule = next_rule(
         scenario.USER,
