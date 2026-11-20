@@ -229,6 +229,57 @@ def test_publish_version_saves_and_activates_the_plan(
     assert activate.called
 
 
+def test_prefect_provider_connection_id_finds_the_prefect_connection(
+    api: respx.MockRouter, sandbox: SandboxApi
+):
+    api.get("/agentic/provider-connections").respond(
+        200,
+        json=[
+            {"id": "openai-1", "name": "OpenAI", "provider": {"type": "openai"}},
+            {"id": "prefect-1", "name": "prefect", "provider": {"type": "prefect"}},
+        ],
+    )
+
+    assert sandbox.prefect_provider_connection_id() == "prefect-1"
+
+
+def test_start_run_starts_the_active_version_with_no_parameters(
+    api: respx.MockRouter, sandbox: SandboxApi
+):
+    start = api.post("/flows/flow-1/execution-plan/runs").respond(
+        201, json={"id": "run-1"}
+    )
+
+    assert sandbox.start_run("flow-1") == {"id": "run-1"}
+    assert json.loads(start.calls[0].request.content) == {"parameters": {}}
+
+
+def test_wait_for_run_end_reads_the_run_until_it_ends(
+    api: respx.MockRouter, sandbox: SandboxApi, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr("evals.sandbox.time.sleep", lambda seconds: None)
+    read = api.get("/flow_runs/run-1/execution-plan").mock(
+        side_effect=[
+            httpx.Response(200, json={"status": "running"}),
+            httpx.Response(200, json={"status": "failed", "nodes": []}),
+        ]
+    )
+
+    run = sandbox.wait_for_run_end("run-1", timeout_seconds=60)
+
+    assert run == {"status": "failed", "nodes": []}
+    assert read.call_count == 2
+
+
+def test_wait_for_run_end_raises_when_the_run_has_not_ended_in_time(
+    api: respx.MockRouter, sandbox: SandboxApi
+):
+    api.get("/flow_runs/run-1/execution-plan").respond(200, json={"status": "running"})
+
+    with pytest.raises(TimeoutError, match="still running after 0 seconds"):
+        sandbox.wait_for_run_end("run-1", timeout_seconds=0)
+
+
 def test_ensure_secret_block_leaves_an_existing_block(
     api: respx.MockRouter, sandbox: SandboxApi
 ):

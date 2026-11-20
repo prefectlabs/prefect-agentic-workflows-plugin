@@ -10,10 +10,9 @@ Expected results:
 - every output that ends a run requires a `summary`
 - every `one_of` field reads outputs of one node that selects at most one
   output
-- when `get_schema` lists version 0.3, the plan is version 0.3 and an agent
-  node output carries expectations; otherwise the plan has no expectations
-- an LLM judge reads the agent's messages and finds that, without 0.3, it
-  tells the user that Prefect won't check the requirements
+- an agent node output carries expectations
+- every node whose outputs carry expectations sets `on_failure.retry`, so a
+  missed expectation runs the node again
 - `publish_plan` is called only after `validate_plan` passes on the same plan
 - a version of the flow is saved
 - an LLM judge reads the plan and finds that the ending outputs are named for
@@ -24,7 +23,6 @@ import json
 
 from evals import assertions, graph
 from evals.assertions import Check
-from evals.record import ToolCall
 from evals.scenario import (
     DECLINE_TEST_RUN,
     FLOW_PREFIX,
@@ -71,43 +69,40 @@ USER = [
 ]
 
 
-def outputs_with_expectations(plan: graph.Plan) -> list[str]:
+def nodes_with_expectations(plan: graph.Plan) -> list[str]:
+    """Return the IDs of the nodes with an output that carries expectations."""
     return [
-        f"{node_id}.{output}"
+        node_id
         for node_id, node in graph.nodes(plan).items()
-        for output, port in (node.get("outputs") or {}).items()
-        if isinstance(port, dict) and port.get("expectations")
+        if any(
+            isinstance(port, dict) and port.get("expectations")
+            for port in (node.get("outputs") or {}).values()
+        )
     ]
 
 
-def schema_versions(calls: list[ToolCall]) -> list[str]:
-    """Return the schema versions the `get_schema` results list."""
-    return sorted(
-        {
-            version
-            for call in assertions.calls_to(calls, "get_schema")
-            if isinstance(call.result, dict)
-            for version in call.result.get("supported_schema_versions", [])
-        }
+def check_plan_has_expectations(plan: graph.Plan) -> Check:
+    return Check(
+        "an agent node output has expectations",
+        bool(nodes_with_expectations(plan)),
+        "no output has expectations",
     )
 
 
-def check_expectations_follow_schema(outcome: Outcome) -> Check:
-    """Check for expectations when `get_schema` lists 0.3, and for none otherwise."""
-    plan = outcome.plan
-    found = outputs_with_expectations(plan)
-    if "0.3" in schema_versions(outcome.transcript.tool_calls):
-        problems = []
-        if plan.get("schema_version") != "0.3":
-            problems.append(f"version {plan.get('schema_version')}")
-        if not found:
-            problems.append("no output has expectations")
-    else:
-        problems = [f"expectations on {found} without 0.3"] if found else []
+def check_nodes_with_expectations_retry(plan: graph.Plan) -> Check:
+    """Check that a missed expectation runs each node with expectations again."""
+    nodes = graph.nodes(plan)
+    without = [
+        node_id
+        for node_id in nodes_with_expectations(plan)
+        if not (
+            (nodes[node_id].get("orchestration") or {}).get("on_failure") or {}
+        ).get("retry")
+    ]
     return Check(
-        "expectations follow the schema versions get_schema lists",
-        not problems,
-        "; ".join(problems),
+        "every node with expectations sets on_failure.retry",
+        not without,
+        f"no retry on {without}",
     )
 
 
@@ -116,7 +111,8 @@ def checks(outcome: Outcome) -> list[Check]:
     return [
         assertions.check_ending_outputs_carry_summary(outcome.plan),
         assertions.check_one_of_reads_one_node(outcome.plan),
-        check_expectations_follow_schema(outcome),
+        check_plan_has_expectations(outcome.plan),
+        check_nodes_with_expectations_retry(outcome.plan),
         assertions.check_publish_succeeded(calls),
         assertions.check_published_only_after_valid(calls),
         assertions.check_flow_saved(outcome.flows, FLOW_NAME),
@@ -145,28 +141,6 @@ Ignore the workflow's name.
 """
 
 
-UNCHECKED_RUBRIC = """\
-The evidence lists the schema versions the workspace supports and the agent's
-messages to the user. Schema version 0.3 is what lets Prefect check the
-user's reply rules as expectations. When 0.3 is not listed, the agent tells
-the user, in any wording, that Prefect itself won't check those rules in this
-workspace, for example that it left out expectations or that the rules are
-checked by a workflow step instead of the platform. When 0.3 is listed, the
-case passes. A report that presents the rules as checked by Prefect when 0.3
-is not listed does not pass.
-"""
-
-
-def report_evidence(outcome: Outcome) -> str:
-    transcript = outcome.transcript
-    if not transcript.turn_results:
-        return ""
-    versions = ", ".join(schema_versions(transcript.tool_calls)) or "none"
-    return section("SchemaVersions", versions) + section(
-        "AgentMessages", "\n\n".join(transcript.turn_results)
-    )
-
-
 def plan_evidence(outcome: Outcome) -> str:
     plan = outcome.published_plan(FLOW_NAME)
     if not plan:
@@ -184,11 +158,6 @@ SCENARIO = Scenario(
             "judge: ending outputs are named for outcomes",
             OUTCOME_RUBRIC,
             plan_evidence,
-        ),
-        Judgement(
-            "judge: the agent says Prefect won't check the requirements",
-            UNCHECKED_RUBRIC,
-            report_evidence,
         ),
     ],
 )

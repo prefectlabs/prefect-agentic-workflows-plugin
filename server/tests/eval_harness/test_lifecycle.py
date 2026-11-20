@@ -66,7 +66,12 @@ async def finished_task(inputs: ScenarioInputs) -> Outcome:
     run = current_run()
     # Let the other runs start, so they overlap.
     await asyncio.sleep(0.01)
-    return Outcome(Transcript(cost_usd=0.5), {}, {}, run.directory, run.flow_prefix)
+    calls = [
+        ToolCall("get_run", {}, prefect_tool=True),
+        ToolCall("Read", {"file_path": "SKILL.md"}),
+    ]
+    transcript = Transcript(tool_calls=calls, cost_usd=0.5)
+    return Outcome(transcript, {}, {}, run.directory, run.flow_prefix)
 
 
 async def test_each_run_seeds_and_deletes_its_own_prefix(tmp_path: Path):
@@ -88,8 +93,41 @@ async def test_each_run_seeds_and_deletes_its_own_prefix(tmp_path: Path):
     assert sorted(sandbox.deleted_connection_prefixes) == prefixes
     directories = sorted(path.name for path in tmp_path.iterdir())
     assert directories == ["1-first", "2-first", "3-second", "4-second"]
-    assert report.cases[0].metrics == {"agent_cost_usd": 0.5, "agent_turns": 0}
+    assert report.cases[0].metrics == {
+        "agent_cost_usd": 0.5,
+        "agent_turns": 0,
+        "agent_tool_calls": 2,
+        "prefect_tool_calls": 1,
+    }
     assert current.cleanup_errors == []
+
+
+async def test_the_task_reads_the_prompt_values_the_seed_returned(tmp_path: Path):
+    sandbox = RecordingSandbox()
+
+    def seed_with_values(api: SandboxApi, flow_prefix: str) -> dict[str, str]:
+        return {"flow_run_id": f"{flow_prefix}run"}
+
+    async def task(inputs: ScenarioInputs) -> Outcome:
+        run = current_run()
+        prompt = inputs.prompt_for(run.flow_prefix, run.prompt_values)
+        return Outcome(Transcript(turn_results=[prompt]), {}, {}, run.directory)
+
+    inputs = ScenarioInputs(
+        prompt="Explain run {flow_run_id}.", user=[], setup=seed_with_values
+    )
+    seeded = Dataset[ScenarioInputs, Outcome, None](
+        name="test", cases=[Case(name="only", inputs=inputs)]
+    )
+
+    report = await seeded.evaluate(
+        task, lifecycle=session(tmp_path, sandbox).lifecycle, progress=False
+    )
+
+    [case] = report.cases
+    assert case.output.transcript.turn_results == [
+        f"Explain run {SESSION_PREFIX}1-run."
+    ]
 
 
 async def test_cleanup_runs_when_the_task_raises(tmp_path: Path):
