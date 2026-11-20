@@ -10,10 +10,28 @@ Use these steps when the user asks why a run failed, stalled, or ended on an une
 ## Find what went wrong
 
 1. Call `get_run` with `compact`. Read `diagnostics`, each node's `status` and `failure`, and each node's `selected_outputs`.
-2. For each agent node that failed, or that selected an output the design treats as failure, call `get_run_activity` with the node's `activation_id`. It returns the node's model calls and tool calls in order. A model call's `output` shows what the model wrote and which tools it called. A tool call shows its `arguments` and `result`.
-3. Look at the failed calls first, then at the last calls before the node ended. The cause can be a call that succeeded with an unexpected result, or a model call that chose the wrong output.
-4. Content is cut to 300 characters, or 2,000 for a failed call. When the cut part can explain the failure, call `get_activity_record` with the attempt's `attempt_id` and the call's `record_id` to read it in full. A model call's full `input` has the node's request and the upstream outputs it received.
-5. Base the answer on what the calls show. Quote the error text, and say which node and attempt it came from. A node can retry: an attempt with the status `superseded` was followed by another attempt, and the last attempt decides the node's outcome.
+2. For each node whose `failure` code is `expectation_violated`, `expectation_inconclusive`, or `verification_unavailable`, follow [A node that failed its checks](#a-node-that-failed-its-checks).
+3. For each other agent node that failed, or that selected an output the design treats as failure, call `get_run_activity` with the node's `activation_id`. It returns the node's model calls and tool calls in order. A model call's `output` shows what the model wrote and which tools it called. A tool call shows its `arguments` and `result`.
+4. Look at the failed calls first, then at the last calls before the node ended. The cause can be a call that succeeded with an unexpected result, or a model call that chose the wrong output.
+5. Content is cut to 300 characters, or 2,000 for a failed call. When the cut part can explain the failure, call `get_activity_record` with the attempt's `attempt_id` and the call's `record_id` to read it in full. A model call's full `input` has the node's request and the upstream outputs it received.
+6. Base the answer on what the calls show. Quote the error text, and say which node and attempt it came from. A node can retry: an attempt with the status `superseded` or `verification_retry` was followed by another attempt, and the last attempt decides the node's outcome.
+
+## A node that failed its checks
+
+Prefect checks the expectations on an agent node's selected outputs, and the node fails when a check doesn't pass. None of its outputs reach later nodes, and the run fails.
+
+1. Call `get_run_checks` with the node's `activation_id`. When `checks` is empty, call it once more: a check is listed a moment after it ends.
+2. Read the checks with the highest `attempt_number`, which decided the node's outcome. An earlier attempt's checks show what the agent was told to fix before it ran again.
+3. Tell the user each expectation that wasn't `satisfied`, by its `expectation_text`, with its `verdict` and its `reason` in the check's own words. When `content` is `withheld`, a workspace Admin or Developer can read the reason.
+4. To see what the agent did, call `get_run_activity` with the same `activation_id`.
+
+Then say what the user can do:
+
+- `expectation_violated`: the output missed the expectation on every attempt the node's `on_failure.retry` allows. The fix is in the node's objective or tools when the agent could have met the expectation, and in the expectation's text when it asks for something the workflow doesn't do.
+- `expectation_inconclusive`: the agent's tool calls didn't show whether the expectation was met. Change the objective so the agent reads the state the expectation asks about with a tool call, or reword the expectation to something a tool call can show.
+- `verification_unavailable`: Prefect couldn't finish a check. Quote the check's error `detail`, and say that running the workflow again can pass.
+
+A change to an objective or an expectation is a plan change, so get the user's approval before you publish it.
 
 ## Say what the user can do
 
