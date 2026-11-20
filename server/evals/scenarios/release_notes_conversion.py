@@ -12,7 +12,8 @@ discovery reaches the real server at each URL, so the scenario names no
 server that isn't real. The GitHub token is the sandbox's `eval-github-token`
 Secret block, which holds a placeholder value. When the report and design
 summary are separate, the user chooses substitutes before approving the
-design. The user turns down the test run.
+design. When the agent asks to activate a fix it saved after publishing, the
+user approves. The user turns down the test run.
 
 Expected results:
 
@@ -85,6 +86,22 @@ REPORT_PARTS = {
 }
 
 USER = [
+    # A request to activate a version that replaces the active one. After
+    # publishing, the agent can find a defect in its plan and save a fix
+    # without activating it, because replacing an active version needs the
+    # user's approval. "activated" alone, as in "published and activated",
+    # doesn't match.
+    Rule(
+        label="promotion-approval",
+        after_tool="publish_plan",
+        pattern=(
+            r"\b(?:reply|want me to|should I|shall I|approve|go-ahead)\b[^.!?\n]*"
+            r"\b(?:promot\w*|activat(?:e|es|ing|ion))\b"
+            r"|\b(?:promot\w*|activat(?:e|es|ing|ion))\b[^.!?\n]*\?"
+        ),
+        reply="Yes, activate the fixed version.",
+        max_uses=1,
+    ),
     DECLINE_TEST_RUN,
     Rule(label="end", after_tool="publish_plan", reply=None),
     Rule(

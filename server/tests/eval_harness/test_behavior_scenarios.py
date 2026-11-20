@@ -528,6 +528,73 @@ def test_mcp_connection_setup_hears_a_request_for_the_key(message: str):
     assert rule.label == "secret-asked"
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        # From an eval run where another run's connections were listed.
+        "**Question about the tools:** Do you want this workflow to use the Linear "
+        "and Stripe connections listed above, or should I create new ones for "
+        "`eval-ebf8b1-16-acme`?",
+        "Should I reuse the existing Linear MCP connection?",
+        "The workspace already has connections for both servers. Use them?",
+    ],
+)
+def test_mcp_connection_setup_turns_down_existing_connections(message: str):
+    rule = next_rule(mcp_connection_setup.USER, message, Transcript())
+
+    assert rule is not None
+    assert rule.label == "existing-connections"
+
+
+def test_mcp_connection_setup_answers_the_infrastructure_check():
+    rule = next_rule(
+        mcp_connection_setup.USER,
+        "For each tool this workflow needs, do you have its remote MCP server?",
+        Transcript(),
+    )
+
+    assert rule is not None
+    assert rule.label == "reachable-systems"
+
+
+PUBLISHED = Transcript(
+    tool_calls=[ToolCall("publish_plan", {}, {"published": True}, turn=3)]
+)
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        # From an eval run where the agent saved a fix after publishing.
+        'The fixed version `06b0097e` is saved but not active. Reply "promote" '
+        "and I'll activate it.",
+        "Do you want me to activate the fixed version?",
+        "Activate version 06b0097e to replace the active one?",
+    ],
+)
+def test_release_notes_approves_a_promotion(message: str):
+    rule = next_rule(release_notes.USER, message, PUBLISHED)
+
+    assert rule is not None
+    assert rule.label == "promotion-approval"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "The plan is published and activated. Do you want a test run?",
+        "Should I start a test run now that it's activated?",
+    ],
+)
+def test_release_notes_does_not_mistake_an_activated_version_for_a_promotion(
+    message: str,
+):
+    rule = next_rule(release_notes.USER, message, PUBLISHED)
+
+    assert rule is not None
+    assert rule.label == "decline-test-run"
+
+
 @pytest.mark.parametrize("broken", [False, True], ids=["expected", "broken"])
 @pytest.mark.parametrize("scenario", SCENARIOS)
 def test_scenario_checks(scenario: str, broken: bool):

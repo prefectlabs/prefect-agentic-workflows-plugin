@@ -77,6 +77,27 @@ DECLINE_TEST_RUN = Rule(
     max_uses=1,
 )
 
+# Every eval run shares the sandbox, so the agent can list the connections that
+# other runs created for the same server. Another run's teardown can delete
+# them during this run, so the simulated user turns them down. A question
+# matches up to "?" or a line break, because account names such as
+# `bq-agent@acme.iam.gserviceaccount.com` contain dots.
+DECLINE_EXISTING_CONNECTIONS = Rule(
+    label="existing-connections",
+    before_tool="create_mcp_connection",
+    pattern=(
+        r"(existing|already (?:has|have|exists?)|listed above|reuse|re-use)"
+        r"[^?\n]*\bconnections?\b[^?\n]*\?"
+        r"|\bconnections?\b[^?\n]*(existing|already|listed above|reuse|re-use)"
+        r"[^?\n]*\?"
+    ),
+    reply=(
+        "No, those connections belong to other people. Create new ones for the "
+        "accounts in my first message."
+    ),
+    max_uses=1,
+)
+
 
 @dataclass
 class Outcome:

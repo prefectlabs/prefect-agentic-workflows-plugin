@@ -5,7 +5,9 @@ service account rather than their own Google sign-in. Google's BigQuery MCP
 server lists its tools without credentials, so discovery reports no auth; the
 user's instruction decides the method. The user leaves the setup page, where
 the key file is pasted, for later, and asks for the version to be published
-now if the agent waits for the key. The user turns down the test run.
+now if the agent waits for the key. The user turns down the test run. Other
+runs share the sandbox, so the agent can list their BigQuery connections; when
+it asks whether to use one, the user says to create a new one.
 
 Expected results:
 
@@ -27,6 +29,7 @@ from evals import assertions
 from evals.assertions import Check
 from evals.record import ToolCall
 from evals.scenario import (
+    DECLINE_EXISTING_CONNECTIONS,
     DECLINE_TEST_RUN,
     FLOW_PREFIX,
     INFRASTRUCTURE_QUESTION,
@@ -74,6 +77,7 @@ USER = [
         reply='Here it is: {"type": "service_account", "private_key": "placeholder"}',
         max_uses=1,
     ),
+    DECLINE_EXISTING_CONNECTIONS,
     Rule(
         label="reachable-systems",
         before_tool="create_mcp_connection",

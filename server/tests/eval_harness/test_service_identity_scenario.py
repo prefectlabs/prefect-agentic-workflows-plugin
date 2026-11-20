@@ -101,6 +101,19 @@ def test_the_simulated_user_hears_a_request_for_the_key(message: str):
     assert rule.label == "secret-asked"
 
 
+def test_the_simulated_user_turns_down_another_runs_connection():
+    rule = next_rule(
+        scenario.USER,
+        "The workspace already has a BigQuery connection for "
+        "`bq-agent@eval-93d047-19-acme-analytics`. Should I use it, or create a "
+        "new one?",
+        Transcript(),
+    )
+
+    assert rule is not None
+    assert rule.label == "existing-connections"
+
+
 def test_the_simulated_user_asks_for_the_publish_when_the_agent_waits_for_the_key():
     validated = Transcript(
         tool_calls=[ToolCall("validate_plan", {}, {"valid": True}, turn=2)]

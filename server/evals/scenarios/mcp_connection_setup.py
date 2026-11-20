@@ -7,7 +7,10 @@ offers OAuth. The user leaves both setup pages for later, so the version
 publishes with warnings. The user turns down the test run.
 
 The account names in the prompt include the run's prefix, so each run's
-connection names are unique in the sandbox, and teardown deletes them.
+connection names are unique in the sandbox, and teardown deletes them. Other
+runs share the sandbox, so the agent can list their Linear and Stripe
+connections. When it asks whether to use them, the user says to create new
+ones, because another run's teardown can delete them during this run.
 
 Expected results:
 
@@ -32,6 +35,7 @@ from evals import assertions, graph
 from evals.assertions import Check
 from evals.record import ToolCall
 from evals.scenario import (
+    DECLINE_EXISTING_CONNECTIONS,
     DECLINE_TEST_RUN,
     FLOW_PREFIX,
     INFRASTRUCTURE_QUESTION,
@@ -74,6 +78,7 @@ USER = [
         reply="Here it is: rk_test_placeholder",
         max_uses=1,
     ),
+    DECLINE_EXISTING_CONNECTIONS,
     Rule(
         label="reachable-systems",
         before_tool="create_mcp_connection",
