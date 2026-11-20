@@ -19,7 +19,7 @@ from prefect_agentic_workflows_mcp.workspace_api import WorkspaceApi
 CHECKS_PATH = "/agent-sessions/checks/filter"
 # The checks route returns at most 100 checks in one page.
 PAGE_LIMIT = 100
-# The most checks that `get_run_checks` reads from one run.
+# The most checks that `get_run_checks` returns from one run.
 MAX_CHECKS_READ = 500
 # The route lists the checks of attempts that started in a time range. The
 # range ends this long after now, so a clock that runs behind Prefect Cloud's
@@ -90,7 +90,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
 
         A check is listed a moment after it ends, so an empty `checks` for a
         node that just failed can fill in on the next call. `checks_unread`
-        is true when the run has more checks than this tool reads.
+        is true when the run has more checks than this tool returns.
         """
         flow_run = await api.call(
             "GET", f"/flow_runs/{flow_run_id}", workspace_id=workspace_id
@@ -109,16 +109,18 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             page = await api.call(
                 "POST", CHECKS_PATH, json=body, workspace_id=workspace_id
             )
-            checks.extend(page["checks"])
+            # The route has no activation filter, so the limit counts only
+            # the checks of the activation that was asked for.
+            checks.extend(
+                check
+                for check in page["checks"]
+                if activation_id is None or check["activation_id"] == str(activation_id)
+            )
             unread = page["next_cursor"] is not None
             if not unread or len(checks) >= MAX_CHECKS_READ:
                 break
             body = {**body, "cursor": page["next_cursor"]}
         return {
-            "checks": [
-                check_entry(check)
-                for check in checks
-                if activation_id is None or check["activation_id"] == str(activation_id)
-            ],
+            "checks": [check_entry(check) for check in checks],
             "checks_unread": unread,
         }

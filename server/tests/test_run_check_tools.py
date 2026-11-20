@@ -204,6 +204,33 @@ async def test_get_run_checks_stops_reading_a_run_with_too_many_checks(
     assert route.call_count == MAX_CHECKS_READ // PAGE_LIMIT
 
 
+async def test_get_run_checks_finds_an_activation_after_many_other_checks(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    cloud_api.get(FLOW_RUN_PATH).respond(200, json=flow_run_response())
+    other_pages = MAX_CHECKS_READ // PAGE_LIMIT
+    route = cloud_api.post(CHECKS_PATH)
+    route.side_effect = [
+        *(
+            respx.MockResponse(
+                200, json=checks_page([check()] * PAGE_LIMIT, next_cursor="next")
+            )
+            for _ in range(other_pages)
+        ),
+        respx.MockResponse(
+            200,
+            json=checks_page(
+                [check(authored_node_id="review", activation_id=OTHER_ACTIVATION_ID)]
+            ),
+        ),
+    ]
+
+    found = await get_run_checks(mcp_client, activation_id=OTHER_ACTIVATION_ID)
+
+    assert [entry["node"] for entry in found["checks"]] == ["review"]
+    assert found["checks_unread"] is False
+
+
 async def test_get_run_checks_reports_a_run_that_does_not_exist(
     mcp_client: Client[Any], cloud_api: respx.MockRouter
 ):
