@@ -4,6 +4,7 @@ Each test publishes a one-node plan to its own flow, starts a run, and watches
 it with `get_run` until it finishes.
 """
 
+from asyncio import sleep
 from time import monotonic
 from typing import Any
 
@@ -12,6 +13,7 @@ from fastmcp import Client
 FLOW_NAME_PREFIX = "prefect-agentic-workflows-integration-run"
 FINISHED = {"completed", "failed", "cancelled", "blocked"}
 WATCH_LIMIT_SECONDS = 300
+CHECKS_LIMIT_SECONDS = 120
 
 ORCHESTRATION = {
     "output_selection": "exactly_one",
@@ -26,6 +28,40 @@ AGENT_PLAN: dict[str, Any] = {
             "kind": "AgentNode",
             "objective": "Reply with the word done and select the `done` output.",
             "outputs": {"done": {"schema": True}},
+            "orchestration": ORCHESTRATION,
+        }
+    },
+    "edges": [],
+}
+
+# The agent has no tools, so no tool call can show the expectation is met.
+UNMET_EXPECTATION_PLAN: dict[str, Any] = {
+    "kind": "ExecutionPlan",
+    "schema_version": "0.3",
+    "nodes": {
+        "reply": {
+            "kind": "AgentNode",
+            "objective": (
+                "Select the `done` output with `ticket` set to TICKET-1. "
+                "Don't call any tool."
+            ),
+            "outputs": {
+                "done": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {"ticket": {"type": "string"}},
+                        "required": ["ticket"],
+                    },
+                    "expectations": {
+                        "ticket_was_fetched": {
+                            "text": (
+                                "A tool call in this session fetched the "
+                                "ticket that `ticket` names from the tracker."
+                            )
+                        }
+                    },
+                }
+            },
             "orchestration": ORCHESTRATION,
         }
     },
@@ -112,6 +148,46 @@ async def test_a_one_node_agent_plan_runs_to_completion(mcp_client: Client[Any])
         assert attempt["node_id"] == "reply"
         for call in attempt["activity"] or []:
             assert call["operation"] in {"chat", "execute_tool"}
+
+
+async def test_a_node_that_misses_an_expectation_fails_and_lists_its_check(
+    mcp_client: Client[Any],
+):
+    flow_id = await publish(
+        mcp_client, f"{FLOW_NAME_PREFIX}-unmet-expectation", UNMET_EXPECTATION_PLAN
+    )
+    flow_run_id = await start(mcp_client, flow_id)
+
+    run = await watch(mcp_client, flow_run_id, FINISHED)
+
+    assert run["status"] == "failed", run
+    (node,) = run["nodes"]
+    assert node["failure"]["code"] in {
+        "expectation_violated",
+        "expectation_inconclusive",
+    }, node
+
+    # A check is listed a moment after it ends.
+    deadline = monotonic() + CHECKS_LIMIT_SECONDS
+    while True:
+        result = await mcp_client.call_tool(
+            "get_run_checks",
+            {"flow_run_id": flow_run_id, "activation_id": node["activation_id"]},
+        )
+        assert result.structured_content is not None
+        checks = result.structured_content["checks"]
+        if checks:
+            break
+        assert monotonic() < deadline, "the run's checks were never listed"
+        await sleep(5)
+
+    (check,) = checks
+    assert check["node"] == "reply"
+    assert check["output"] == "done"
+    assert check["expectation_key"] == "ticket_was_fetched"
+    assert check["attempt_number"] == 1
+    assert check["verdict"] in {"violated", "inconclusive"}
+    assert check["check_error"] is None
 
 
 async def test_a_human_input_plan_finishes_after_the_form_is_answered(
