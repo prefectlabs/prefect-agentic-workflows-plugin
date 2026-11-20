@@ -12,7 +12,8 @@ class ToolCall:
 
     `name` is the tool's name. A tool from the `prefect-agentic-workflows`
     server has its bare name, such as `validate_plan`. Other tools keep the
-    name the agent used, such as `Read` or `Bash`. `result` is the tool
+    name the agent used, such as `Read` or `Bash`. `prefect_tool` is true for
+    a tool of the `prefect-agentic-workflows` server. `result` is the tool
     result parsed as JSON when it is JSON, and its text otherwise.
     """
 
@@ -21,6 +22,7 @@ class ToolCall:
     result: Any = None
     is_error: bool = False
     turn: int = 0
+    prefect_tool: bool = False
 
 
 @dataclass

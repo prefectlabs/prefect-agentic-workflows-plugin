@@ -8,7 +8,7 @@ between the agent and a simulated user. Its output is the outcome of that
 conversation: the transcript, the plan files the agent wrote, and the state
 of the run's flows in the sandbox. The evaluators check that outcome: the
 plan, the tools the agent called in order and with which arguments, and the
-flows it left in the workspace. For five cases, an LLM judge also answers
+flows it left in the workspace. For six cases, an LLM judge also answers
 one question that a regular expression can't.
 
 Each run starts Claude Code through the Claude Agent SDK, so it costs money,
@@ -22,7 +22,8 @@ The harness reads the sandbox from `PREFECT_API_URL` and `PREFECT_API_KEY`
 and stops before any agent starts when either one is missing. The workspace
 needs execution plans enabled, MCP connections enabled, and an object
 storage bucket. Use a sandbox workspace: the cases create flows, MCP
-connections, and a Secret block there.
+connections, and a Secret block there, and one case runs an agent node on
+Prefect's models.
 
 The Claude Agent SDK includes its own copy of Claude Code. It uses
 `ANTHROPIC_API_KEY` when it's set, and your Claude Code login otherwise. The
@@ -89,7 +90,7 @@ command deletes every flow and MCP connection with the session's prefix, to
 catch a run whose cleanup failed. A connection's name is the provider and
 the account, so a case puts the run's prefix in the account name. The harness lists the flows with
 `POST /flows/filter` and deletes each one. Deleting a flow also deletes its
-execution plan, its plan versions, and its schedules. The harness never
+execution plan, its plan versions, its schedules, and its runs. The harness never
 deletes a flow or a connection without the prefix. A session that is killed,
 such as a cancelled CI job, can leave its flows and connections in the
 sandbox. Delete those by hand by their `eval-` prefix.
@@ -102,7 +103,10 @@ missing and never deletes it.
 
 1. `SandboxLifecycle.setup` makes the run's directory, picks its prefix, and
    runs the case's `setup` function, which adds state to the sandbox through
-   the API, such as a flow with an active plan version and a schedule.
+   the API, such as a flow with an active plan version and a schedule. The
+   `failed_run_diagnosis` setup also starts a run and waits until it fails.
+   A `setup` function can return values for the case's prompt, such as the
+   run's ID; the runner replaces each `{key}` in the prompt with its value.
 2. The task, `scenario_task` in `runner.py`, makes a working directory with
    the skill in `.claude/skills/agentic-workflows/` and the case's files.
 3. It sends the case's prompt to the agent with `ClaudeSDKClient`. After
@@ -126,8 +130,11 @@ missing and never deletes it.
    When the judges are on, a `Judge` asks each of the case's judgements.
 6. `SandboxLifecycle.teardown` deletes the run's flows and MCP connections.
 
-The report also has two metrics for each run: `agent_cost_usd`, the cost the
-SDK reported, and `agent_turns`.
+The report also has four metrics for each run: `agent_cost_usd`, the cost
+the SDK reported, `agent_turns`, `agent_tool_calls`, the number of tool calls
+the agent made, and `prefect_tool_calls`, the number of those calls to the
+`prefect-agentic-workflows` server. For `failed_run_diagnosis`, the two
+counts are how many calls the agent needed to explain the failure.
 
 ## LLM judges
 
@@ -146,6 +153,7 @@ fails without a call to the judge.
 | `no_infrastructure` | The request, the user's reply that no tool is reachable, and the agent's messages after it. | The agent offers a version of the workflow that runs without Zendesk and Slack tools. |
 | `unsupported_loop` | The published plan. | The plan makes two review-and-revise passes, as separate nodes or as steps in one node's objective, with no open-ended loop. |
 | `support_triage` | The request and the published plan. | The outputs that end a run are named for outcomes, and the expectations restate only the user's requirements. |
+| `failed_run_diagnosis` | The agent's report. | The report names the failed `search_prefect` call as the cause, says the plan must change, and says a new run fails without a change. |
 
 The judges use `anthropic:claude-haiku-5-5` by default. Each judge call sends
 the rubric and the evidence once, a few thousand tokens at most, so the

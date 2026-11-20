@@ -183,7 +183,14 @@ async def test_talk_records_tool_calls_and_answers_from_the_rules():
 
     assert agent.prompts == ["Convert the skill.", "Yes."]
     assert transcript.tool_calls == [
-        ToolCall("validate_plan", {"plan": plan}, {"valid": True}, False, 1),
+        ToolCall(
+            "validate_plan",
+            {"plan": plan},
+            {"valid": True},
+            False,
+            1,
+            prefect_tool=True,
+        ),
         ToolCall("Read", {"file_path": "SKILL.md"}, "No such file", True, 1),
     ]
     assert transcript.turn_results == [

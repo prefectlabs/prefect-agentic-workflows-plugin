@@ -7,18 +7,20 @@ deletes has a name that starts with the session's prefix, and every MCP
 connection it deletes has the prefix in its name, so other flows and
 connections in the workspace are never changed.
 
-Deleting a flow also deletes its execution plan, its plan versions, and its
-schedules.
+Deleting a flow also deletes its execution plan, its plan versions, its
+schedules, and its runs.
 """
 
 import os
 import secrets
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
 
 from evals.record import FlowState
+from prefect_agentic_workflows_mcp.tools.runs import STOP_WAITING_STATUSES
 from prefect_agentic_workflows_mcp.workspace_api import is_cloud_workspace_api_url
 
 API_URL_VARIABLE = "PREFECT_API_URL"
@@ -37,6 +39,7 @@ SECRET_BLOCK_TYPE_SLUG = "secret"
 PLACEHOLDER_SECRET_VALUE = "Bearer eval-placeholder-token"
 PAGE_SIZE = 200
 TIMEOUT_SECONDS = 30.0
+RUN_POLL_SECONDS = 5.0
 
 
 class SandboxConfigError(Exception):
@@ -131,6 +134,44 @@ class SandboxApi:
                 "parameters": parameters,
             },
         ).json()
+
+    def prefect_provider_connection_id(self) -> str:
+        """Return the ID of the provider connection that runs Prefect's models.
+
+        Every workspace has this connection.
+        """
+        connections = self.send("GET", "/agentic/provider-connections").json()
+        return next(
+            connection["id"]
+            for connection in connections
+            if connection["provider"]["type"] == "prefect"
+        )
+
+    def start_run(self, flow_id: str) -> dict[str, Any]:
+        """Start a run of the flow's active plan version, with no parameters."""
+        return self.send(
+            "POST", f"/flows/{flow_id}/execution-plan/runs", json={"parameters": {}}
+        ).json()
+
+    def wait_for_run_end(
+        self, flow_run_id: str, timeout_seconds: float
+    ) -> dict[str, Any]:
+        """Read the run every few seconds until it ends, and return the last read.
+
+        A run ends as `completed`, `failed`, `cancelled`, or `blocked`. Raises
+        `TimeoutError` when the run hasn't ended after `timeout_seconds`.
+        """
+        deadline = time.monotonic() + timeout_seconds
+        while True:
+            run = self.send("GET", f"/flow_runs/{flow_run_id}/execution-plan").json()
+            if run["status"] in STOP_WAITING_STATUSES:
+                return run
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"Run {flow_run_id} is still {run['status']} after "
+                    f"{timeout_seconds:.0f} seconds."
+                )
+            time.sleep(RUN_POLL_SECONDS)
 
     def ensure_secret_block(self, name: str) -> None:
         """Create a Secret block with a placeholder value unless one has this name.
