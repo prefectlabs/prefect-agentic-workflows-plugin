@@ -56,9 +56,7 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         `phase` (`document_shape` or `semantic`), a `path` into the plan, and
         a `message`. Fix every error and validate again before publishing.
         The result can also have `warnings`, each with a `code`. A warning
-        leaves the plan valid but names a part that won't work as written,
-        such as `verification_not_enabled` for a node whose expectations
-        Prefect can't check yet.
+        leaves the plan valid but names a part that won't work as written.
         A plan that passes can still fail on publish. Publishing also checks
         that you can see every referenced Secret block, and it checks MCP
         server hostnames again, so a DNS change between the two calls can fail.
