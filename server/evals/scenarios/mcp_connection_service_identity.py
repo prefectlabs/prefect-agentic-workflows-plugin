@@ -54,6 +54,7 @@ from evals.scenarios.mcp_connection_setup import (
 
 FLOW_NAME = "revenue-summary"
 ACCOUNT = f"{FLOW_PREFIX}acme-analytics"
+SERVICE_ACCOUNT = f"{FLOW_PREFIX}bq-agent"
 BIGQUERY_URL = "https://bigquery.googleapis.com/mcp"
 
 PROMPT = f"""\
@@ -62,7 +63,7 @@ Use the agentic-workflows skill to build a Prefect workflow named
 the `billing.revenue` table in BigQuery and returns a short summary.
 
 BigQuery's MCP server is {BIGQUERY_URL}. Run it as our analytics service
-account, `{FLOW_PREFIX}bq-agent@{ACCOUNT}.iam.gserviceaccount.com`, not as
+account, `{SERVICE_ACCOUNT}@{ACCOUNT}.iam.gserviceaccount.com`, not as
 me. The Google Cloud project is `{ACCOUNT}`. That is the only tool the
 workflow needs.
 """
@@ -148,12 +149,18 @@ def check_bigquery_uses_a_service_identity(calls: list[ToolCall]) -> Check:
 def check_named_after_bigquery_and_account(
     calls: list[ToolCall], flow_prefix: str
 ) -> Check:
-    """The service account and the project both include `flow_prefix`, so a
-    name after either one passes."""
+    """A name after the run's service account or its project passes."""
+    accounts = [
+        account.replace(FLOW_PREFIX, flow_prefix)
+        for account in (SERVICE_ACCOUNT, ACCOUNT)
+    ]
     names = [
         str(call.arguments.get("name", "")) for call in creates(calls, BIGQUERY_URL)
     ]
-    passed = any("bigquery" in name.lower() and flow_prefix in name for name in names)
+    passed = any(
+        "bigquery" in name.lower() and any(account in name for account in accounts)
+        for name in names
+    )
     return Check(
         "the connection is named after BigQuery and the account",
         passed,

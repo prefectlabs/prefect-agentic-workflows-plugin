@@ -89,15 +89,15 @@ USER = [
     # A request to activate a version that replaces the active one. After
     # publishing, the agent can find a defect in its plan and save a fix
     # without activating it, because replacing an active version needs the
-    # user's approval. "activated" alone, as in "published and activated",
-    # doesn't match.
+    # user's approval. The question must ask for the promotion itself, so
+    # "published and activated" or "a test run after activation" doesn't match.
     Rule(
         label="promotion-approval",
         after_tool="publish_plan",
         pattern=(
-            r"\b(?:reply|want me to|should I|shall I|approve|go-ahead)\b[^.!?\n]*"
-            r"\b(?:promot\w*|activat(?:e|es|ing|ion))\b"
-            r"|\b(?:promot\w*|activat(?:e|es|ing|ion))\b[^.!?\n]*\?"
+            r"\b(?:want me to|should I|shall I)\s+(?:promote|activate)\b"
+            r"|\breply\b[^.!?\n]*\b(?:promote|activate)\b"
+            r"|(?:^|\n|[.!?]\s+)(?:promote|activate)\b[^.!?\n]*\?"
         ),
         reply="Yes, activate the fixed version.",
         max_uses=1,

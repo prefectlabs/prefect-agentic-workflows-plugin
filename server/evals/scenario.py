@@ -95,9 +95,12 @@ DECLINE_EXISTING_CONNECTIONS = Rule(
         rf"{_CONNECTION})[^?\n]*\?"
         rf"|{_EXISTING}[^?\n]*{_CONNECTION}[^?\n]*{_USE}[^?\n]*\?"
     ),
+    # The agent can also ask about a connection it created in this run, so the
+    # reply is right for both kinds of question.
     reply=(
-        "No, those connections belong to other people. Create new ones for the "
-        "accounts in my first message."
+        "Use only the connections you created in this conversation. Any other "
+        "connection belongs to someone else, so create new ones for the accounts "
+        "in my first message instead."
     ),
     max_uses=2,
 )

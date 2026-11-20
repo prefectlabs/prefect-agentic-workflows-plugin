@@ -108,6 +108,8 @@ def test_the_simulated_user_hears_a_request_for_the_key(message: str):
         (f"BigQuery ({ACCOUNT})", True),
         # From an eval run: the name matched the user's account in other runs.
         ("BigQuery (bq-agent)", False),
+        # Has the prefix, but names neither the service account nor the project.
+        (f"BigQuery ({PREFIX}workflow)", False),
     ],
 )
 def test_the_connection_name_includes_the_runs_prefix(name: str, passed: bool):

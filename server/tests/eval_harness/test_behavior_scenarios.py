@@ -563,6 +563,21 @@ def test_mcp_connection_setup_turns_down_existing_connections_after_a_create():
     assert rule.label == "existing-connections"
 
 
+def test_mcp_connection_setup_keeps_the_connections_it_created():
+    message = (
+        "I've already created the Linear connection. Should I use the existing "
+        "connection in the plan?"
+    )
+
+    rule = next_rule(mcp_connection_setup.USER, message, LINEAR_CREATED)
+
+    # The rule answers, and its reply tells the agent to keep its own.
+    assert rule is not None
+    assert rule.label == "existing-connections"
+    assert rule.reply is not None
+    assert "Use only the connections you created" in rule.reply
+
+
 def test_mcp_connection_setup_does_not_mistake_setup_talk_for_reuse():
     rule = next_rule(
         mcp_connection_setup.USER,
@@ -630,6 +645,7 @@ def test_release_notes_approves_a_promotion(message: str):
     [
         "The plan is published and activated. Do you want a test run?",
         "Should I start a test run now that it's activated?",
+        "Should I start a test run after activation?",
     ],
 )
 def test_release_notes_does_not_mistake_an_activated_version_for_a_promotion(
