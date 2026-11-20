@@ -2,7 +2,7 @@
 
 The suite is opt-in. It runs only when `PREFECT_AGENTIC_WORKFLOWS_INTEGRATION=1`
 is set and the active Prefect profile has a Cloud workspace URL and an API key.
-The account needs the `execution-plans` feature. Otherwise every test skips.
+The account needs agentic workflows turned on. Otherwise every test skips.
 
 Run it with:
 

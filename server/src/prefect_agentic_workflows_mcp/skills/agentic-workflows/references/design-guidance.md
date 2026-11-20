@@ -53,11 +53,15 @@ Use a `one_of` source only to put one value in one field whichever output produc
 
 ## Expectations
 
-In schema version 0.3, an AgentNode output can declare `expectations`: conditions that Prefect checks against the node's recorded tool calls and results before it releases the output to later nodes.
+An AgentNode output can declare `expectations`: conditions that Prefect checks against the node's inputs, its selected outputs, and its recorded tool calls and results. Prefect holds the output while it checks, and releases it to later nodes only when every expectation is met.
 
 - Add expectations only for a requirement the user states. Put them on the output that leads to the action the requirement guards, such as `reply_ready` before the step that sends the reply.
 - Write each `text` as a condition that the session's tool calls can show, such as "The reply links only to docs pages that a tool call in this session fetched." The agent's own statements aren't evidence.
-- Keep the output that the agent selects when it can't meet them, such as `reply_held`, free of expectations, so the run can still end there with the findings.
+- In the objective, tell the agent to read the state each expectation asks about with a tool call before it selects the output. When the session doesn't show whether an expectation is met, the node fails, and Prefect doesn't run it again.
+- Set `orchestration.on_failure.retry` on the node, with `max_attempts` of 3 unless the user asks for another number. When an output misses an expectation, Prefect runs the node again and tells the agent which expectation it missed and why. Without `retry`, the first miss fails the node.
+- A node whose output still misses an expectation on its last attempt fails, and the run fails. No output reaches later nodes, so don't design a branch that depends on a failed check.
+- Give the node an output with no expectations for when the agent itself finds it can't meet them, such as `reply_held`, and say in the objective when to select it. The run then ends there with the findings instead of failing.
+- To check an expectation, Prefect sends the node's inputs, outputs, and tool results to a model that Prefect chooses, not to the node's own model provider. Leave expectations off a node whose data must stay with its provider.
 - A key identifies its expectation across plan versions. Keep the key when only the text changes.
 
 ```json
@@ -67,6 +71,16 @@ In schema version 0.3, an AgentNode output can declare `expectations`: condition
     "cites_fetched_docs": {"text": "The reply links only to docs pages that a tool call in this session fetched."},
     "answers_the_question": {"text": "The reply answers the question in the issue, as the issue text read in this session shows."}
   }
+}
+```
+
+The node that declares the output also sets the retry:
+
+```json
+"orchestration": {
+  "output_selection": "exactly_one",
+  "evaluate_when": "all_required_inputs_produced",
+  "on_failure": {"retry": {"max_attempts": 3}}
 }
 ```
 
@@ -82,17 +96,16 @@ Last verified: 2026-10-27, against the Prefect Cloud API. When an error from `va
 - Tools come only from remote MCP servers over Streamable HTTP, not stdio and not `/sse` URLs. Reference a server through its MCP connection (`"type": "connection"`), as [mcp-connections.md](mcp-connections.md) shows. An inline server (`"type": "http"`) is for an account without MCP connections.
 - An inline server URL has no credentials, query string, fragment, or `;` parameters. A sensitive header or query value, such as `Authorization` or any name containing `token`, `secret`, `password`, or `apikey`, must be `{"$ref": {"block_document_id": "<id>"}}`.
 - No cycles and no mapping: a loop becomes a fixed number of steps or a human checkpoint, and a list is handled inside one node or by a fixed fan-out.
-- Node `orchestration.on_failure.retry` and `orchestration.limits` validate, but the runtime doesn't apply them yet, so a failed agent attempt isn't retried. Use plan-level `max_active_nodes` and `max_active_child_flow_runs` to limit concurrency.
+- Node `orchestration.on_failure.retry` runs an agent node again only after its output misses an expectation. An attempt that fails for another reason isn't retried. Node `orchestration.limits` validates, but the runtime doesn't apply it. Use plan-level `max_active_nodes` and `max_active_child_flow_runs` to limit concurrency.
 - Timer nodes and `evaluate_when` set to `manual` can't be activated. A root node can't use `any_upstream_terminal`.
 - Human-input and Deployment nodes use `output_selection` `exactly_one`. Human-input nodes can't retry.
 - A Deployment node passes on only the child run's ID and state. The user who publishes and runs the plan needs permission to run the deployment, which seeing it doesn't prove, so name this in the summary.
 - A plan that validates can still fail to publish, for example when an MCP server's hostname doesn't resolve or you can't see a referenced Secret block or MCP connection.
 - Another user can activate a different version between your check and your activation or run.
-- Expectations validate and publish, but Prefect doesn't check them yet. A run of a plan with expectations doesn't start while checking is off for the account; `validate_plan` and `publish_plan` warn `verification_not_enabled`.
 
 ## Examples
 
-Both use schema version 0.2, which adds plan `outputs`. Replace all-zero placeholder IDs before publishing.
+Both use schema version 0.3. Replace all-zero placeholder IDs before publishing.
 
 - [examples/customer-feedback-reply.plan.json](examples/customer-feedback-reply.plan.json): an agent drafts a reply, a person approves or rejects it with notes, and a rejection gets one revision. No MCP server, Secret block, or deployment. Start here for approvals and branches.
 - [examples/single-agent-with-mcp.plan.json](examples/single-agent-with-mcp.plan.json): one agent node uses an inline remote MCP server whose `Authorization` header references a Secret block holding `Bearer <token>`. Start here for tools, and replace the inline server with a connection reference when the workspace has MCP connections.

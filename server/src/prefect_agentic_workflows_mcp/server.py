@@ -26,8 +26,8 @@ With OAuth, the tools use a workspace in the user's consent grant. Call
 get_workspace first. If several workspaces are available, ask which to use
 and pass its workspace_id to each tool. With OAuth disabled, the tools use
 paired HTTP credentials or the user's active Prefect profile.
-Execution plans are only available in Prefect Cloud, and the account needs the
-`execution-plans` feature. When a tool returns instructions for fixing
+Execution plans are only available in Prefect Cloud, and the account needs
+agentic workflows turned on. When a tool returns instructions for fixing
 authorization or the workspace, relay them to the user.
 
 Set `model` on every agent node. Every workspace has a `prefect` provider

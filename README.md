@@ -45,9 +45,8 @@ version can post the reply for you.
 
 ### What you need
 
-- A Prefect Cloud workspace. Ask your Prefect contact to turn on the workflow
-  feature, `execution-plans`, for your account, and to set up storage for the
-  workspace.
+- A Prefect Cloud workspace. Ask your Prefect contact to turn on agentic
+  workflows for your account, and to set up storage for the workspace.
 - An AI agent app that supports MCP servers and skills. The commands below are
   for [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) and
@@ -183,8 +182,8 @@ replaces the version that runs now.
 
 - A Prefect Cloud workspace. Execution plans are not available in a
   self-hosted Prefect server.
-- The `execution-plans` feature turned on for your Prefect Cloud account. Ask
-  your Prefect contact to turn it on.
+- Agentic workflows turned on for your Prefect Cloud account. Ask your Prefect
+  contact to turn them on.
 - An object storage bucket configured for the workspace. Prefect Cloud stores
   plan versions in it. Ask your Prefect contact to configure one.
 - [uv](https://docs.astral.sh/uv/getting-started/installation/), which
@@ -250,7 +249,7 @@ To use a Prefect profile other than the active one, add
 The server starts even when the profile is wrong. The first tool call checks
 the profile and the workspace and returns an error that says what to fix, for
 example a profile that points at a self-hosted server or an account without
-the `execution-plans` feature.
+agentic workflows.
 
 #### Update the server
 
@@ -372,6 +371,7 @@ your agent can ask before a tool writes.
 | `publish_plan`, `get_plan`, `list_plan_versions`, `activate_plan_version` | Publish a plan as a new version, read versions, and activate one, for example to roll back |
 | `start_run`, `get_run`, `get_run_output`, `submit_human_input` | Start a run of the active plan, watch its status, read outputs, and answer human-input forms |
 | `list_runs`, `get_run_activity`, `get_activity_record` | List a flow's recent runs with what each produced, and read the model calls and tool calls of a run's agent nodes to explain a failure |
+| `get_run_checks` | Read how Prefect Cloud checked the expectations on a run's agent node outputs, with each check's verdict and reason |
 | `create_schedule`, `list_schedules`, `get_schedule`, `update_schedule`, `delete_schedule` | Manage a flow's plan schedules |
 | `list_secret_blocks` | List Secret block names and IDs, never their values |
 | `list_deployments` | List deployment names and IDs, for Deployment nodes |
