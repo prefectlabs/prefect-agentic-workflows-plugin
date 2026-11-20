@@ -4,10 +4,14 @@ The user wants a daily digest of billing issues from Linear, with each
 customer looked up in Stripe. Linear's MCP server signs in with OAuth. The
 user wants Stripe to use a restricted API key, although its server also
 offers OAuth. The user leaves both setup pages for later, so the version
-publishes with warnings. The user turns down the test run.
+publishes with warnings, and asks for the version to be published now if the
+agent waits for the sign-ins. The user turns down the test run.
 
 The account names in the prompt include the run's prefix, so each run's
-connection names are unique in the sandbox, and teardown deletes them.
+connection names are unique in the sandbox, and teardown deletes them. Other
+runs share the sandbox, so the agent can list their Linear and Stripe
+connections. When it asks whether to use them, the user says to create new
+ones, because another run's teardown can delete them during this run.
 
 Expected results:
 
@@ -32,6 +36,7 @@ from evals import assertions, graph
 from evals.assertions import Check
 from evals.record import ToolCall, created_connection
 from evals.scenario import (
+    DECLINE_EXISTING_CONNECTIONS,
     DECLINE_TEST_RUN,
     FLOW_PREFIX,
     INFRASTRUCTURE_QUESTION,
@@ -74,6 +79,7 @@ USER = [
         reply="Here it is: rk_test_placeholder",
         max_uses=1,
     ),
+    DECLINE_EXISTING_CONNECTIONS,
     Rule(
         label="reachable-systems",
         before_tool="create_mcp_connection",
@@ -93,6 +99,17 @@ USER = [
         before_tool="validate_plan",
         reply=f"{SETUP_LATER} Go on.",
         max_uses=2,
+    ),
+    # The agent may wait to publish until the connections are signed in, so it
+    # can limit the nodes to some of each server's tools. The user wants the
+    # version now.
+    Rule(
+        label="publish-now",
+        after_tool="validate_plan",
+        before_tool="publish_plan",
+        pattern=r"publish",
+        reply="Publish it now. I'll narrow the tools after I finish the setup pages.",
+        max_uses=1,
     ),
     Rule(label="go-ahead", pattern=r"\?", reply="The defaults are fine.", max_uses=3),
 ]

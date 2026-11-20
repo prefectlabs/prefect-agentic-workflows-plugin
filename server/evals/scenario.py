@@ -77,6 +77,37 @@ DECLINE_TEST_RUN = Rule(
     max_uses=1,
 )
 
+# Every eval run shares the sandbox, so the agent can list the connections that
+# other runs created for the same server. Another run's teardown can delete
+# them during this run, so the simulated user turns them down. The agent can
+# ask once for each server, also after it created another server's connection,
+# so the rule applies until the plan is validated. A question matches when it
+# asks to "use" something, and it or the sentence before it names a
+# connection and says the connection is already there ("existing", "found",
+# "matching"). A dot followed by a non-space, as in
+# `bq-agent@acme.iam.gserviceaccount.com`, doesn't end a sentence.
+_SENTENCE = r"(?:[^.!?\n]|[.!](?=\S))*"
+# The sentence before the question can end with a space or a line break.
+_TWO_SENTENCES = rf"(?:{_SENTENCE}[.!](?: |\n))?{_SENTENCE}"
+DECLINE_EXISTING_CONNECTIONS = Rule(
+    label="existing-connections",
+    before_tool="validate_plan",
+    pattern=(
+        r"(?:^|(?<=[.!?] )|(?<=\n))"
+        rf"(?={_TWO_SENTENCES}\b(?:existing|already|listed|found|matching)\b)"
+        rf"(?={_TWO_SENTENCES}\bconnections?\b)"
+        rf"{_TWO_SENTENCES}\b(?:use|reuse|re-use)\b{_SENTENCE}\?"
+    ),
+    # The agent can also ask about a connection it created in this run, so the
+    # reply is right for both kinds of question.
+    reply=(
+        "Use only the connections you created in this conversation. Any other "
+        "connection belongs to someone else, so create new ones for the accounts "
+        "in my first message instead."
+    ),
+    max_uses=2,
+)
+
 
 @dataclass
 class Outcome:

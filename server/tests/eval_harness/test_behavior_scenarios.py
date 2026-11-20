@@ -528,6 +528,151 @@ def test_mcp_connection_setup_hears_a_request_for_the_key(message: str):
     assert rule.label == "secret-asked"
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        # From an eval run where another run's connections were listed.
+        "**Question about the tools:** Do you want this workflow to use the Linear "
+        "and Stripe connections listed above, or should I create new ones for "
+        "`eval-ebf8b1-16-acme`?",
+        "Should I reuse the existing Linear MCP connection?",
+        "The workspace already has connections for both servers. Use them?",
+        "The Linear connection is already configured. Should I use it?",
+        "I found a matching Linear connection. Should I use it?",
+        "I found a matching Linear connection.\nShould I use it?",
+    ],
+)
+def test_mcp_connection_setup_turns_down_existing_connections(message: str):
+    rule = next_rule(mcp_connection_setup.USER, message, Transcript())
+
+    assert rule is not None
+    assert rule.label == "existing-connections"
+
+
+LINEAR_CREATED = Transcript(
+    tool_calls=[ToolCall("create_mcp_connection", {}, {"setup": "declined"}, turn=2)]
+)
+
+
+def test_mcp_connection_setup_turns_down_existing_connections_after_a_create():
+    rule = next_rule(
+        mcp_connection_setup.USER,
+        "The Linear connection is created. Should I reuse the listed Stripe "
+        "connection?",
+        LINEAR_CREATED,
+    )
+
+    assert rule is not None
+    assert rule.label == "existing-connections"
+
+
+def test_mcp_connection_setup_keeps_the_connections_it_created():
+    message = (
+        "I've already created the Linear connection. Should I use the existing "
+        "connection in the plan?"
+    )
+
+    rule = next_rule(mcp_connection_setup.USER, message, LINEAR_CREATED)
+
+    # The rule answers, and its reply tells the agent to keep its own.
+    assert rule is not None
+    assert rule.label == "existing-connections"
+    assert rule.reply is not None
+    assert "Use only the connections you created" in rule.reply
+
+
+def test_mcp_connection_setup_hears_the_design_question_after_a_reuse_statement():
+    rule = next_rule(
+        mcp_connection_setup.USER,
+        "I found an existing Linear connection, but I will not use it. Does this "
+        "design look right?",
+        Transcript(),
+    )
+
+    assert rule is not None
+    assert rule.label == "design-approval"
+
+
+def test_mcp_connection_setup_does_not_mistake_setup_talk_for_reuse():
+    rule = next_rule(
+        mcp_connection_setup.USER,
+        "The Linear connection already exists in Prefect Cloud. Will you finish "
+        "its setup page later?",
+        LINEAR_CREATED,
+    )
+
+    assert rule is not None
+    assert rule.label == "setup-later"
+
+
+def test_mcp_connection_setup_asks_for_the_publish_when_the_agent_waits():
+    validated = Transcript(
+        tool_calls=[ToolCall("validate_plan", {}, {"valid": True}, turn=2)]
+    )
+
+    # From an eval run where the agent stopped before publishing.
+    rule = next_rule(
+        mcp_connection_setup.USER,
+        "Once both connections are signed in, I'll read their tool lists and limit "
+        "the agent to read-only tools. Then I'll validate and publish the plan.",
+        validated,
+    )
+
+    assert rule is not None
+    assert rule.label == "publish-now"
+
+
+def test_mcp_connection_setup_answers_the_infrastructure_check():
+    rule = next_rule(
+        mcp_connection_setup.USER,
+        "For each tool this workflow needs, do you have its remote MCP server?",
+        Transcript(),
+    )
+
+    assert rule is not None
+    assert rule.label == "reachable-systems"
+
+
+PUBLISHED = Transcript(
+    tool_calls=[ToolCall("publish_plan", {}, {"published": True}, turn=3)]
+)
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        # From an eval run where the agent saved a fix after publishing.
+        'The fixed version `06b0097e` is saved but not active. Reply "promote" '
+        "and I'll activate it.",
+        "Do you want me to activate the fixed version?",
+        "Would you like me to activate the fixed version?",
+        "Activate version 06b0097e to replace the active one?",
+    ],
+)
+def test_release_notes_approves_a_promotion(message: str):
+    rule = next_rule(release_notes.USER, message, PUBLISHED)
+
+    assert rule is not None
+    assert rule.label == "promotion-approval"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "The plan is published and activated. Do you want a test run?",
+        "Should I start a test run now that it's activated?",
+        "Should I start a test run after activation?",
+    ],
+)
+def test_release_notes_does_not_mistake_an_activated_version_for_a_promotion(
+    message: str,
+):
+    rule = next_rule(release_notes.USER, message, PUBLISHED)
+
+    assert rule is not None
+    assert rule.label == "decline-test-run"
+
+
 @pytest.mark.parametrize("broken", [False, True], ids=["expected", "broken"])
 @pytest.mark.parametrize("scenario", SCENARIOS)
 def test_scenario_checks(scenario: str, broken: bool):

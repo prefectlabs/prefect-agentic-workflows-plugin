@@ -7,6 +7,14 @@ user's instruction decides the method. The user leaves the setup page, where
 the key file is pasted, for later, and asks for the version to be published
 now if the agent waits for the key. The user turns down the test run.
 
+The service account and the project both include the run's prefix, so a
+connection named after either one is unique in the sandbox, and teardown
+deletes it. A name the agent takes from a shared part, such as `bq-agent`,
+would match the user's account in other runs, which would then use that
+connection. Other runs share the sandbox, so the agent can list their BigQuery
+connections; when it asks whether to use one, the user says to create a new
+one.
+
 Expected results:
 
 - the agent calls `discover_mcp_server` for the server before it creates the
@@ -27,6 +35,7 @@ from evals import assertions
 from evals.assertions import Check
 from evals.record import ToolCall
 from evals.scenario import (
+    DECLINE_EXISTING_CONNECTIONS,
     DECLINE_TEST_RUN,
     FLOW_PREFIX,
     INFRASTRUCTURE_QUESTION,
@@ -45,6 +54,7 @@ from evals.scenarios.mcp_connection_setup import (
 
 FLOW_NAME = "revenue-summary"
 ACCOUNT = f"{FLOW_PREFIX}acme-analytics"
+SERVICE_ACCOUNT = f"{FLOW_PREFIX}bq-agent"
 BIGQUERY_URL = "https://bigquery.googleapis.com/mcp"
 
 PROMPT = f"""\
@@ -53,8 +63,9 @@ Use the agentic-workflows skill to build a Prefect workflow named
 the `billing.revenue` table in BigQuery and returns a short summary.
 
 BigQuery's MCP server is {BIGQUERY_URL}. Run it as our analytics service
-account, `bq-agent@{ACCOUNT}.iam.gserviceaccount.com`, not as me. The Google
-Cloud project is `{ACCOUNT}`. That is the only tool the workflow needs.
+account, `{SERVICE_ACCOUNT}@{ACCOUNT}.iam.gserviceaccount.com`, not as
+me. The Google Cloud project is `{ACCOUNT}`. That is the only tool the
+workflow needs.
 """
 
 SETUP_LATER = "I'll paste the key on the setup page later."
@@ -74,6 +85,7 @@ USER = [
         reply='Here it is: {"type": "service_account", "private_key": "placeholder"}',
         max_uses=1,
     ),
+    DECLINE_EXISTING_CONNECTIONS,
     Rule(
         label="reachable-systems",
         before_tool="create_mcp_connection",
@@ -135,12 +147,20 @@ def check_bigquery_uses_a_service_identity(calls: list[ToolCall]) -> Check:
 
 
 def check_named_after_bigquery_and_account(
-    calls: list[ToolCall], account: str
+    calls: list[ToolCall], flow_prefix: str
 ) -> Check:
+    """A name after the run's service account or its project passes."""
+    accounts = [
+        account.replace(FLOW_PREFIX, flow_prefix)
+        for account in (SERVICE_ACCOUNT, ACCOUNT)
+    ]
     names = [
         str(call.arguments.get("name", "")) for call in creates(calls, BIGQUERY_URL)
     ]
-    passed = any("bigquery" in name.lower() and account in name for name in names)
+    passed = any(
+        "bigquery" in name.lower() and any(account in name for account in accounts)
+        for name in names
+    )
     return Check(
         "the connection is named after BigQuery and the account",
         passed,
@@ -150,11 +170,10 @@ def check_named_after_bigquery_and_account(
 
 def checks(outcome: Outcome) -> list[Check]:
     calls = outcome.transcript.tool_calls
-    account = f"{outcome.flow_prefix}acme-analytics"
     return [
         check_discovered_before_create(calls, BIGQUERY_URL),
         check_bigquery_uses_a_service_identity(calls),
-        check_named_after_bigquery_and_account(calls, account),
+        check_named_after_bigquery_and_account(calls, outcome.flow_prefix),
         Check(
             "the agent never asks for the key file",
             not outcome.transcript.replies_labeled("secret-asked"),
