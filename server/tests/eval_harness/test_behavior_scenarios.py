@@ -539,6 +539,7 @@ def test_mcp_connection_setup_hears_a_request_for_the_key(message: str):
         "The workspace already has connections for both servers. Use them?",
         "The Linear connection is already configured. Should I use it?",
         "I found a matching Linear connection. Should I use it?",
+        "I found a matching Linear connection.\nShould I use it?",
     ],
 )
 def test_mcp_connection_setup_turns_down_existing_connections(message: str):

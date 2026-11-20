@@ -87,7 +87,8 @@ DECLINE_TEST_RUN = Rule(
 # "matching"). A dot followed by a non-space, as in
 # `bq-agent@acme.iam.gserviceaccount.com`, doesn't end a sentence.
 _SENTENCE = r"(?:[^.!?\n]|[.!](?=\S))*"
-_TWO_SENTENCES = rf"(?:{_SENTENCE}[.!] )?{_SENTENCE}"
+# The sentence before the question can end with a space or a line break.
+_TWO_SENTENCES = rf"(?:{_SENTENCE}[.!](?: |\n))?{_SENTENCE}"
 DECLINE_EXISTING_CONNECTIONS = Rule(
     label="existing-connections",
     before_tool="validate_plan",
@@ -95,7 +96,7 @@ DECLINE_EXISTING_CONNECTIONS = Rule(
         r"(?:^|(?<=[.!?] )|(?<=\n))"
         rf"(?={_TWO_SENTENCES}\b(?:existing|already|listed|found|matching)\b)"
         rf"(?={_TWO_SENTENCES}\bconnections?\b)"
-        rf"(?:{_SENTENCE}[.!] )?{_SENTENCE}\b(?:use|reuse|re-use)\b{_SENTENCE}\?"
+        rf"{_TWO_SENTENCES}\b(?:use|reuse|re-use)\b{_SENTENCE}\?"
     ),
     # The agent can also ask about a connection it created in this run, so the
     # reply is right for both kinds of question.
