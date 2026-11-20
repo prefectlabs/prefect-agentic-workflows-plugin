@@ -133,8 +133,9 @@ async def evaluate(args: argparse.Namespace, credentials: Credentials) -> int:
     finally:
         # Each run deletes its own flows and MCP connections. This also deletes
         # those of a run whose cleanup failed, or that was cancelled before its
-        # teardown.
-        session.cleanup_errors.extend(clean_up_prefix(sandbox, flow_prefix))
+        # teardown. Each run's teardown already deleted the connections its
+        # agent created without the prefix.
+        session.cleanup_errors.extend(clean_up_prefix(sandbox, flow_prefix, []))
         sandbox.close()
 
     rendered = report.render(width=REPORT_WIDTH)

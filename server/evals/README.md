@@ -83,15 +83,20 @@ prefix.
 
 `SandboxLifecycle` in `lifecycle.py` is the dataset's `CaseLifecycle`. Its
 `setup` picks the run's prefix and directory and runs the case's `setup`
-function. Its `teardown` deletes the flows with the run's prefix, and the
-MCP connections with the prefix in their names. Pydantic Evals calls
-`teardown` also when the task or `setup` raised. After the last run, the
-command deletes every flow and MCP connection with the session's prefix, to
-catch a run whose cleanup failed. A connection's name is the provider and
-the account, so a case puts the run's prefix in the account name. The harness lists the flows with
-`POST /flows/filter` and deletes each one. Deleting a flow also deletes its
-execution plan, its plan versions, its schedules, and its runs. The harness never
-deletes a flow or a connection without the prefix. A session that is killed,
+function. Its `teardown` deletes the flows with the run's prefix, the MCP
+connections with the prefix in their names, and each MCP connection the
+agent created in the run, by the ID in its `create_mcp_connection` result.
+The agent names a connection, so a name can leave out the prefix, and a
+connection left in the sandbox can be reused by later runs. Pydantic Evals
+calls `teardown` also when the task or `setup` raised. After the last run,
+the command deletes every flow and MCP connection with the session's
+prefix, to catch a run whose cleanup failed. A connection's name is the
+provider and the account, so a case puts the run's prefix in the account
+name. The harness lists the flows with `POST /flows/filter` and deletes
+each one. Deleting a flow also deletes its execution plan, its plan
+versions, its schedules, and its runs. The harness never deletes a flow
+without the prefix, or a connection without the prefix that the agent
+didn't create in the session. A session that is killed,
 such as a cancelled CI job, can leave its flows and connections in the
 sandbox. Delete those by hand by their `eval-` prefix.
 

@@ -24,6 +24,7 @@ class RecordingSandbox(SandboxApi):
         self.created: list[str] = []
         self.deleted_prefixes: list[str] = []
         self.deleted_connection_prefixes: list[str] = []
+        self.deleted_connection_ids: list[str] = []
         self.fail_deletes = fail_deletes
 
     def create_flow(self, name: str) -> dict[str, Any]:
@@ -36,8 +37,11 @@ class RecordingSandbox(SandboxApi):
             raise RuntimeError("HTTP 500")
         return []
 
-    def delete_mcp_connections_with_prefix(self, prefix: str) -> list[str]:
+    def delete_mcp_connections(
+        self, prefix: str, connection_ids: list[str]
+    ) -> list[str]:
         self.deleted_connection_prefixes.append(prefix)
+        self.deleted_connection_ids.extend(connection_ids)
         return []
 
 
@@ -139,6 +143,27 @@ async def test_cleanup_runs_when_the_task_raises(tmp_path: Path):
     assert [failure.name for failure in report.failures] == ["only"]
     assert sandbox.created == [f"{SESSION_PREFIX}1-digest"]
     assert sandbox.deleted_prefixes == [f"{SESSION_PREFIX}1-"]
+
+
+async def test_cleanup_deletes_the_connections_the_agent_created(tmp_path: Path):
+    sandbox = RecordingSandbox()
+
+    async def crashing_task(inputs: ScenarioInputs) -> Outcome:
+        # The agent left the prefix out of the name, then the run raised.
+        current_run().transcript.tool_calls.append(
+            ToolCall(
+                "create_mcp_connection",
+                {"name": "BigQuery (bq-agent)"},
+                result={"setup": "declined", "connection": {"id": "connection-1"}},
+            )
+        )
+        raise RuntimeError("the agent crashed")
+
+    await dataset("only").evaluate(
+        crashing_task, lifecycle=session(tmp_path, sandbox).lifecycle, progress=False
+    )
+
+    assert sandbox.deleted_connection_ids == ["connection-1"]
 
 
 async def test_cleanup_runs_when_seeding_raises(tmp_path: Path):

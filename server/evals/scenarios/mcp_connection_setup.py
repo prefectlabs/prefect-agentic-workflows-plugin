@@ -34,7 +34,7 @@ from typing import Any
 
 from evals import assertions, graph
 from evals.assertions import Check
-from evals.record import ToolCall
+from evals.record import ToolCall, created_connection
 from evals.scenario import (
     DECLINE_EXISTING_CONNECTIONS,
     DECLINE_TEST_RUN,
@@ -138,14 +138,6 @@ def headers(call: ToolCall) -> list[dict[str, Any]]:
     if not isinstance(raw, list):
         return []
     return [header for header in raw if isinstance(header, dict)]
-
-
-def created_connection(call: ToolCall) -> dict[str, Any] | None:
-    """Return the connection a `create_mcp_connection` call saved, or None."""
-    if call.is_error or not isinstance(call.result, dict):
-        return None
-    connection = call.result.get("connection")
-    return connection if isinstance(connection, dict) else None
 
 
 def check_discovered_before_create(calls: list[ToolCall], url: str) -> Check:
@@ -265,13 +257,7 @@ def check_plan_references_connections(
         for server in servers
         if server.get("type") == "connection"
     }
-    created = {
-        connection["id"]
-        for call in assertions.calls_to(
-            outcome.transcript.tool_calls, "create_mcp_connection"
-        )
-        if (connection := created_connection(call)) is not None
-    }
+    created = set(outcome.transcript.created_connection_ids())
     inline = [
         server.get("url")
         for server in servers
