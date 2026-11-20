@@ -95,7 +95,7 @@ USER = [
         label="promotion-approval",
         after_tool="publish_plan",
         pattern=(
-            r"\b(?:want me to|should I|shall I)\s+(?:promote|activate)\b"
+            r"\b(?:me to|should I|shall I|can I|may I)\s+(?:promote|activate)\b"
             r"|\breply\b[^.!?\n]*\b(?:promote|activate)\b"
             r"|(?:^|\n|[.!?]\s+)(?:promote|activate)\b[^.!?\n]*\?"
         ),

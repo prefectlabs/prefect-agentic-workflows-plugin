@@ -538,6 +538,7 @@ def test_mcp_connection_setup_hears_a_request_for_the_key(message: str):
         "Should I reuse the existing Linear MCP connection?",
         "The workspace already has connections for both servers. Use them?",
         "The Linear connection is already configured. Should I use it?",
+        "I found a matching Linear connection. Should I use it?",
     ],
 )
 def test_mcp_connection_setup_turns_down_existing_connections(message: str):
@@ -631,6 +632,7 @@ PUBLISHED = Transcript(
         'The fixed version `06b0097e` is saved but not active. Reply "promote" '
         "and I'll activate it.",
         "Do you want me to activate the fixed version?",
+        "Would you like me to activate the fixed version?",
         "Activate version 06b0097e to replace the active one?",
     ],
 )
