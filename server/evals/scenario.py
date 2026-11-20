@@ -82,17 +82,20 @@ DECLINE_TEST_RUN = Rule(
 # them during this run, so the simulated user turns them down. The agent can
 # ask once for each server, also after it created another server's connection,
 # so the rule applies until the plan is validated. A question matches when it
-# has "use", a word for a connection that is already there ("existing",
-# "found", "matching"), and "connection", in any order, before its "?". It can
-# span sentences on one line, because account names such as
-# `bq-agent@acme.iam.gserviceaccount.com` contain dots.
+# asks to "use" something, and it or the sentence before it names a
+# connection and says the connection is already there ("existing", "found",
+# "matching"). A dot followed by a non-space, as in
+# `bq-agent@acme.iam.gserviceaccount.com`, doesn't end a sentence.
+_SENTENCE = r"(?:[^.!?\n]|[.!](?=\S))*"
+_TWO_SENTENCES = rf"(?:{_SENTENCE}[.!] )?{_SENTENCE}"
 DECLINE_EXISTING_CONNECTIONS = Rule(
     label="existing-connections",
     before_tool="validate_plan",
     pattern=(
-        r"(?=[^?\n]*\b(?:use|reuse|re-use)\b)"
-        r"(?=[^?\n]*\b(?:existing|already|listed|found|matching)\b)"
-        r"[^?\n]*\bconnections?\b[^?\n]*\?"
+        r"(?:^|(?<=[.!?] )|(?<=\n))"
+        rf"(?={_TWO_SENTENCES}\b(?:existing|already|listed|found|matching)\b)"
+        rf"(?={_TWO_SENTENCES}\bconnections?\b)"
+        rf"(?:{_SENTENCE}[.!] )?{_SENTENCE}\b(?:use|reuse|re-use)\b{_SENTENCE}\?"
     ),
     # The agent can also ask about a connection it created in this run, so the
     # reply is right for both kinds of question.

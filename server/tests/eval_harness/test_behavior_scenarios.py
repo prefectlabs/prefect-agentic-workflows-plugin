@@ -580,6 +580,18 @@ def test_mcp_connection_setup_keeps_the_connections_it_created():
     assert "Use only the connections you created" in rule.reply
 
 
+def test_mcp_connection_setup_hears_the_design_question_after_a_reuse_statement():
+    rule = next_rule(
+        mcp_connection_setup.USER,
+        "I found an existing Linear connection, but I will not use it. Does this "
+        "design look right?",
+        Transcript(),
+    )
+
+    assert rule is not None
+    assert rule.label == "design-approval"
+
+
 def test_mcp_connection_setup_does_not_mistake_setup_talk_for_reuse():
     rule = next_rule(
         mcp_connection_setup.USER,
