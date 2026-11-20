@@ -349,10 +349,10 @@ def agent_node(*outputs: str) -> dict[str, Any]:
     }
 
 
-def support_plan(version: str = "0.2") -> dict[str, Any]:
+def support_plan() -> dict[str, Any]:
     plan: dict[str, Any] = {
         "kind": "ExecutionPlan",
-        "schema_version": version,
+        "schema_version": "0.3",
         "nodes": {
             "classify": agent_node("question", "suspected_bug", "blocked"),
             "draft_reply": agent_node("reply_ready", "reply_held"),
@@ -369,24 +369,24 @@ def support_plan(version: str = "0.2") -> dict[str, Any]:
         ],
         "outputs": {},
     }
-    if version == "0.3":
-        plan["nodes"]["draft_reply"]["outputs"]["reply_ready"]["expectations"] = {
-            "no_promises": {"text": "The reply makes no promise about dates."}
-        }
+    draft_reply = plan["nodes"]["draft_reply"]
+    draft_reply["outputs"]["reply_ready"]["expectations"] = {
+        "no_promises": {"text": "The reply makes no promise about dates."}
+    }
+    draft_reply["orchestration"]["on_failure"] = {"retry": {"max_attempts": 3}}
     return plan
 
 
-def support_outcome(plan: dict[str, Any], *, versions: list[str]) -> Outcome:
+def support_outcome(plan: dict[str, Any]) -> Outcome:
     flow = support_triage.FLOW_NAME
-    schema = ToolCall("get_schema", {}, {"supported_schema_versions": versions})
-    calls = [schema, *published(plan, flow, turn=2)]
+    calls = published(plan, flow, turn=2)
     transcript = Transcript(tool_calls=calls, replies=[Reply(1, "design-approval", "")])
     return outcome(transcript, plan, [saved_flow(flow, plan)])
 
 
 def support(broken: bool) -> Outcome:
     plan = support_plan()
-    found = support_outcome(plan, versions=["0.2"])
+    found = support_outcome(plan)
     if broken:
         plan["nodes"]["report_bug"]["outputs"]["bug_reported"]["schema"] = {
             "type": "object"
@@ -405,33 +405,20 @@ def support(broken: bool) -> Outcome:
                 }
             }
         }
-        plan["nodes"]["draft_reply"]["outputs"]["reply_ready"]["expectations"] = {
-            "no_promises": {"text": "The reply makes no promise about dates."}
-        }
+        del plan["nodes"]["draft_reply"]["orchestration"]["on_failure"]
         found.flows.clear()
     return found
 
 
-@pytest.mark.parametrize(
-    ("plan_version", "versions", "failed"),
-    [
-        ("0.3", ["0.2", "0.3"], []),
-        (
-            "0.2",
-            ["0.2", "0.3"],
-            ["expectations follow the schema versions get_schema lists"],
-        ),
-    ],
-    ids=["expectations-on-0.3", "no-expectations-on-0.3"],
-)
-def test_support_triage_expects_expectations_when_get_schema_lists_0_3(
-    plan_version: str, versions: list[str], failed: list[str]
-):
-    found = support_outcome(support_plan(plan_version), versions=versions)
+def test_support_triage_fails_a_plan_without_expectations():
+    plan = support_plan()
+    del plan["nodes"]["draft_reply"]["outputs"]["reply_ready"]["expectations"]
 
-    checks = support_triage.checks(found)
+    checks = support_triage.checks(support_outcome(plan))
 
-    assert [check.name for check in checks if not check.passed] == failed
+    assert [check.name for check in checks if not check.passed] == [
+        "an agent node output has expectations"
+    ]
 
 
 SCENARIOS = {
@@ -508,7 +495,7 @@ SCENARIOS = {
         [
             "every output that ends a run requires a summary",
             "every one_of field reads one node that selects at most one output",
-            "expectations follow the schema versions get_schema lists",
+            "every node with expectations sets on_failure.retry",
             "the flow 'support-triage' has a saved plan version",
         ],
     ),
