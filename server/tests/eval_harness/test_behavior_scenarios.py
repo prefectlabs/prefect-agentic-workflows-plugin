@@ -546,6 +546,35 @@ def test_mcp_connection_setup_turns_down_existing_connections(message: str):
     assert rule.label == "existing-connections"
 
 
+LINEAR_CREATED = Transcript(
+    tool_calls=[ToolCall("create_mcp_connection", {}, {"setup": "declined"}, turn=2)]
+)
+
+
+def test_mcp_connection_setup_turns_down_existing_connections_after_a_create():
+    rule = next_rule(
+        mcp_connection_setup.USER,
+        "The Linear connection is created. Should I reuse the listed Stripe "
+        "connection?",
+        LINEAR_CREATED,
+    )
+
+    assert rule is not None
+    assert rule.label == "existing-connections"
+
+
+def test_mcp_connection_setup_does_not_mistake_setup_talk_for_reuse():
+    rule = next_rule(
+        mcp_connection_setup.USER,
+        "The Linear connection already exists in Prefect Cloud. Will you finish "
+        "its setup page later?",
+        LINEAR_CREATED,
+    )
+
+    assert rule is not None
+    assert rule.label == "setup-later"
+
+
 def test_mcp_connection_setup_answers_the_infrastructure_check():
     rule = next_rule(
         mcp_connection_setup.USER,

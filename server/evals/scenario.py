@@ -79,23 +79,27 @@ DECLINE_TEST_RUN = Rule(
 
 # Every eval run shares the sandbox, so the agent can list the connections that
 # other runs created for the same server. Another run's teardown can delete
-# them during this run, so the simulated user turns them down. A question
-# matches up to "?" or a line break, because account names such as
+# them during this run, so the simulated user turns them down. The agent can
+# ask once for each server, also after it created another server's connection,
+# so the rule applies until the plan is validated. A question matches up to "?"
+# or a line break, because account names such as
 # `bq-agent@acme.iam.gserviceaccount.com` contain dots.
+_USE = r"\b(?:use|reuse|re-use)\b"
+_EXISTING = r"\b(?:existing|already|listed)\b"
+_CONNECTION = r"\bconnections?\b"
 DECLINE_EXISTING_CONNECTIONS = Rule(
     label="existing-connections",
-    before_tool="create_mcp_connection",
+    before_tool="validate_plan",
     pattern=(
-        r"(existing|already (?:has|have|exists?)|listed above|reuse|re-use)"
-        r"[^?\n]*\bconnections?\b[^?\n]*\?"
-        r"|\bconnections?\b[^?\n]*(existing|already|listed above|reuse|re-use)"
-        r"[^?\n]*\?"
+        rf"{_USE}[^?\n]*(?:{_CONNECTION}[^?\n]*{_EXISTING}|{_EXISTING}[^?\n]*"
+        rf"{_CONNECTION})[^?\n]*\?"
+        rf"|{_EXISTING}[^?\n]*{_CONNECTION}[^?\n]*{_USE}[^?\n]*\?"
     ),
     reply=(
         "No, those connections belong to other people. Create new ones for the "
         "accounts in my first message."
     ),
-    max_uses=1,
+    max_uses=2,
 )
 
 
