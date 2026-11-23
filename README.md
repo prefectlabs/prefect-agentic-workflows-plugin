@@ -23,8 +23,9 @@ agent, human-input, and deployment nodes attached to a flow.
 
 The server also serves the skill over MCP. An agent app that supports the
 [MCP Skills extension](https://modelcontextprotocol.io/seps/2640-skills-extension)
-gets the skill when it connects to the server. For any other app, install the
-skill separately.
+gets the skill when it connects to the server. The server that Prefect hosts
+also has `list_skills` and `read_skill` tools, so any agent app can load the
+skill from it. You can also install the skill separately.
 
 ## Quickstart: reply to customer feedback
 
@@ -47,32 +48,34 @@ version can post the reply for you.
 
 - A Prefect Cloud workspace. Ask your Prefect contact to turn on agentic
   workflows for your account, and to set up storage for the workspace.
-- An AI agent app that supports MCP servers and skills. The commands below are
-  for [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) and
-  [Node.js](https://nodejs.org/). The install commands use them.
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or
+  [Codex](https://github.com/openai/codex). The commands below are for
+  Claude Code. [Install reference](#install-reference) has the Codex commands.
+- [Node.js](https://nodejs.org/). The skill command uses it.
 
-### 1. Connect to Prefect Cloud
+### 1. Connect Claude Code to Prefect Cloud
 
-Open a terminal and run this command. It opens a browser, where you log in to
-Prefect Cloud and pick your workspace:
+Open a terminal and run these two commands. The first adds the MCP server that
+Prefect hosts. The second signs in to it:
 
 ```sh
-uvx prefect cloud login
+claude mcp add --scope user --transport http prefect-agentic-workflows https://prefect-agentic-workflows-mcp.fastmcp.app/mcp
+claude mcp login prefect-agentic-workflows
 ```
 
-### 2. Install the server and the skill
+The second command opens a browser. Open **Needs Access**, select your
+workspace, and select **Authorize**. If the browser asks for an organization,
+select Prefect.
 
-Run these two commands in the same terminal:
+### 2. Install the skill
+
+Run this command in the same terminal:
 
 ```sh
-claude mcp add --scope user prefect-agentic-workflows -- \
-  uvx --from "git+https://github.com/prefectlabs/prefect-agentic-workflows-plugin#subdirectory=server" prefect-agentic-workflows-mcp
 npx skills add prefectlabs/prefect-agentic-workflows-plugin --global
 ```
 
-The second command asks which agents to install the skill for. Choose Claude
-Code. For another agent app, see [Install reference](#install-reference).
+The command asks which agents to install the skill for. Choose Claude Code.
 
 ### 3. Ask your agent for the workflow
 
@@ -186,85 +189,79 @@ replaces the version that runs now.
   contact to turn them on.
 - An object storage bucket configured for the workspace. Prefect Cloud stores
   plan versions in it. Ask your Prefect contact to configure one.
-- [uv](https://docs.astral.sh/uv/getting-started/installation/), which
-  provides `uvx`, to run the server.
 - Node.js, which provides `npx`, if you install the skill with the `skills`
   CLI.
-- Python 3.11 or later, if you install the server into your own environment.
-  `uvx` downloads a suitable Python for you.
 
-The server uses the workspace and API key in your active Prefect profile. If
-you have not logged in to Prefect Cloud on this machine, log in and pick the
-workspace:
+Prefect hosts the MCP server at
+`https://prefect-agentic-workflows-mcp.fastmcp.app/mcp`. Your agent signs in to
+it with your Prefect Cloud account, so you don't need uv, Python, or a Prefect
+profile. To run the server on your own machine instead, for development or
+with your Prefect profile, see
+[Run the server locally](#run-the-server-locally).
 
-```sh
-uvx prefect cloud login
-```
-
-### Install the MCP server
-
-The server runs from this repository with `uvx`. You don't need to clone the
-repository or install a package first:
-
-```sh
-uvx --from "git+https://github.com/prefectlabs/prefect-agentic-workflows-plugin#subdirectory=server" prefect-agentic-workflows-mcp
-```
-
-Your agent runs this command for you. Add it to your agent's MCP configuration
-with one of the snippets below.
+### Add the MCP server
 
 #### Claude Code
 
 ```sh
-claude mcp add --scope user prefect-agentic-workflows -- \
-  uvx --from "git+https://github.com/prefectlabs/prefect-agentic-workflows-plugin#subdirectory=server" prefect-agentic-workflows-mcp
+claude mcp add --scope user --transport http prefect-agentic-workflows https://prefect-agentic-workflows-mcp.fastmcp.app/mcp
+claude mcp login prefect-agentic-workflows
 ```
 
 `--scope user` makes the server available in every project. Leave it out to
 add the server to the current project only. Run `claude mcp list` to check
 that the server connects.
 
+#### Codex
+
+```sh
+codex mcp add prefect-agentic-workflows --url https://prefect-agentic-workflows-mcp.fastmcp.app/mcp
+```
+
+This command can also start sign-in. If it doesn't, run the login command:
+
+```sh
+codex mcp login prefect-agentic-workflows
+```
+
+Run `codex mcp list` to check that the server is added.
+
 #### Other MCP clients
 
-Most MCP clients read a JSON file with an `mcpServers` object. Add this entry:
+Your client must support OAuth sign-in for remote MCP servers. Most MCP
+clients read a JSON file with an `mcpServers` object. Add an entry with the
+server's URL. Some clients also need `"type": "http"` in the entry.
 
 ```json
 {
   "mcpServers": {
     "prefect-agentic-workflows": {
-      "command": "uvx",
-      "args": [
-        "--from",
-        "git+https://github.com/prefectlabs/prefect-agentic-workflows-plugin#subdirectory=server",
-        "prefect-agentic-workflows-mcp"
-      ]
+      "url": "https://prefect-agentic-workflows-mcp.fastmcp.app/mcp"
     }
   }
 }
 ```
 
-To use a Prefect profile other than the active one, add
-`"env": {"PREFECT_PROFILE": "<profile name>"}` to the entry.
+### Sign in
 
-The server starts even when the profile is wrong. The first tool call checks
-the profile and the workspace and returns an error that says what to fix, for
-example a profile that points at a self-hosted server or an account without
-agentic workflows.
+The login command opens a browser. Open **Needs Access**, select the
+workspace, and select **Authorize**. If the browser asks for an organization,
+select Prefect.
 
-#### Update the server
-
-`uvx` caches the version it installed. To get the latest commit on `main`, run
-the install command once with `--refresh` after `uvx`, then restart your agent.
-The command starts the server and waits for input, so stop it with Ctrl-C once
-it has started.
+To add another workspace, run the login command again and select that
+workspace. When you have authorized more than one workspace, the agent asks
+which one to use.
 
 ### Install the skill
 
-The server serves the skill at `skill://agentic-workflows/SKILL.md`. If your
-agent app supports the
-[MCP Skills extension](https://modelcontextprotocol.io/seps/2640-skills-extension),
-it loads the skill from the server and you can skip this section. Otherwise,
-install the skill with the `skills` CLI:
+The hosted server gives your agent the skill in two ways. An agent app that
+supports the
+[MCP Skills extension](https://modelcontextprotocol.io/seps/2640-skills-extension)
+loads the skill when it connects. Any other agent can load it with the
+server's `list_skills` and `read_skill` tools.
+
+If your agent doesn't load the skill from the server, install it with the
+`skills` CLI:
 
 ```sh
 npx skills add prefectlabs/prefect-agentic-workflows-plugin
@@ -383,6 +380,99 @@ your agent can ask before a tool writes.
 | `create_mcp_connection` | Save an MCP server as a connection, and open its Prefect Cloud setup page, where you sign in, enter its header values, or save a service account key |
 | `check_mcp_connection` | Check a connection by listing the server's tools with its saved credentials |
 | `get_workspace` | Show the workspace the server uses, by name (such as `my-account/my-workspace`) and Prefect Cloud UI address |
+
+## Run the server locally
+
+A local server runs on your machine over stdio and uses the workspace and API
+key in your active Prefect profile. It needs
+[uv](https://docs.astral.sh/uv/getting-started/installation/), which provides
+`uvx`. If you have not logged in to Prefect Cloud on this machine, log in and
+pick the workspace:
+
+```sh
+uvx prefect cloud login
+```
+
+The commands below name the server `prefect-agentic-workflows-local`, so that
+you can add it to an agent that already has the hosted server.
+
+### Run the latest commit on `main`
+
+`uvx` runs the server from this repository. You don't need to clone the
+repository or install a package first.
+
+Claude Code:
+
+```sh
+claude mcp add --scope user prefect-agentic-workflows-local -- \
+  uvx --from "git+https://github.com/prefectlabs/prefect-agentic-workflows-plugin#subdirectory=server" prefect-agentic-workflows-mcp
+```
+
+Codex:
+
+```sh
+codex mcp add prefect-agentic-workflows-local -- \
+  uvx --from "git+https://github.com/prefectlabs/prefect-agentic-workflows-plugin#subdirectory=server" prefect-agentic-workflows-mcp
+```
+
+Other MCP clients read a JSON file with an `mcpServers` object. Add this
+entry:
+
+```json
+{
+  "mcpServers": {
+    "prefect-agentic-workflows-local": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/prefectlabs/prefect-agentic-workflows-plugin#subdirectory=server",
+        "prefect-agentic-workflows-mcp"
+      ]
+    }
+  }
+}
+```
+
+`uvx` caches the version it installed. To get the latest commit on `main`, run
+the `uvx` command once with `--refresh` after `uvx`, then restart your agent.
+The command starts the server and waits for input, so stop it with Ctrl-C once
+it has started.
+
+### Run your own checkout
+
+To try changes to the server or the skill, point the agent at the `server/`
+directory of your clone. `uv run` installs the package from your checkout when
+the agent starts the server:
+
+```sh
+claude mcp add --scope user prefect-agentic-workflows-local -- \
+  uv --directory /path/to/prefect-agentic-workflows-plugin/server run prefect-agentic-workflows-mcp
+```
+
+For Codex, put the same command after
+`codex mcp add prefect-agentic-workflows-local --`. Restart the agent after
+you change the code.
+
+The local server serves the skill from your checkout with the MCP Skills
+extension. It doesn't have the hosted server's `list_skills` and `read_skill`
+tools. If your agent doesn't support the extension, link the skill directory
+into your agent's skills directory, such as `~/.claude/skills/` for Claude
+Code. Remove an installed copy of the skill first:
+
+```sh
+ln -s /path/to/prefect-agentic-workflows-plugin/skills/agentic-workflows ~/.claude/skills/agentic-workflows
+```
+
+### Use another Prefect profile
+
+To use a Prefect profile other than the active one, add
+`"env": {"PREFECT_PROFILE": "<profile name>"}` to the JSON entry, or pass
+`--env PREFECT_PROFILE=<profile name>` to `claude mcp add` or `codex mcp add`.
+
+The server starts even when the profile is wrong. The first tool call checks
+the profile and the workspace and returns an error that says what to fix, for
+example a profile that points at a self-hosted server or an account without
+agentic workflows.
 
 ## Development
 
