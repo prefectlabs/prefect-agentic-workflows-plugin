@@ -24,7 +24,7 @@ agent, human-input, and deployment nodes attached to a flow.
 The server also serves the skill over MCP. An agent app that supports the
 [MCP Skills extension](https://modelcontextprotocol.io/seps/2640-skills-extension)
 gets the skill when it connects to the server. The server that Prefect hosts
-also has `list_skills` and `read_skill` tools, so any agent app can load the
+also has tools that list and read its skills, so any agent app can load the
 skill from it. You can also install the skill separately.
 
 ## Quickstart: reply to customer feedback
@@ -258,7 +258,8 @@ The hosted server gives your agent the skill in two ways. An agent app that
 supports the
 [MCP Skills extension](https://modelcontextprotocol.io/seps/2640-skills-extension)
 loads the skill when it connects. Any other agent can load it with the
-server's `list_skills` and `read_skill` tools.
+hosted server's tools that list and read its skills. Prefect's MCP gateway
+adds these tools, so the server in this repository doesn't register them.
 
 If your agent doesn't load the skill from the server, install it with the
 `skills` CLI:
@@ -454,8 +455,8 @@ For Codex, put the same command after
 you change the code.
 
 The local server serves the skill from your checkout with the MCP Skills
-extension. It doesn't have the hosted server's `list_skills` and `read_skill`
-tools. If your agent doesn't support the extension, link the skill directory
+extension. It doesn't have the hosted server's tools that list and read
+skills. If your agent doesn't support the extension, link the skill directory
 into your agent's skills directory, such as `~/.claude/skills/` for Claude
 Code. Remove an installed copy of the skill first:
 
