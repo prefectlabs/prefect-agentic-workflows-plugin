@@ -57,6 +57,8 @@ Read the active plan with `get_plan`, and `get_deployment` for each Deployment n
 
 To explain why a run failed or ended on an unexpected output, including a run the user started in the UI, follow [references/run-debugging.md](references/run-debugging.md).
 
+When the user asks what a workflow costs or whether it is inefficient, read it with `get_flow_cost`. Prefect Cloud doesn't price runs yet, so answer in tokens and say that dollar amounts aren't available. Start with the tokens of a typical run, from `per_run`, then name the node and the model that use the most. When one node uses most of the tokens, read one of its runs with `get_run_activity` to find the calls that added the most, and suggest a change from [references/design-guidance.md](references/design-guidance.md), such as a bounded list or search. Tell the user when `complete` or `final` is false.
+
 The user answers every human-input form: show it in plain words and submit only their answer. When they ask to leave it unanswered, for example to test its expiry, submit nothing, stop watching, and tell them to come back after the form's `deadline_at`.
 
 ## Credentials

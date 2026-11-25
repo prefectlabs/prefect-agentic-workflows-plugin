@@ -370,6 +370,7 @@ your agent can ask before a tool writes.
 | `start_run`, `get_run`, `get_run_output`, `submit_human_input` | Start a run of the active plan, watch its status, read outputs, and answer human-input forms |
 | `list_runs`, `get_run_activity`, `get_activity_record` | List a flow's recent runs with what each produced, and read the model calls and tool calls of a run's agent nodes to explain a failure |
 | `get_run_checks` | Read how Prefect Cloud checked the expectations on a run's agent node outputs, with each check's verdict and reason |
+| `get_flow_cost` | Report how expensive a flow's runs are, in tokens per run, by node, and by model |
 | `create_schedule`, `list_schedules`, `get_schedule`, `update_schedule`, `delete_schedule` | Manage a flow's plan schedules |
 | `list_secret_blocks` | List Secret block names and IDs, never their values |
 | `list_deployments` | List deployment names and IDs, for Deployment nodes |
