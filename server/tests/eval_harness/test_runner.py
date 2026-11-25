@@ -23,6 +23,7 @@ from evals.runner import converse, scenario_task, talk
 from evals.sandbox import Credentials, SandboxApi
 from evals.scenario import Rule, ScenarioInputs, next_rule
 from evals.scenarios import (
+    mapped_feedback_batch,
     no_infrastructure,
     rejected_approval,
     scheduled_edit,
@@ -68,6 +69,7 @@ def test_next_rule(
         release_notes,
         scheduled_edit,
         unsupported_loop,
+        mapped_feedback_batch,
     ],
 )
 @pytest.mark.parametrize(
@@ -99,7 +101,18 @@ def test_next_rule(
             "use and give its remote MCP server address.",
             True,
         ),
+        (
+            "Does the post need data from any of those systems, or any other tool?",
+            True,
+        ),
+        (
+            "Does this workflow need to read or write anything outside Prefect, "
+            "such as Linear, GitHub, or a helpdesk?",
+            True,
+        ),
         ("I don't have that address. Do you approve the design?", False),
+        ("The run changes nothing outside Prefect. Do you approve it?", False),
+        ("The plan needs no other tool. Should I build it?", False),
         ("We have those addresses. Should I build it?", False),
         ("The workflow has no business tools. Do you approve the design?", False),
         ("The workflow uses no outside tools. Do you approve the design?", False),
