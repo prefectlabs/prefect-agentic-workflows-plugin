@@ -14,7 +14,7 @@ A skill runs on the user's machine, with scripts, local files, stdio MCP servers
 | A stdio MCP server | The same tools from a remote Streamable-HTTP MCP server, through an MCP connection. |
 | A loop until done | A fixed number of passes, or a human checkpoint that approves or sends back. |
 | A timed wait | Not supported yet. A human checkpoint, or a second workflow on a schedule. |
-| A list of items | Handle the list in one node, or fan out to a fixed set of nodes. |
+| A list of items, or a loop over one | A [mapped node](design-guidance.md#mapped-nodes) that runs once for each item, when every item gets the same work and a run has at most 100 items. Otherwise, handle the list in one node, or fan out to a fixed set of nodes. |
 | A local file read or write | A typed output to the next node, a plan output, or a remote MCP tool. |
 | A question mid-work | A plan input when it's known up front, otherwise a human-input node. |
 | A credential in an env var or config | A Secret block reference. |

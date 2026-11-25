@@ -285,7 +285,8 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             Field(
                 description=(
                     "ID of one node activation, from a node's `activation_id` "
-                    "in `get_run`. Omit it to read every agent node of the run."
+                    "or a mapped item's `activation_id` in `get_run`. Omit it "
+                    "to read every agent node of the run."
                 ),
             ),
         ] = None,
@@ -294,12 +295,15 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         """Read the model calls and tool calls that a run's agent nodes made.
 
         Use it to explain why a run or a node failed: read the run with
-        `get_run`, then pass a failed agent node's `activation_id`. Read one
-        call in full with `get_activity_record`.
+        `get_run`, then pass a failed agent node's `activation_id`. A mapped
+        node has no `activation_id` of its own, so pass the `activation_id`
+        of one of its `items`. Read one call in full with
+        `get_activity_record`.
 
         Returns `attempts`, one for each attempt of an agent node, in start
-        order, with its `node_id`, `activation_id`, `status`, and times. An
-        attempt with the status `superseded` was followed by a retry.
+        order, with its `node_id`, `activation_id`, `status`, and times. Each
+        item of a mapped node has its own activation and attempts. An attempt
+        with the status `superseded` was followed by a retry.
 
         `activity` lists the attempt's calls in start order. Each has a
         `record_id`, an `operation` of `chat` for a model call or

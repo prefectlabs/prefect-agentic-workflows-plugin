@@ -66,14 +66,40 @@ async def get_run(
     return result.structured_content
 
 
+def mapped_node(*item_statuses: str) -> dict[str, Any]:
+    """Return a mapped node of a run observation, with one item per status."""
+    return node_observation(
+        "running",
+        node="review",
+        activation_id=None,
+        task_run_id=None,
+        expected_item_count=len(item_statuses),
+        items=[
+            {
+                "key": f"account-{index}",
+                "index": index,
+                "status": status,
+                **(
+                    {}
+                    if status == "not_started"
+                    else {"activation_id": ACTIVATION_ID, "task_run_id": ACTIVATION_ID}
+                ),
+            }
+            for index, status in enumerate(item_statuses)
+        ],
+    )
+
+
 @pytest.mark.parametrize(
     "observations",
     [
         [run_observation("running")] * 2 + [run_observation("completed")],
         [run_observation("running", [node_observation("running")])] * 2
         + [run_observation("running", [node_observation("suspended")])],
+        [run_observation("running", [mapped_node("running", "not_started")])] * 2
+        + [run_observation("running", [mapped_node("completed", "running")])],
     ],
-    ids=["run-status", "node-status"],
+    ids=["run-status", "node-status", "item-status"],
 )
 async def test_get_run_returns_as_soon_as_the_run_or_a_node_changes(
     mcp_client: Client[Any],
@@ -296,6 +322,70 @@ async def test_get_run_compact_leaves_out_edges_and_task_runs(
     }
 
 
+async def test_get_run_compact_keeps_each_item_of_a_mapped_node(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    observation = run_observation("running", [mapped_node("completed", "not_started")])
+    cloud_api.get(RUN_PATH).respond(200, json=observation)
+
+    result = await get_run(mcp_client, None, compact=True)
+
+    assert result["nodes"] == [
+        {
+            "node": "review",
+            "status": "running",
+            "activation_id": None,
+            "selected_outputs": [],
+            "failure": None,
+            "wait": None,
+            "expected_item_count": 2,
+            "items": [
+                {
+                    "key": "account-0",
+                    "status": "completed",
+                    "activation_id": ACTIVATION_ID,
+                },
+                {"key": "account-1", "status": "not_started", "activation_id": None},
+            ],
+        }
+    ]
+
+
+async def test_get_run_output_says_how_to_read_a_node_that_is_not_mapped(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    cloud_api.get(f"{RUN_PATH}/nodes/summarize/outputs/done").respond(404)
+
+    result = await mcp_client.call_tool(
+        "get_run_output",
+        {"flow_run_id": FLOW_RUN_ID, "output_name": "done", "node": "summarize"},
+        raise_on_error=False,
+    )
+
+    assert result.is_error
+    assert "no mapped node `summarize`" in error_text(result)
+    assert "activation_id" in error_text(result)
+
+
+async def test_get_run_output_takes_an_activation_or_a_node_but_not_both(
+    mcp_client: Client[Any], cloud_api: respx.MockRouter
+):
+    result = await mcp_client.call_tool(
+        "get_run_output",
+        {
+            "flow_run_id": FLOW_RUN_ID,
+            "output_name": "done",
+            "activation_id": ACTIVATION_ID,
+            "node": "review",
+        },
+        raise_on_error=False,
+    )
+
+    assert result.is_error
+    assert "not both" in error_text(result)
+    assert not cloud_api.calls
+
+
 async def test_get_run_output_reports_a_missing_bucket_as_an_error(
     mcp_client: Client[Any], cloud_api: respx.MockRouter
 ):
@@ -346,6 +436,10 @@ def problem(output_status: str, failure_code: str | None = None) -> dict[str, An
             {**problem("skipped"), "retry_after_seconds": None, "final": True},
         ),
         (
+            httpx.Response(409, json=problem("cancelled")),
+            {**problem("cancelled"), "retry_after_seconds": None, "final": True},
+        ),
+        (
             httpx.Response(503, headers={"Retry-After": "5"}, text="Busy."),
             {
                 "detail": "Busy.",
@@ -357,7 +451,7 @@ def problem(output_status: str, failure_code: str | None = None) -> dict[str, An
             },
         ),
     ],
-    ids=["waiting", "pending", "failed", "skipped", "busy"],
+    ids=["waiting", "pending", "failed", "skipped", "cancelled", "busy"],
 )
 async def test_get_run_output_reports_an_output_it_cannot_read(
     mcp_client: Client[Any],

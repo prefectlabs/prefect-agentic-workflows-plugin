@@ -56,7 +56,8 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             Field(
                 description=(
                     "ID of one node activation, from a node's `activation_id` "
-                    "in `get_run`. Omit it to read the checks of every node."
+                    "or a mapped item's `activation_id` in `get_run`. Omit it "
+                    "to read the checks of every node."
                 ),
             ),
         ] = None,
@@ -74,7 +75,9 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         `expectation_text` as the check read it. `attempt_number` counts the
         node's checked attempts from 1, so a node that ran again after a
         missed expectation has checks for each attempt, and the highest
-        number decided the node's outcome.
+        number decided the node's outcome. Prefect Cloud checks each item of
+        a mapped node separately, so the checks of one item share that item's
+        `activation_id`.
 
         A check ends with a `verdict` or a `check_error`. `verdict` is
         `satisfied`, `violated`, or `inconclusive`, which means the agent's

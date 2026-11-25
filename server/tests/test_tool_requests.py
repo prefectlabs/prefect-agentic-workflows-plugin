@@ -222,6 +222,14 @@ ROWS = [
         id="get_run_output-activation-null",
     ),
     pytest.param(
+        "get_run_output",
+        {"flow_run_id": FLOW_RUN_ID, "output_name": "review", "node": "review"},
+        ("GET", f"{RUN_PATH}/nodes/review/outputs/review", {}, None),
+        (200, {"acme": "Acme pays on time."}),
+        available_output({"acme": "Acme pays on time."}),
+        id="get_run_output-mapped-node",
+    ),
+    pytest.param(
         "submit_human_input",
         {
             "flow_run_id": FLOW_RUN_ID,
@@ -305,6 +313,11 @@ async def test_tool_sends_its_request_and_returns_the_result(
         ),
         ("get_run_output", {"flow_run_id": FLOW_RUN_ID, "output_name": ".."}, None),
         ("get_run_output", {"flow_run_id": FLOW_RUN_ID, "output_name": "a/b"}, None),
+        (
+            "get_run_output",
+            {"flow_run_id": FLOW_RUN_ID, "output_name": "done", "node": "../x"},
+            None,
+        ),
         ("get_flow", {"name": ".."}, "valid flow name"),
         ("list_runs", {"flow_id": FLOW_ID, "limit": 0}, None),
         ("list_runs", {"flow_id": FLOW_ID, "limit": 101}, None),

@@ -8,7 +8,7 @@ between the agent and a simulated user. Its output is the outcome of that
 conversation: the transcript, the plan files the agent wrote, and the state
 of the run's flows in the sandbox. The evaluators check that outcome: the
 plan, the tools the agent called in order and with which arguments, and the
-flows it left in the workspace. For six cases, an LLM judge also answers
+flows it left in the workspace. For seven cases, an LLM judge also answers
 one question that a regular expression can't.
 
 Each run starts Claude Code through the Claude Agent SDK, so it costs money,
@@ -158,6 +158,7 @@ fails without a call to the judge.
 | `no_infrastructure` | The request, the user's reply that no tool is reachable, and the agent's messages after it. | The agent offers a version of the workflow that runs without Zendesk and Slack tools. |
 | `unsupported_loop` | The published plan. | The plan makes two review-and-revise passes, as separate nodes or as steps in one node's objective, with no open-ended loop. |
 | `support_triage` | The request and the published plan. | The outputs that end a run are named for outcomes, and the expectations restate only the user's requirements. |
+| `mapped_feedback_batch` | The request and the published plan. | The mapped node's objective handles one message, the node has an output for a message it can't sort, and the report node's objective says its input holds each message's result by ID. |
 | `failed_run_diagnosis` | The agent's report. | The report names the failed `search_prefect` call as the cause, says the plan must change, and says a new run fails without a change. |
 
 The judges use `anthropic:claude-haiku-5-5` by default. Each judge call sends
@@ -199,6 +200,7 @@ and reports a run that the same key already started.
 | `mcp_connection_service_identity` | `mcp_connection_service_identity.py` | A workflow that queries BigQuery as the user's service account: the agent inspects the server, saves a connection with a Google service account identity and no sign-in or header, names it after the account, never asks for the key file, sends the setup link, and publishes a plan that references the connection. |
 | `no_infrastructure` | `no_infrastructure.py` | A workflow that needs Zendesk and Slack, for a user with no remote MCP servers: the infrastructure check comes first, and the agent offers a version without those tools. |
 | `support_triage` | `support_triage.py` | The support workflow from a plain description, with no tools: every output that ends a run requires a `summary`, `one_of` only over one node that selects at most one output, an agent node output carries expectations, and every node with expectations sets `on_failure.retry`. |
+| `mapped_feedback_batch` | `mapped_feedback_batch.py` | A workflow that sorts each message of a list the run takes, from a plain description, with no tools: an agent node maps the list, keyed by the message ID, every input that reads the mapped node takes an object, and every output that ends a run requires a `summary`. |
 
 ## Adding a case
 

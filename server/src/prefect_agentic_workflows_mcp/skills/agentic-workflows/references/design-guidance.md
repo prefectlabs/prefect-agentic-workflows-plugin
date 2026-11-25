@@ -10,7 +10,7 @@ Every port has a JSON Schema. `validate_plan` checks schema compatibility only f
 
 ## Node kinds
 
-- **AgentNode.** Write the `objective` as the decision: what to read, which tools to use, and which output to select with which fields. Give it only the MCP servers it needs, and when it needs only a few of a server's tools, only those tools: see [mcp-connections.md](mcp-connections.md). Use `output_selection` `exactly_one` for a branch, and `one_or_more` or `zero_or_more` for a fan-out where several next steps run.
+- **AgentNode.** Write the `objective` as the decision: what to read, which tools to use, and which output to select with which fields. Give it only the MCP servers it needs, and when it needs only a few of a server's tools, only those tools: see [mcp-connections.md](mcp-connections.md). Use `output_selection` `exactly_one` for a branch, and `one_or_more` or `zero_or_more` for a fan-out where several next steps run. To run the same node once for each item of a list, map it: see [Mapped nodes](#mapped-nodes).
 
   Give every agent node an output for when it can't do its job, such as `blocked` with a `reason`, and say in the objective when to select it. With only success outputs, an agent that hits a missing permission or bad input writes its error text into a success output, and the next node treats it as real data. An output with no outgoing edge is valid; selecting it ends that branch.
 
@@ -23,6 +23,28 @@ Every port has a JSON Schema. `validate_plan` checks schema compatibility only f
 - **DeploymentNode.** Runs a deployment by `deployment.id`, with `wait` set to `{"for": "child_flow_run", "until": "terminal"}`. Pass run parameters through an input named `parameters`. `get_deployment` shows the parameters and their defaults. Declare an output per end state to route on, such as `completed` or `failed`.
 
 Use a Deployment node for work that must run the same way every time. When a later node needs that work's result, not only whether it succeeded, expose the work as a tool on a remote MCP server instead.
+
+## Mapped nodes
+
+A mapped node is an agent node that runs once for each item of a list that the run reads, such as one review for each account that an earlier node lists. Each item runs as its own agent session, with its own task run. Set `orchestration.map` on the node, in schema version 0.4. [ticket-batch-triage.plan.json](examples/ticket-batch-triage.plan.json) maps a list from a plan input.
+
+Map a node when every item gets the same work and no item needs another item's result. When the items must be compared, ranked, or merged in one judgment, handle the list in one node, or map first and judge the gathered result in a later node. When each branch does different work, use a fixed fan-out of separate nodes.
+
+- `map.input` names the input to map, and that input's schema describes one item. Its one edge delivers an array whose `items` match that schema, or the output of another mapped node. Every other input gives each item the same value. Write the objective for one item, such as "Read the ticket in the `ticket` input".
+- `map.key` is a path into each array item, such as `$.id`. Point it at a field that is unique in every item, such as an ID. The later nodes receive the results keyed by it, and each item's task run is named for it, such as `triage_ticket[T-1042]`. Without `key`, items are keyed by their index. A node that maps another mapped node's output sets no `key`, and its items keep the earlier node's keys.
+- `map.concurrency` sets how many items run at once, from 1 to 100, and defaults to 10. Lower it when each item calls a rate-limited API. Each running item also counts toward the plan's `max_active_nodes`. A mapped node can't set `orchestration.limits`.
+- A list of more than 100 items fails the node with `too_many_mapped_items`, and no item runs. Bound the list where it's made: in the `maxItems` and `description` of a plan input, or in the objective of the node that lists the items. A list with no items completes the node, and each of its outputs is skipped.
+- `on_failure.retry` and expectations apply to each item separately.
+
+Give the mapped node a `blocked` output, and tell the agent to select it when it can't handle its item. When an item fails, crashes, or times out after its retries, Prefect starts no more items, and the node fails with no outputs. The results of the items that completed reach no later node. An item that selects `blocked` completes, so the other items' results go on.
+
+A node or plan output that reads a mapped node's output receives one object, keyed by item. Its values are the output values of the items that selected that output. For an output whose schema is `S`, give the reading input the schema `{"type": "object", "additionalProperties": S}`, and say in its objective that the input maps each item's key to that item's result. A plan output field needs a schema that accepts the object, such as `{"type": "object"}`.
+
+Each item selects its own outputs, so one run of a mapped node can deliver several of them. A node that reads two of its outputs, such as `triaged` and `blocked`, is a join: set `evaluate_when` to `all_reachable_terminal`, and give each input that can stay empty `expects` with `cardinality` `zero_or_one`. A `one_of` plan output field can't list two outputs of a mapped node; give each one its own field.
+
+The object has the 1 MiB limit of one node output, and every item's value counts toward it. With 100 items, each value gets about 10 KiB. Keep each item's output to the fields later nodes use, such as an ID, a category, and a one-sentence summary. A node whose values add up to more than the limit fails with `output_size_limit_exceeded`.
+
+Every item is a separate agent session, so a run's tokens grow with the number of items. Give the mapped node only the tools and the context that one item needs.
 
 ## Checking an agent's result
 
@@ -86,7 +108,7 @@ The node that declares the output also sets the retry:
 
 ## Platform limits
 
-Last verified: 2026-10-27, against the Prefect Cloud API. When an error from `validate_plan` or `publish_plan` disagrees with this list, follow the error and tell the user this file may be out of date.
+Last verified: 2026-11-25, against the Prefect Cloud API. When an error from `validate_plan` or `publish_plan` disagrees with this list, follow the error and tell the user this file may be out of date.
 
 - Plans run only in Prefect Cloud. Versions are immutable.
 - Set `model` on every agent node: a model through one of the workspace's provider connections, with an optional `effort`. [Models](../SKILL.md#models) says how to pick one.
@@ -95,8 +117,9 @@ Last verified: 2026-10-27, against the Prefect Cloud API. When an error from `va
 - Don't write a JSON `null` anywhere in a plan, such as an `on_expiry.value`. Use `{}` or `""`, with an output schema of the matching type.
 - Tools come only from remote MCP servers over Streamable HTTP, not stdio and not `/sse` URLs. Reference a server through its MCP connection (`"type": "connection"`), as [mcp-connections.md](mcp-connections.md) shows. An inline server (`"type": "http"`) is for an account without MCP connections.
 - An inline server URL has no credentials, query string, fragment, or `;` parameters. A sensitive header or query value, such as `Authorization` or any name containing `token`, `secret`, `password`, or `apikey`, must be `{"$ref": {"block_document_id": "<id>"}}`.
-- No cycles and no mapping: a loop becomes a fixed number of steps or a human checkpoint, and a list is handled inside one node or by a fixed fan-out.
-- Node `orchestration.on_failure.retry` runs an agent node again only after its output misses an expectation. An attempt that fails for another reason isn't retried. Node `orchestration.limits` validates, but the runtime doesn't apply it. Use plan-level `max_active_nodes` and `max_active_child_flow_runs` to limit concurrency.
+- No cycles: a loop becomes a fixed number of steps or a human checkpoint.
+- Only an agent node can be mapped, and only in schema version 0.4. A mapped node runs at most 100 items, at most 100 of them at once, and its gathered output has the 1 MiB limit of one node output. See [Mapped nodes](#mapped-nodes).
+- Node `orchestration.on_failure.retry` runs an agent node again only after its output misses an expectation. An attempt that fails for another reason isn't retried. Node `orchestration.limits` validates, but the runtime doesn't apply it, and a mapped node can't set it. Use plan-level `max_active_nodes` and `max_active_child_flow_runs`, or a mapped node's `map.concurrency`, to limit concurrency.
 - Timer nodes and `evaluate_when` set to `manual` can't be activated. A root node can't use `any_upstream_terminal`.
 - Human-input and Deployment nodes use `output_selection` `exactly_one`. Human-input nodes can't retry.
 - A Deployment node passes on only the child run's ID and state. The user who publishes and runs the plan needs permission to run the deployment, which seeing it doesn't prove, so name this in the summary.
@@ -105,7 +128,8 @@ Last verified: 2026-10-27, against the Prefect Cloud API. When an error from `va
 
 ## Examples
 
-Both use schema version 0.3. Replace all-zero placeholder IDs before publishing.
+All use schema version 0.4. Replace all-zero placeholder IDs before publishing.
 
 - [examples/customer-feedback-reply.plan.json](examples/customer-feedback-reply.plan.json): an agent drafts a reply, a person approves or rejects it with notes, and a rejection gets one revision. No MCP server, Secret block, or deployment. Start here for approvals and branches.
 - [examples/single-agent-with-mcp.plan.json](examples/single-agent-with-mcp.plan.json): one agent node uses an inline remote MCP server whose `Authorization` header references a Secret block holding `Bearer <token>`. Start here for tools, and replace the inline server with a connection reference when the workspace has MCP connections.
+- [examples/ticket-batch-triage.plan.json](examples/ticket-batch-triage.plan.json): a mapped node sorts each ticket of a plan input list, keyed by ticket ID, five at a time. A second node reads the gathered results and writes one report. Each item can select `blocked`, so one unreadable ticket doesn't fail the batch. Start here for a list whose items each get the same work.

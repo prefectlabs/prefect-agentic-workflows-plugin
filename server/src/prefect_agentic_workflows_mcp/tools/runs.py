@@ -12,6 +12,7 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
 from pydantic import Field
 
 from prefect_agentic_workflows_mcp.parameters import FlowRunId, WorkspaceId
@@ -30,6 +31,16 @@ FlowId = Annotated[
     UUID,
     Field(description="ID of the flow to run, from `get_or_create_flow`."),
 ]
+
+# The pattern of a node ID or an output name in a plan. The name goes into a
+# request path, and this pattern rules out `/`, `?`, `.`, and `..`.
+PLAN_IDENTIFIER = r"^[A-Za-z_][A-Za-z0-9_.-]*$"
+
+NO_MAPPED_NODE_OUTPUT_MESSAGE = (
+    "The run has no mapped node `{node}` with an output `{output_name}`. "
+    "To read the output of a node that isn't mapped, pass its `activation_id` "
+    "from `get_run` instead of `node`."
+)
 
 StateType = Literal[
     "SCHEDULED",
@@ -50,7 +61,19 @@ POLL_INTERVAL_SECONDS = 2.0
 # `get_run` returns at once for these: the run either can't change on its own
 # or needs someone to act before it can.
 STOP_WAITING_STATUSES = frozenset({"completed", "failed", "cancelled", "blocked"})
-FINAL_OUTPUT_STATUSES = frozenset({"failed", "skipped", "unavailable"})
+# A node output that its node didn't produce reports the state the node ended
+# in, such as `cancelled` for a mapped node in a cancelled run.
+FINAL_OUTPUT_STATUSES = frozenset(
+    {
+        "failed",
+        "skipped",
+        "unavailable",
+        "crashed",
+        "cancelled",
+        "timed_out",
+        "blocked",
+    }
+)
 
 
 def awaits_input(run: dict[str, Any]) -> bool:
@@ -75,6 +98,40 @@ def settled(run: dict[str, Any]) -> bool:
     )
 
 
+def compact_node(node: dict[str, Any]) -> dict[str, Any]:
+    """Return the parts of one node observation needed to follow its progress.
+
+    A mapped node also keeps its item count and each item's key, status, and
+    activation ID. A node that isn't mapped has no `items` in the observation.
+    """
+    entry = {
+        "node": node.get("node"),
+        "status": node.get("status"),
+        "activation_id": node.get("activation_id"),
+        "selected_outputs": [
+            output.get("output")
+            for output in node.get("outputs") or []
+            if output.get("status") == "selected"
+        ],
+        "failure": node.get("failure"),
+        "wait": node.get("wait"),
+    }
+    if node.get("items") is None:
+        return entry
+    return {
+        **entry,
+        "expected_item_count": node.get("expected_item_count"),
+        "items": [
+            {
+                "key": item.get("key"),
+                "status": item.get("status"),
+                "activation_id": item.get("activation_id"),
+            }
+            for item in node["items"]
+        ],
+    }
+
+
 def compact_run(run: dict[str, Any]) -> dict[str, Any]:
     """Return the parts of a run observation needed to follow its progress.
 
@@ -84,21 +141,7 @@ def compact_run(run: dict[str, Any]) -> dict[str, Any]:
     return {
         "flow_run_id": (run.get("snapshot") or {}).get("flow_run_id"),
         "status": run.get("status"),
-        "nodes": [
-            {
-                "node": node.get("node"),
-                "status": node.get("status"),
-                "activation_id": node.get("activation_id"),
-                "selected_outputs": [
-                    output.get("output")
-                    for output in node.get("outputs") or []
-                    if output.get("status") == "selected"
-                ],
-                "failure": node.get("failure"),
-                "wait": node.get("wait"),
-            }
-            for node in run.get("nodes") or []
-        ],
+        "nodes": [compact_node(node) for node in run.get("nodes") or []],
         "outputs": [
             {
                 "output": output.get("output"),
@@ -141,16 +184,24 @@ def run_list_entry(flow_run: dict[str, Any], summary: dict[str, Any]) -> dict[st
 def progress(run: dict[str, Any]) -> tuple[Any, ...]:
     """Return the parts of a run observation that `get_run` waits to change.
 
-    These are the run's status, each node's status, and each plan output's
-    status. A new human-input form shows up as a node status change, because
-    the node becomes suspended.
+    These are the run's status, each node's status, the status of each item
+    of a mapped node, and each plan output's status. A new human-input form
+    shows up as a node status change, because the node becomes suspended.
     """
     nodes = run.get("nodes") or []
     outputs = run.get("outputs") or []
     return (
         run.get("status"),
         tuple(
-            (node.get("node"), node.get("activation_id"), node.get("status"))
+            (
+                node.get("node"),
+                node.get("activation_id"),
+                node.get("status"),
+                tuple(
+                    (item.get("key"), item.get("status"))
+                    for item in node.get("items") or []
+                ),
+            )
             for node in nodes
         ),
         tuple((output.get("output"), output.get("status")) for output in outputs),
@@ -375,13 +426,22 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         `deadline_at`. `outputs` lists the plan outputs and their status, and
         `diagnostics` explains why a run is stuck or failed.
 
+        A mapped node runs once for each item of one input, and has no
+        `activation_id` of its own. Its `items` list each item in order, with
+        its `key`, its `status`, and, once the item starts, its
+        `activation_id`. An item that hasn't started has the status
+        `not_started`. `expected_item_count` is the number of items. Until
+        Prefect Cloud reads the mapped input, `items` is empty and
+        `expected_item_count` is null. A node that isn't mapped has neither
+        field.
+
         With `wait_seconds`, the tool checks the run every few seconds and
-        returns as soon as the run's status or any node's status changes,
-        when the run finishes or is blocked, when a node is already waiting
-        for human input, or when the wait runs out. `wait` then reports
-        `seconds_waited` and `status_changed`. Without `wait_seconds`, `wait`
-        is null. To watch a run to its end, repeat 30-second waits with
-        `until='settled'` and `compact=true`.
+        returns as soon as the run's status, any node's status, or any
+        item's status changes, when the run finishes or is blocked, when a
+        node is already waiting for human input, or when the wait runs out.
+        `wait` then reports `seconds_waited` and `status_changed`. Without
+        `wait_seconds`, `wait` is null. To watch a run to its end, repeat
+        30-second waits with `until='settled'` and `compact=true`.
 
         When a node waits for human input, show its form to the user and
         submit only what the user answers, with `submit_human_input`.
@@ -436,12 +496,10 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         output_name: Annotated[
             str,
             Field(
-                # The plan identifier pattern. The name goes into the request
-                # path, and this pattern rules out `/`, `?`, `.`, and `..`.
-                pattern=r"^[A-Za-z_][A-Za-z0-9_.-]*$",
+                pattern=PLAN_IDENTIFIER,
                 description=(
                     "Name of a plan output, or of a node output when you pass "
-                    "`activation_id`."
+                    "`activation_id` or `node`."
                 ),
             ),
         ],
@@ -450,13 +508,31 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
             Field(
                 description=(
                     "ID of one node activation, from a node's `activation_id` "
-                    "in `get_run`. Omit it to read a plan output."
+                    "or a mapped item's `activation_id` in `get_run`. Omit it "
+                    "to read a plan output."
+                ),
+            ),
+        ] = None,
+        node: Annotated[
+            str | None,
+            Field(
+                pattern=PLAN_IDENTIFIER,
+                description=(
+                    "ID of a mapped node, to read the output gathered from "
+                    "all of its items. Omit it to read a plan output."
                 ),
             ),
         ] = None,
         workspace_id: WorkspaceId = None,
     ) -> dict[str, Any]:
-        """Read a plan output of a run, or one node activation's output.
+        """Read a plan output of a run, one node activation's output, or a
+        mapped node's gathered output.
+
+        An item of a mapped node is a node activation, so pass an item's
+        `activation_id` to read that item's output alone. Pass `node` to read
+        the object that Prefect Cloud gathers from every item once they all
+        complete: its keys are the keys of the items that selected the
+        output, and its values are their output values.
 
         Returns `available` and, when it is true, the output's `value`.
         When the output can't be read yet or at all, `available` is false and
@@ -473,13 +549,23 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         will never arrive, for example because its node failed (`failed`) or
         didn't produce it (`skipped`).
         """
+        if activation_id is not None and node is not None:
+            raise ToolError("Pass `activation_id` or `node`, not both.")
         run_path = f"/flow_runs/{flow_run_id}/execution-plan"
-        if activation_id is None:
-            path = f"{run_path}/outputs/{output_name}"
-        else:
+        if activation_id is not None:
             path = f"{run_path}/activations/{activation_id}/outputs/{output_name}"
+        elif node is not None:
+            path = f"{run_path}/nodes/{node}/outputs/{output_name}"
+        else:
+            path = f"{run_path}/outputs/{output_name}"
         response = await api.request("GET", path, workspace_id=workspace_id)
 
+        if node is not None and response.status_code == 404:
+            # Cloud answers 404 for a node that isn't mapped, whose output is
+            # read by its activation instead.
+            raise ToolError(
+                NO_MAPPED_NODE_OUTPUT_MESSAGE.format(node=node, output_name=output_name)
+            )
         if response.status_code == 409 and NO_BUCKET_DETAIL in response_detail(
             response
         ):

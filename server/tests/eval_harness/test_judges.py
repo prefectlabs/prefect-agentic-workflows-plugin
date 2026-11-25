@@ -184,4 +184,5 @@ def test_judges_are_added_only_with_a_judge_model():
         "mcp_tool_list": 0,
         "support_triage": 1,
         "failed_run_diagnosis": 1,
+        "mapped_feedback_batch": 1,
     }
