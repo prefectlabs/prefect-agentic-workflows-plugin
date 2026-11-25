@@ -75,7 +75,7 @@
     "write_report": {
       "kind": "AgentNode",
       "label": "Write the triage report",
-      "objective": "The `triaged` input maps each ticket ID to the ticket's category and summary. The `blocked` input, when present, maps each ticket ID that couldn't be sorted to the reason. Write and run a short script that counts the tickets in each category and the blocked tickets, and use its counts. Then write a report in Markdown under 300 words: one line with the counts, then one section for each category that lists each ticket ID with its summary, then the blocked ticket IDs with their reasons. Select the `report_ready` output with `report` and `summary`, one sentence with the counts. When the `triaged` input is empty or unreadable, select the `blocked` output with `reason` and `summary` set to one sentence that says why.",
+      "objective": "The `triaged` input, when present, maps each sorted ticket ID to the ticket's category and summary. The `blocked` input, when present, maps each ticket ID that couldn't be sorted to the reason. One of the two is absent when no ticket ended that way. Write and run a short script that counts the tickets in each category and the blocked tickets, and use its counts. Then write a report in Markdown under 300 words: one line with the counts, then one section for each category that lists each ticket ID with its summary, then the blocked ticket IDs with their reasons. Select the `report_ready` output with `report` and `summary`, one sentence with the counts. When both inputs are absent or unreadable, select the `blocked` output with `reason` and `summary` set to one sentence that says why.",
       "model": {"connection_id": "00000000-0000-0000-0000-000000000000", "id": "claude-opus-5-5"},
       "inputs": {
         "triaged": {
@@ -90,7 +90,7 @@
               "required": ["category", "summary"]
             }
           },
-          "expects": {"cardinality": "exactly_one", "shape": "value"}
+          "expects": {"cardinality": "zero_or_one", "shape": "value"}
         },
         "blocked": {
           "schema": {

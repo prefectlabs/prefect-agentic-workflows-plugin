@@ -133,10 +133,13 @@ def test_batch_triage_example_maps_each_ticket_and_reads_the_gathered_results():
     # the whole batch.
     assert set(triage["outputs"]) == {"triaged", "blocked"}
     # Each node that reads a mapped output receives an object keyed by item.
+    # Either output is skipped when no item selects it, so the report reads
+    # both as optional and still runs when every ticket is blocked.
     for name in ("triaged", "blocked"):
-        reading = nodes["write_report"]["inputs"][name]["schema"]
-        assert reading["type"] == "object"
-        assert "additionalProperties" in reading
+        reading = nodes["write_report"]["inputs"][name]
+        assert reading["schema"]["type"] == "object"
+        assert "additionalProperties" in reading["schema"]
+        assert reading["expects"]["cardinality"] == "zero_or_one"
     assert nodes["write_report"]["orchestration"]["evaluate_when"] == (
         "all_reachable_terminal"
     )
