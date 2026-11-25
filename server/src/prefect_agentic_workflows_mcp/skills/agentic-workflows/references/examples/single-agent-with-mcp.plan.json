@@ -1,6 +1,6 @@
 {
   "kind": "ExecutionPlan",
-  "schema_version": "0.3",
+  "schema_version": "0.4",
   "inputs": {
     "repository": {
       "schema": {

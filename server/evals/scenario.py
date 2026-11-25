@@ -58,8 +58,8 @@ def next_rule(rules: list[Rule], message: str, transcript: Transcript) -> Rule |
 # often end the question with a list of tools, or ask for the address as a
 # request ("name any tool and give its MCP server address").
 INFRASTRUCTURE_QUESTION = (
-    r"(remote MCP server|MCP|web address|business tool|outside tool|reach)"
-    r"[^.!?\n]*\?"
+    r"(remote MCP server|MCP|web address|business tool|outside tool|other tool"
+    r"|outside Prefect|reach)[^.!?\n]*\?"
     r"|\bdo you have (that address|(?:those|these) addresses)\?"
     r"|\bdo you have (?:a |an |such an )?(?:remote )?(?:MCP server )?address"
     r"|\b(?:give|name|send|share)\b[^.!?\n]*\b(?:MCP server|web) address"

@@ -10,11 +10,22 @@ Use these steps when the user asks why a run failed, stalled, or ended on an une
 ## Find what went wrong
 
 1. Call `get_run` with `compact`. Read `diagnostics`, each node's `status` and `failure`, and each node's `selected_outputs`.
-2. For each node whose `failure` code is `expectation_violated`, `expectation_inconclusive`, or `verification_unavailable`, follow [A node that failed its checks](#a-node-that-failed-its-checks).
+2. For each node whose `failure` code is `expectation_violated`, `expectation_inconclusive`, or `verification_unavailable`, follow [A node that failed its checks](#a-node-that-failed-its-checks). For a node with `items`, follow [A mapped node that failed](#a-mapped-node-that-failed) first.
 3. For each other agent node that failed, or that selected an output the design treats as failure, call `get_run_activity` with the node's `activation_id`. It returns the node's model calls and tool calls in order. A model call's `output` shows what the model wrote and which tools it called. A tool call shows its `arguments` and `result`.
 4. Look at the failed calls first, then at the last calls before the node ended. The cause can be a call that succeeded with an unexpected result, or a model call that chose the wrong output.
 5. Content is cut to 300 characters, or 2,000 for a failed call. When the cut part can explain the failure, call `get_activity_record` with the attempt's `attempt_id` and the call's `record_id` to read it in full. A model call's full `input` has the node's request and the upstream outputs it received.
 6. Base the answer on what the calls show. Quote the error text, and say which node and attempt it came from. A node can retry: an attempt with the status `superseded` or `verification_retry` was followed by another attempt, and the last attempt decides the node's outcome.
+
+## A mapped node that failed
+
+A mapped node runs one item for each element of a list, and lists them in `items`. It has no `activation_id` of its own, so read each item by the item's `activation_id`.
+
+- `invalid_mapped_value`: the value the node maps isn't an array or an object, or an item's `map.key` is missing, isn't a string or an integer, or repeats another item's key. No item ran. Read the node that produced the list, or the plan input the run started with, and fix it or the key path.
+- `too_many_mapped_items`: the list had more than 100 items, and no item ran. Bound the list where it's made, as [design-guidance.md](design-guidance.md#mapped-nodes) says.
+- `output_size_limit_exceeded`: the items' values for one output add up to more than 1 MiB. Prefect stops starting items once they do, so some items can show `not_started`. Make each item's output smaller, or map over fewer items.
+- Any other code is the code of the first item that failed, crashed, or timed out. Prefect started no more items after it, and the items that were running finished. Find the items whose `status` is `failed`, `crashed`, or `timed_out`, name them by `key`, and explain each one from [Find what went wrong](#find-what-went-wrong) step 2 or 3 with its `activation_id`. Items with the status `not_started` never ran.
+
+The node passes on no outputs when it fails, even from items that completed. Read a completed item's output with `get_run_output` and the item's `activation_id`. To keep one bad item from failing the batch, the node needs a `blocked` output that its objective tells the agent to select.
 
 ## A node that failed its checks
 

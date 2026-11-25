@@ -131,7 +131,9 @@ def register(mcp: FastMCP[Any], api: WorkspaceApi) -> None:
         splits the total by agent node, and `models` splits it by provider
         and model, the most total tokens first. A node's `invocations` counts
         its activations that made a model call, so its tokens divided by its
-        invocations is what the node uses each time it runs.
+        invocations is what the node uses each time it runs. Each item of a
+        mapped node is an activation, so for a mapped node that division
+        gives the tokens of one item.
 
         `complete` is false when some model calls didn't report a token
         count, so the sums are too low. `final` is false while a counted run

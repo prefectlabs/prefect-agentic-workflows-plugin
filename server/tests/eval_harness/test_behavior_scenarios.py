@@ -24,6 +24,7 @@ from evals.record import FlowState, Reply, ToolCall, Transcript
 from evals.runner import SKILL_DIR
 from evals.scenario import Outcome, next_rule
 from evals.scenarios import (
+    mapped_feedback_batch,
     mcp_connection_setup,
     mcp_tool_list,
     no_infrastructure,
@@ -35,6 +36,7 @@ from evals.scenarios import (
 from evals.scenarios import release_notes_conversion as release_notes
 
 FEEDBACK_PLAN = SKILL_DIR / "references/examples/customer-feedback-reply.plan.json"
+BATCH_PLAN = SKILL_DIR / "references/examples/ticket-batch-triage.plan.json"
 
 
 def feedback_plan() -> dict[str, Any]:
@@ -410,6 +412,46 @@ def support(broken: bool) -> Outcome:
     return found
 
 
+def batch_outcome(plan: dict[str, Any]) -> Outcome:
+    flow = mapped_feedback_batch.FLOW_NAME
+    calls = published(plan, flow, turn=2)
+    transcript = Transcript(tool_calls=calls, replies=[Reply(1, "design-approval", "")])
+    return outcome(transcript, plan, [saved_flow(flow, plan)])
+
+
+def batch(broken: bool) -> Outcome:
+    plan = json.loads(BATCH_PLAN.read_text())
+    found = batch_outcome(plan)
+    if broken:
+        # Keyed by index, and the report reads the gathered results as a list.
+        del plan["nodes"]["triage_ticket"]["orchestration"]["map"]["key"]
+        plan["nodes"]["write_report"]["inputs"]["triaged"]["schema"] = {"type": "array"}
+        found.flows.clear()
+    return found
+
+
+@pytest.mark.parametrize("key", ["$.id", "$.message_id", "$.message.ID"])
+def test_mapped_feedback_batch_accepts_an_id_key(key: str):
+    plan = json.loads(BATCH_PLAN.read_text())
+    plan["nodes"]["triage_ticket"]["orchestration"]["map"]["key"] = key
+
+    check = mapped_feedback_batch.check_keyed_by_id(plan)
+
+    assert check.passed, check.detail
+
+
+def test_mapped_feedback_batch_fails_a_plan_with_a_node_for_each_message():
+    plan = json.loads(BATCH_PLAN.read_text())
+    del plan["nodes"]["triage_ticket"]["orchestration"]["map"]
+
+    checks = mapped_feedback_batch.checks(batch_outcome(plan))
+
+    assert [check.name for check in checks if not check.passed] == [
+        "an agent node maps the list of messages",
+        "the mapped node keys each item by its ID",
+    ]
+
+
 def test_support_triage_fails_a_plan_without_expectations():
     plan = support_plan()
     del plan["nodes"]["draft_reply"]["outputs"]["reply_ready"]["expectations"]
@@ -497,6 +539,15 @@ SCENARIOS = {
             "every one_of field reads one node that selects at most one output",
             "every node with expectations sets on_failure.retry",
             "the flow 'support-triage' has a saved plan version",
+        ],
+    ),
+    "mapped_feedback_batch": (
+        mapped_feedback_batch,
+        batch,
+        [
+            "the mapped node keys each item by its ID",
+            "every input that reads the mapped node takes an object",
+            "the flow 'feedback-batch' has a saved plan version",
         ],
     ),
     "release_notes_conversion": (

@@ -111,6 +111,40 @@ def test_example_plans_follow_the_plan_output_rules():
             assert check.passed, f"{path.name}: {check.name}: {check.detail}"
 
 
+def test_batch_triage_example_maps_each_ticket_and_reads_the_gathered_results():
+    plan = json.loads(
+        (
+            SKILL_DIR / "references" / "examples" / "ticket-batch-triage.plan.json"
+        ).read_text()
+    )
+    nodes = graph.nodes(plan)
+    triage = nodes["triage_ticket"]
+
+    assert triage["orchestration"]["map"] == {
+        "input": "ticket",
+        "key": "$.id",
+        "concurrency": 5,
+    }
+    # The mapped input's schema is one item of the plan input's array.
+    item_schema = plan["inputs"]["tickets"]["schema"]["items"]
+    assert triage["inputs"]["ticket"]["schema"]["required"] == item_schema["required"]
+    assert plan["inputs"]["tickets"]["schema"]["maxItems"] <= 100
+    # An item that can't be sorted completes on `blocked` instead of failing
+    # the whole batch.
+    assert set(triage["outputs"]) == {"triaged", "blocked"}
+    # Each node that reads a mapped output receives an object keyed by item.
+    # Either output is skipped when no item selects it, so the report reads
+    # both as optional and still runs when every ticket is blocked.
+    for name in ("triaged", "blocked"):
+        reading = nodes["write_report"]["inputs"][name]
+        assert reading["schema"]["type"] == "object"
+        assert "additionalProperties" in reading["schema"]
+        assert reading["expects"]["cardinality"] == "zero_or_one"
+    assert nodes["write_report"]["orchestration"]["evaluate_when"] == (
+        "all_reachable_terminal"
+    )
+
+
 def test_feedback_reply_example_needs_no_tools_and_revises_a_rejected_draft():
     plan = json.loads(
         (
